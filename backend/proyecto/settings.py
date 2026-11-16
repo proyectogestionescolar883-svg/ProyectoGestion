@@ -98,17 +98,24 @@ if not DB_PASSWORD:
         'Configurala en el archivo backend/.env (nunca en settings.py).'
     )
 
+DB_ENGINE = os.environ.get('DB_ENGINE', 'django.db.backends.mysql')
+
+if DB_ENGINE == 'django.db.backends.postgresql':
+    DB_OPTIONS = {'sslmode': os.environ.get('DB_SSLMODE', 'require')}
+    DB_DEFAULT_PORT = '5432'
+else:
+    DB_OPTIONS = {'charset': 'utf8mb4'}
+    DB_DEFAULT_PORT = '3306'
+
 DATABASES = {
     'default': {
-        'ENGINE': os.environ.get('DB_ENGINE', 'django.db.backends.mysql'),
+        'ENGINE': DB_ENGINE,
         'NAME': os.environ.get('DB_NAME', 'sistema_escolar'),
         'USER': os.environ.get('DB_USER', 'root'),
         'PASSWORD': DB_PASSWORD,
         'HOST': os.environ.get('DB_HOST', 'localhost'),
-        'PORT': os.environ.get('DB_PORT', '3306'),
-        'OPTIONS': {
-            'charset': 'utf8mb4',
-        },
+        'PORT': os.environ.get('DB_PORT', DB_DEFAULT_PORT),
+        'OPTIONS': DB_OPTIONS,
         # Los modelos de `escuela` son managed=False y no tienen migraciones
         # que creen tablas: el test DB se llena de estructura con el runner
         # `escuela.test_runner.EscuelaDiscoverRunner`.

@@ -1,0 +1,12 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+media/
+staticfiles/
+scripts_dev/
+db.sqlite3
+.env
+Dockerfile
+.dockerignore

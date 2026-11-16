@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/misecundaria7", "destination": "/" },
+    { "source": "/misecundaria7/:path*", "destination": "/:path*" }
+  ]
+}
