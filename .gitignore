@@ -56,3 +56,45 @@ panel.txt
 panel_full.txt
 reporte_*.txt
 .vercel
+
+# Migración MySQL -> PostgreSQL (scripts y dumps locales, NO versionar:
+# contienen credenciales / son artefactos descartables)
+/analyze_dump.py
+/build_pg_sql.py
+/check_missing.py
+/clean_dump.py
+/convert_mysql_to_pg.py
+/convert_to_pg.py
+/convert_to_pg_v2.py
+/convert_to_pg_v3.py
+/convert_to_pg_v4.py
+/convert_to_pg_v5.py
+/debug2.py
+/debug3.py
+/debug4.py
+/debug_alumno.py
+/detect_pooler.py
+/import_to_supabase.py
+/import_to_supabase_v2.py
+/import_to_supabase_v3.py
+/import_to_supabase_v4.py
+/list_pg_tables.py
+/migrate_full.py
+/test_bool.py
+/verify_migration.py
+/backend_dump.sql
+/backend_dump2.sql
+/backend_dump_clean.sql
+/backend_dump_pg.sql
+/backend_dump_pg_clean.sql
+/backend_dump_pg_v2.sql
+/backend_dump_pg_v3.sql
+/backend_dump_pg_v4.sql
+/backend_dump_pg_v5.sql
+/backend_dump_pg_v6.sql
+/backend_dump_pg_v7.sql
+/pg_fks.sql
+/pg_inserts.sql
+/pg_tables.sql
+# vercel.json de la raíz: placeholder sin uso (el deploy sale de frontend/ y backend/)
+/vercel.json
