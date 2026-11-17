@@ -103,6 +103,9 @@ DB_ENGINE = os.environ.get('DB_ENGINE', 'django.db.backends.mysql')
 if DB_ENGINE == 'django.db.backends.postgresql':
     DB_OPTIONS = {'sslmode': os.environ.get('DB_SSLMODE', 'require')}
     DB_DEFAULT_PORT = '5432'
+    # Supabase expone el pooler en modo transacción (puerto 6543), que no
+    # soporta cursores server-side entre sentencias: hay que desactivarlos.
+    DISABLE_SERVER_SIDE_CURSORS = True
 else:
     DB_OPTIONS = {'charset': 'utf8mb4'}
     DB_DEFAULT_PORT = '3306'
