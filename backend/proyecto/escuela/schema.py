@@ -140,6 +140,7 @@ COLUMNAS.extend([
      'permiso justificado'),
     ('horarios', 'id_modulo', 'INT NULL', None, 'FK -> modulos'),
     ('notificaciones', 'id_alumno', 'INT NULL', None, 'alumno destinatario del aviso'),
+    ('ddjj_docente', 'id_ciclo', 'INT NULL', None, 'DDJJ por ciclo lectivo'),
 ])
 
 # Columnas que deben quedar NOT NULL para que el mapeo del modelo sea exacto.
@@ -192,6 +193,18 @@ INDICES = (
             'FOREIGN KEY (id_alumno) REFERENCES alumnos (id_alumno)'
         ),
         'fk_referencia': 'alumnos',
+    },
+    {
+        'tabla': 'ddjj_docente',
+        'columna': 'id_ciclo',
+        'indice': 'idx_ddjj_docente_id_ciclo',
+        'ddl_indice': 'ADD INDEX idx_ddjj_docente_id_ciclo (id_ciclo)',
+        'fk_nombre': 'fk_ddjj_docente_id_ciclo',
+        'ddl_fk': (
+            'ADD CONSTRAINT fk_ddjj_docente_id_ciclo '
+            'FOREIGN KEY (id_ciclo) REFERENCES ciclos_lectivos (id_ciclo)'
+        ),
+        'fk_referencia': 'ciclos_lectivos',
     },
 )
 

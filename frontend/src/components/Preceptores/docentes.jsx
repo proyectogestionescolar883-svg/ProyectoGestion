@@ -457,17 +457,14 @@ const abrirCrear = () => {
     }
   };
 
-  const limpiarProgramar = async () => {
+  const limpiarProgramar = async (campo) => {
     if (!programando) return;
-    await confirmarEliminacion('¿Querés quitar las fechas programadas de este usuario?', {
+    await confirmarEliminacion('¿Querés quitar la fecha programada de este usuario?', {
       onConfirm: async () => {
         setGuardando(true);
         setMensaje('');
         try {
-          await updateDocente(programando, {
-            fecha_deshabilitacion_programada: null,
-            fecha_habilitacion_programada: null,
-          });
+          await updateDocente(programando, { [campo]: null });
           toast.success('Fechas eliminadas correctamente.');
           setProgramando(null);
           await dataCtx.refreshData();

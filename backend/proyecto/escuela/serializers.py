@@ -671,29 +671,21 @@ class UsuarioSerializer(serializers.ModelSerializer):
         return directivo.cargo if directivo else None
 
     def validate(self, attrs):
-        ahora = timezone.now()
-        fecha_desh = attrs.get(
-            'fecha_deshabilitacion_programada',
-            getattr(self.instance, 'fecha_deshabilitacion_programada', None),
-        )
-        fecha_hab = attrs.get(
-            'fecha_habilitacion_programada',
-            getattr(self.instance, 'fecha_habilitacion_programada', None),
-        )
-        if fecha_desh and fecha_desh <= ahora:
-            raise serializers.ValidationError({
-                'fecha_deshabilitacion_programada': 'La fecha debe ser futura.',
-            })
-        if fecha_hab and fecha_hab <= ahora:
-            raise serializers.ValidationError({
-                'fecha_habilitacion_programada': 'La fecha debe ser futura.',
-            })
-        if fecha_desh and fecha_hab and fecha_hab <= fecha_desh:
-            raise serializers.ValidationError({
-                'fecha_habilitacion_programada': (
-                    'La habilitación debe ser posterior a la deshabilitación.'
-                ),
-            })
+        valores_programacion = {
+            'estado': attrs.get(
+                'estado',
+                getattr(self.instance, 'estado', True),
+            ),
+            'fecha_deshabilitacion_programada': attrs.get(
+                'fecha_deshabilitacion_programada',
+                getattr(self.instance, 'fecha_deshabilitacion_programada', None),
+            ),
+            'fecha_habilitacion_programada': attrs.get(
+                'fecha_habilitacion_programada',
+                getattr(self.instance, 'fecha_habilitacion_programada', None),
+            ),
+        }
+        _validar_programacion_estado(Usuario(**valores_programacion))
 
         usuario_nombre = attrs.get('usuario_nombre')
         if usuario_nombre:

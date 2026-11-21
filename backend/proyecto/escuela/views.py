@@ -1799,13 +1799,20 @@ class UsuarioViewSet(HistorialMixin, viewsets.ModelViewSet):
                     TABLA_PERFIL_POR_ROL.get(r) == tabla_perfil for r in roles_restantes
                 )
                 if not conserva_misma_tabla:
-                    with connection.cursor() as cursor:
-                        cursor.execute(
-                            f'UPDATE {tabla_perfil} '
-                            'SET estado = 0, fecha_eliminacion = NOW() '
-                            'WHERE id_usuario = %s AND estado = 1',
-                            [id_usuario],
-                        )
+                    modelo_perfil = {
+                        'docentes': Docente,
+                        'preceptores': Preceptor,
+                        'padres_tutores': PadreTutor,
+                        'alumnos': Alumno,
+                        'directivos': Directivo,
+                    }[tabla_perfil]
+                    modelo_perfil.all_objects.filter(
+                        id_usuario=usuario,
+                        estado=True,
+                    ).update(
+                        estado=False,
+                        fecha_eliminacion=timezone.now(),
+                    )
 
             # Al quitar el rol docente se liberan sus asignaciones de curso_materia:
             # las materias quedan sin docente y disponibles para asignarle a otro.
@@ -2335,7 +2342,7 @@ class ActividadDocenteViewSet(viewsets.ModelViewSet):
         roles = get_roles_for_usuario(username) if username else []
         usuario_obj = Usuario.objects.filter(usuario=username).first() if username else None
 
-        if _es_preceptor_operativo(request, roles) and usuario_obj:
+        if _es_preceptor_operativo(self.request, roles) and usuario_obj:
             preceptor = Preceptor.objects.filter(id_usuario=usuario_obj).first()
             if preceptor:
                 cursos_ids = list(
@@ -6014,12 +6021,12 @@ class NotificacionViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='enviar-recordatorio-ddjj')
     def enviar_recordatorio_ddjj(self, request):
-        """El env�a un recordatorio de DDJJ a un docente puntual desde
-        Administraci�n (bot�n rojo "Ver DDJJ" cuando el docente todav�a no
-        carg� su declaraci�n jurada).
+        """El envía un recordatorio de DDJJ a un docente puntual desde
+        Administración (botón rojo "Ver DDJJ" cuando el docente todavía no
+        cargó su declaración jurada).
         """
         if not es_rol_amplio(request):
-            raise PermissionDenied('No ten�s permisos para enviar recordatorios.')
+            raise PermissionDenied('No tenés permisos para enviar recordatorios.')
 
         id_docente = request.data.get('id_docente')
         if id_docente is None:
@@ -6031,7 +6038,7 @@ class NotificacionViewSet(viewsets.ReadOnlyModelViewSet):
             id_docente = int(id_docente)
         except (TypeError, ValueError):
             return Response(
-                {'enviado': False, 'detail': 'El id_docente debe ser un n�mero.'},
+                {'enviado': False, 'detail': 'El id_docente debe ser un número.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -6053,7 +6060,7 @@ class NotificacionViewSet(viewsets.ReadOnlyModelViewSet):
                 rol=SEGMENTO_DOCENTE,
                 nav={'destino': 'mi_ddjj'},
             )
-        except Exception as exc:  # noqa: BLE001 - no romper ante fallo de notificaci�n
+        except Exception as exc:  # noqa: BLE001 - no romper ante fallo de notificación
             return Response(
                 {'enviado': False, 'detail': 'No se pudo enviar el recordatorio: %s' % exc},
                 status=status.HTTP_400_BAD_REQUEST,

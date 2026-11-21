@@ -11,7 +11,7 @@ un esquema idéntico al de producción pero sin datos reales. Nunca se
 escribe sobre la base real.
 """
 
-import MySQLdb
+import warnings
 
 from django.conf import settings
 from django.db import connections
@@ -37,6 +37,7 @@ class EscuelaDiscoverRunner(DiscoverRunner):
 
     def _conectar_real(self):
         cfg = self._real_db_settings
+        import MySQLdb
         return MySQLdb.connect(
             host=cfg.get('HOST') or 'localhost',
             port=int(cfg['PORT']) if cfg.get('PORT') else 3306,
@@ -47,6 +48,13 @@ class EscuelaDiscoverRunner(DiscoverRunner):
         )
 
     def _copiar_esquema(self):
+        if connections['default'].vendor != 'mysql':
+            warnings.warn(
+                'EscuelaDiscoverRunner: la copia de esquema solo está '
+                'implementada para MySQL; se omite en otros motores.',
+                RuntimeWarning,
+            )
+            return
         test_conn = connections['default']
         test_name = test_conn.settings_dict['NAME']
 
