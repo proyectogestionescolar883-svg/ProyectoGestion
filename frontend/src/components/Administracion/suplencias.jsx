@@ -217,7 +217,14 @@ function GestionSuplencias() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const esFinalizada = (s) => !s.estado || (!!s.fecha_fin && new Date(s.fecha_fin) < new Date());
+  const esFinalizada = (s) => {
+    if (!s.estado) return true;
+    if (!s.fecha_fin) return false;
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const fin = new Date(`${String(s.fecha_fin).slice(0, 10)}T00:00:00`);
+    return fin < hoy;
+  };
 
   const suplenciasActivas = useMemo(
     () => suplencias.filter((s) => !esFinalizada(s)),
@@ -518,7 +525,7 @@ function GestionSuplencias() {
                       <td>{fmtFecha(s.fecha_inicio)}</td>
                       <td>{fmtFecha(s.fecha_fin)}</td>
                       <td>{s.motivo || '—'}</td>
-                      <td>{fmtFecha(s.fecha_fin) || '—'}</td>
+                      <td>{fmtFecha(s.fecha_finalizacion_real || s.fecha_fin) || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

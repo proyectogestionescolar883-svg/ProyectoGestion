@@ -405,7 +405,7 @@ function PanelActividades({ cursoMateriaId, docenteId, puedeEditar = true, misAs
   };
 
   const handleEliminar = async (actividad) => {
-    await confirmarEliminacion('¿Estás seguro de que querés eliminar esta actividad?\n\nEsta acción no se puede deshacer.', {
+    await confirmarEliminacion('¿Estás seguro de que querés eliminar esta actividad?\n\nEl registro se dará de baja y no aparecerá más en los listados.', {
       onConfirm: async () => {
         try {
           await deleteActividad(actividad.id_actividad);

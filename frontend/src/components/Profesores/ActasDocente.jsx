@@ -381,7 +381,7 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
   };
 
   const handleEliminar = async (item, tipo) => {
-    await confirmarEliminacion('¿Seguro que querés eliminar esta acta?\n\nEsta acción no se puede deshacer.', {
+    await confirmarEliminacion('¿Seguro que querés eliminar esta acta?\n\nEl registro se dará de baja y no aparecerá más en los listados.', {
       onConfirm: async () => {
         setMensaje('');
         try {

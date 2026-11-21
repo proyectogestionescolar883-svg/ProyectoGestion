@@ -1260,6 +1260,12 @@ de funcionalidad que el backend y el frontend ya usaban
 tocaba: 24 endpoints devolvían HTTP 500 con
 `(1054, "Unknown column 'materias.activo' in 'SELECT'")`.
 
+> **Aclaración (auditoría D1):** ese volcado era MySQL 9.7 con collation
+> `utf8mb4_0900_ai_ci`, no MariaDB; hoy la base es PostgreSQL (Supabase). La
+> foto real de 80 tablas está en `ESTRUCTURA_BASE_DE_DATOS.md` y las diferencias
+> contra el documento original en `docs/REFERENCIA_BD.md` §"Alineación con el
+> esquema real".
+
 **Cómo se resolvió:**
 Se mantuvo `managed = False` (no se quita: la base es externa) y se agregó una
 capa explícita de sincronización:

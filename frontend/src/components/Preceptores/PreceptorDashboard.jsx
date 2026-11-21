@@ -144,7 +144,7 @@ function PreceptorDashboard({ user, onLogout }) {
       case 'horarios':
         return (
           <div className="view-section active">
-            <Horarios cursoGlobal={curso} soloLectura />
+            <Horarios cursoGlobal={curso} />
           </div>
         );
 

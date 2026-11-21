@@ -473,7 +473,7 @@ function Preceptores({ rol = 'preceptor' }) {
   };
 
   const handleDelete = async (preceptor) => {
-    await confirmarEliminacion(`Eliminar al ${entidad} ${preceptor.apellido}, ${preceptor.nombre}?\n\nEsta acción no se puede deshacer.`, {
+    await confirmarEliminacion(`Eliminar al ${entidad} ${preceptor.apellido}, ${preceptor.nombre}?\n\nEl registro se dará de baja y no aparecerá más en los listados.`, {
       onConfirm: async () => {
         setError('');
         setSuccess('');

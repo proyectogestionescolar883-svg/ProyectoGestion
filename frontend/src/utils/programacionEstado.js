@@ -8,7 +8,7 @@
  *
  * El bug que se corregía acá: la validación pedía SIEMPRE
  * `habilitacion <= deshabilitacion`, sin importar el estado actual de la cuenta.
- * Eso hacía imposible dos casos perfectlyamente válidos, que son los que el plan
+ * Eso hacía imposible dos casos perfectamente válidos, que son los que el plan
  * pide permitir:
  *
  *   - cuenta HABILITADA, con una deshabilitación ya agendada → se quiere
@@ -19,7 +19,8 @@
  * La regla correcta no es "habilitación antes que deshabilitación" sino: **la
  * primera acción de la línea de tiempo tiene que ser la opuesta al estado
  * actual de la cuenta**, y la segunda tiene que ir después. Todo lo demás se
- * acepta.
+ * acepta. La regla vale también con una sola fecha (R1): no se puede programar
+ * solo una acción que no cambiaría nada (habilitar una cuenta habilitada).
  *
  * No se valida contra la fecha actual a propósito: se permite agendar en el
  * pasado si la secuencia es coherente, que es lo que pide el plan.
@@ -50,7 +51,7 @@ function formatearCorta(value) {
 /**
  * Convierte un ISO del backend al formato que espera `<input type="datetime-local">`.
  *
- * `toISOString()` devuelve UTC, así que sincorrer el offset antes de cortar los
+ * `toISOString()` devuelve UTC, así que hay que corregir el offset antes de cortar los
  * minutos: si no, una fecha cargada a las 18:00 aparece como 21:00 y al guardar
  * se corre tres horas.
  */
@@ -83,26 +84,34 @@ export function validarProgramacionEstado({ estadoInicial, deshabilitacion, habi
     return { error: 'Ingresá al menos una fecha programada (deshabilitación o habilitación).' };
   }
 
-  // Con una sola fecha no hay orden que verificar: no se la compara contra la
-  // fecha actual, sino contra la acción opuesta que ya esté programada.
-  if (!hayDeshab || !hayHab) return { error: null };
-
-  // Las dos: la primera de la línea de tiempo tiene que ser la opuesta al
-  // estado actual, o la primera de las dos no haría nada.
+  // Sin usuario todavía no se sabe de qué estado se parte: no hay orden que
+  // exigir.
   if (estadoInicial === null || estadoInicial === undefined) return { error: null };
 
-  const primero = deshab <= hab ? 'deshabilitacion' : 'habilitacion';
+  // La primera acción de la línea de tiempo tiene que ser la opuesta al estado
+  // actual, tanto con las dos fechas como con una sola (R1): una cuenta
+  // habilitada no puede programar solo una habilitación, porque no haría nada.
+  const primero = hayDeshab && hayHab
+    ? (deshab <= hab ? 'deshabilitacion' : 'habilitacion')
+    : (hayDeshab ? 'deshabilitacion' : 'habilitacion');
   const esperada = estadoInicial ? 'deshabilitacion' : 'habilitacion';
 
   if (primero !== esperada) {
-    const fechaDeshab = formatearCorta(deshabilitacion);
-    const fechaHab = formatearCorta(habilitacion);
+    if (hayDeshab && hayHab) {
+      const fechaDeshab = formatearCorta(deshabilitacion);
+      const fechaHab = formatearCorta(habilitacion);
+      return {
+        error: estadoInicial
+          ? `La cuenta está habilitada: la deshabilitación (${fechaDeshab}) tiene que ser anterior a la `
+            + `habilitación (${fechaHab}).`
+          : `La cuenta está deshabilitada: la habilitación (${fechaHab}) tiene que ser anterior a la `
+            + `deshabilitación (${fechaDeshab}).`,
+      };
+    }
     return {
       error: estadoInicial
-        ? `La cuenta está habilitada: la deshabilitación (${fechaDeshab}) tiene que ser anterior a la `
-          + `habilitación (${fechaHab}).`
-        : `La cuenta está deshabilitada: la habilitación (${fechaHab}) tiene que ser anterior a la `
-          + `deshabilitación (${fechaDeshab}).`,
+        ? 'La cuenta está habilitada: la primera fecha programada tiene que ser una deshabilitación.'
+        : 'La cuenta está deshabilitada: la primera fecha programada tiene que ser una habilitación.',
     };
   }
 

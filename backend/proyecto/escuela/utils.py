@@ -1,10 +1,28 @@
-from datetime import datetime, date
+from datetime import datetime, date, time
 
 from django.db import models
 from django.db.utils import OperationalError, ProgrammingError
 from django.utils import timezone
 
 from escuela.models import HistorialCambio, TipoAccion
+
+
+HORA_CORTE_TURNO = 13
+HORA_FIN_TARDE = time(23, 59, 59)
+
+
+def rango_del_turno(modulos, turno):
+    """Rango horario de un turno (H9).
+
+    El corte es a las 13:00 para que el Módulo 5 (12:00–13:00) siga siendo
+    de la mañana. El turno tarde se extiende hasta el final del día para
+    cubrir actividades extracurriculares (por ejemplo, EF a las 18:40).
+    """
+    if turno == 'manana':
+        inicio = modulos[0].hora_inicio if modulos else time(7, 0)
+        return inicio, time(HORA_CORTE_TURNO, 0)
+    inicio = modulos[0].hora_inicio if modulos else time(HORA_CORTE_TURNO, 0)
+    return inicio, HORA_FIN_TARDE
 
 
 # ---------- Auditoría / Historial de cambios ----------
@@ -215,6 +233,24 @@ def seed_estados_asistencia_base():
     return creados
 
 
+# ---------- Franjas horarias ----------
+
+def franjas_se_solapan(hora_inicio_a, hora_fin_a, hora_inicio_b, hora_fin_b):
+    """Indica si dos franjas horarias se superponen (extremos excluidos).
+
+    Acepta objetos `time` o cadenas 'HH:MM'. Es la única fuente de verdad
+    para comparar franjas (se usa en adelantos, horarios y libro de temas).
+    """
+    def _a_tiempo(valor):
+        if isinstance(valor, time):
+            return valor
+        return datetime.strptime(str(valor)[:5], '%H:%M').time()
+
+    ini_a, fin_a = _a_tiempo(hora_inicio_a), _a_tiempo(hora_fin_a)
+    ini_b, fin_b = _a_tiempo(hora_inicio_b), _a_tiempo(hora_fin_b)
+    return ini_a < fin_b and fin_a > ini_b
+
+
 def normalizar_dni(value):
     if not value:
         return value
@@ -255,11 +291,24 @@ def activar_o_crear(model_class, lookup, defaults):
     return model_class.objects.create(**lookup, **defaults, activo=True), False
 
 
+def _deshabilita_tambien(instance):
+    return hasattr(instance, 'estado') and getattr(
+        instance, 'borrado_tambien_deshabilita', False,
+    )
+
+
 def _campos_borrado(instance):
     """Devuelve la lista de campos que identifican el borrado lógico."""
+    campos = []
     if hasattr(instance, 'eliminado'):
-        return ['eliminado', 'fecha_eliminacion']
-    return ['estado', 'fecha_eliminacion']
+        campos.append('eliminado')
+        if _deshabilita_tambien(instance):
+            campos.append('estado')
+    else:
+        campos.append('estado')
+    if hasattr(instance, 'fecha_eliminacion'):
+        campos.append('fecha_eliminacion')
+    return campos
 
 
 def marcar_eliminado(instance, commit=True):
@@ -268,6 +317,8 @@ def marcar_eliminado(instance, commit=True):
     Reglas comunes reutilizadas por todos los CRUD:
       - Planificacion usa `eliminado = True` (su campo `estado` es
         Borrador/Publicado y no se toca).
+      - Usuario usa `eliminado = True` **y** `estado = False`, porque su
+        `estado` es habilitación/deshabilitación (R4).
       - El resto de las entidades usan `estado = False`.
       - `fecha_eliminacion` se setea con la fecha/hora actual si el
         modelo tiene esa columna (por ej. `usuarios` no la tiene).
@@ -276,6 +327,8 @@ def marcar_eliminado(instance, commit=True):
     """
     if hasattr(instance, 'eliminado'):
         instance.eliminado = True
+        if _deshabilita_tambien(instance):
+            instance.estado = False
     else:
         instance.estado = False
     if hasattr(instance, 'fecha_eliminacion'):

@@ -26,6 +26,11 @@ modelos y el esquema físico. Se usa desde cuatro lugares:
   desde cero), y
 * los tests de regresión (``escuela/tests/test_esquema.py``).
 
+La inspección y la aplicación del DDL son dialecto-agnósticas: detectan
+``connection.vendor`` y usan ``DATABASE()``/backticks en MySQL o
+``current_schema()``/comillas dobles en Postgres. ``sql_esquema()`` sigue
+emitiendo el script idempotente de MySQL/MariaDB.
+
 Reglas de diseño
 ----------------
 * Todo el DDL es **aditivo o de alineación**: nunca DROP, TRUNCATE, DELETE ni
@@ -37,6 +42,8 @@ Reglas de diseño
   modo que los managers con borrado lógico (`ActivoManager`, que filtran
   ``estado=True``) sigan viendo los registros que ya estaban cargados.
 """
+import re
+
 
 # --------------------------------------------------------------------------
 # Piezas reutilizables de DDL
@@ -64,6 +71,9 @@ SOFT_DELETE_TABLAS = (
     'actas',
     'comunicados',
     'diagnosticos_grupales',
+    'calificaciones',
+    'horarios',
+    'horarios_especiales',
 )
 
 # --------------------------------------------------------------------------
@@ -88,6 +98,13 @@ for _tabla in SOFT_DELETE_TABLAS:
 COLUMNAS.append(
     ('ciclos_lectivos', 'fecha_eliminacion', DDL_FECHA_ELIMINACION, None,
      'borrado lógico'),
+)
+
+# `usuarios.eliminado` distingue "deshabilitado" de "eliminado" (R4): un
+# usuario de baja no debe reactivarse con una programación pendiente.
+COLUMNAS.append(
+    ('usuarios', 'eliminado', DDL_ELIMINADO, '0',
+     'borrado lógico de usuarios (no confundir con estado)'),
 )
 
 # `planificaciones` es el caso especial: `estado` es Borrador/Publicado y el
@@ -205,11 +222,103 @@ def _filas(cursor, sql, params=()):
     return cursor.fetchall()
 
 
+def _vendor(cursor):
+    db = getattr(cursor, 'db', None)
+    vendor = getattr(db, 'vendor', None)
+    if vendor:
+        return vendor
+    from django.db import connection
+    return connection.vendor
+
+
+def _esquema_expr(cursor):
+    """Expresión para el schema/database actual de information_schema."""
+    if _vendor(cursor) == 'postgresql':
+        return 'current_schema()'
+    return 'DATABASE()'
+
+
+def _q(cursor, nombre):
+    """Cita un identificador según el motor (backticks vs comillas dobles)."""
+    if _vendor(cursor) == 'postgresql':
+        return '"' + str(nombre).replace('"', '""') + '"'
+    return '`' + str(nombre).replace('`', '``') + '`'
+
+
+def _ddl_para(cursor, ddl):
+    if _vendor(cursor) != 'postgresql':
+        return ddl
+    reemplazos = (
+        ('TINYINT(1) NOT NULL DEFAULT 1', 'BOOLEAN NOT NULL DEFAULT TRUE'),
+        ('TINYINT(1) NOT NULL DEFAULT 0', 'BOOLEAN NOT NULL DEFAULT FALSE'),
+        ('TINYINT(1) NULL DEFAULT 0', 'BOOLEAN NULL DEFAULT FALSE'),
+        ('TINYINT(1) NOT NULL', 'BOOLEAN NOT NULL'),
+        ('TINYINT(1)', 'BOOLEAN'),
+        ('DATETIME', 'TIMESTAMP'),
+        ('INT NULL', 'INTEGER NULL'),
+        ('INT NOT NULL', 'INTEGER NOT NULL'),
+    )
+    for original, reemplazo in reemplazos:
+        ddl = ddl.replace(original, reemplazo)
+    return ddl
+
+
+def _alter_modify(cursor, tabla, columna, ddl):
+    if _vendor(cursor) != 'postgresql':
+        cursor.execute(
+            f'ALTER TABLE `{tabla}` MODIFY COLUMN `{columna}` {ddl}'
+        )
+        return
+    ddl_pg = _ddl_para(cursor, ddl)
+    tipo = re.match(r'([A-Za-z][A-Za-z0-9_()]*)', ddl_pg).group(1)
+    match_default = re.search(r'\bDEFAULT\s+(.+)$', ddl_pg)
+    columna_q = _q(cursor, columna)
+    partes = [f'ALTER COLUMN {columna_q} TYPE {tipo}']
+    if match_default:
+        partes.append(f'ALTER COLUMN {columna_q} SET DEFAULT {match_default.group(1)}')
+    else:
+        partes.append(f'ALTER COLUMN {columna_q} DROP DEFAULT')
+    partes.append(
+        f'ALTER COLUMN {columna_q} '
+        + ('SET NOT NULL' if 'NOT NULL' in ddl_pg else 'DROP NOT NULL')
+    )
+    cursor.execute(f'ALTER TABLE {_q(cursor, tabla)} ' + ', '.join(partes))
+
+
+def _es_booleano(cursor, tabla, columna):
+    if _vendor(cursor) != 'postgresql':
+        return False
+    rows = _filas(
+        cursor,
+        'SELECT data_type FROM information_schema.COLUMNS '
+        f'WHERE TABLE_SCHEMA = {_esquema_expr(cursor)} '
+        'AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+        (tabla, columna),
+    )
+    return bool(rows) and str(rows[0][0]).lower() == 'boolean'
+
+
+def _literal_para(cursor, tabla, columna, valor):
+    if valor in ('1', '0') and _es_booleano(cursor, tabla, columna):
+        return 'TRUE' if valor == '1' else 'FALSE'
+    return valor
+
+
+def _relleno_sql(cursor, tabla, columna, sql):
+    if _vendor(cursor) == 'postgresql' and tabla == 'horarios' and columna == 'id_modulo':
+        return (
+            'UPDATE horarios h SET id_modulo = m.id_modulo '
+            'FROM modulos m WHERE m.id_modulo = h.numero_modulo '
+            'AND h.id_modulo IS NULL AND h.numero_modulo IS NOT NULL'
+        )
+    return sql
+
+
 def tablas_de(cursor):
     rows = _filas(
         cursor,
-        'SELECT TABLE_NAME FROM information_schema.TABLES '
-        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'",
+         'SELECT TABLE_NAME FROM information_schema.TABLES '
+         f"WHERE TABLE_SCHEMA = {_esquema_expr(cursor)} AND TABLE_TYPE = 'BASE TABLE'",
     )
     return {r[0] for r in rows}
 
@@ -219,7 +328,7 @@ def columnas_de(cursor, tabla):
     rows = _filas(
         cursor,
         'SELECT COLUMN_NAME FROM information_schema.COLUMNS '
-        'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s',
+        f'WHERE TABLE_SCHEMA = {_esquema_expr(cursor)} AND TABLE_NAME = %s',
         (tabla,),
     )
     return {r[0] for r in rows}
@@ -229,7 +338,8 @@ def es_nullable(cursor, tabla, columna):
     rows = _filas(
         cursor,
         'SELECT IS_NULLABLE FROM information_schema.COLUMNS '
-        'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+        f'WHERE TABLE_SCHEMA = {_esquema_expr(cursor)} '
+        'AND TABLE_NAME = %s AND COLUMN_NAME = %s',
         (tabla, columna),
     )
     if not rows:
@@ -238,12 +348,20 @@ def es_nullable(cursor, tabla, columna):
 
 
 def indices_de(cursor, tabla):
-    rows = _filas(
-        cursor,
-        'SELECT INDEX_NAME FROM information_schema.STATISTICS '
-        'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s',
-        (tabla,),
-    )
+    if _vendor(cursor) == 'postgresql':
+        rows = _filas(
+            cursor,
+            'SELECT indexname FROM pg_indexes '
+            'WHERE schemaname = current_schema() AND tablename = %s',
+            (tabla,),
+        )
+    else:
+        rows = _filas(
+            cursor,
+            'SELECT INDEX_NAME FROM information_schema.STATISTICS '
+            f'WHERE TABLE_SCHEMA = {_esquema_expr(cursor)} AND TABLE_NAME = %s',
+            (tabla,),
+        )
     return {r[0] for r in rows}
 
 
@@ -251,7 +369,7 @@ def constraints_de(cursor, tabla):
     rows = _filas(
         cursor,
         'SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS '
-        'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s',
+        f'WHERE TABLE_SCHEMA = {_esquema_expr(cursor)} AND TABLE_NAME = %s',
         (tabla,),
     )
     return {r[0] for r in rows}
@@ -261,7 +379,11 @@ def nulos_en(cursor, tabla, columna):
     """Cantidad de filas con NULL en `columna` (None si no existe la columna)."""
     if columna not in columnas_de(cursor, tabla):
         return None
-    rows = _filas(cursor, f'SELECT COUNT(*) FROM `{tabla}` WHERE `{columna}` IS NULL')
+    rows = _filas(
+        cursor,
+        f'SELECT COUNT(*) FROM {_q(cursor, tabla)} '
+        f'WHERE {_q(cursor, columna)} IS NULL',
+    )
     return rows[0][0]
 
 
@@ -290,13 +412,18 @@ def aplicar_esquema(connection, log=None):
             if columna in columnas_de(cursor, tabla):
                 informe['omitidas'].append((tabla, columna))
                 continue
-            cursor.execute(f'ALTER TABLE `{tabla}` ADD COLUMN `{columna}` {ddl}')
+            cursor.execute(
+                f'ALTER TABLE {_q(cursor, tabla)} ADD COLUMN '
+                f'{_q(cursor, columna)} {_ddl_para(cursor, ddl)}'
+            )
             informe['agregadas'].append((tabla, columna, nota))
             log(f'+ {tabla}.{columna} ({nota})')
             if relleno is not None:
                 cursor.execute(
-                    f'UPDATE `{tabla}` SET `{columna}` = {relleno} '
-                    f'WHERE `{columna}` IS NULL'
+                    f'UPDATE {_q(cursor, tabla)} SET '
+                    f'{_q(cursor, columna)} = '
+                    f'{_literal_para(cursor, tabla, columna, relleno)} '
+                    f'WHERE {_q(cursor, columna)} IS NULL'
                 )
                 informe['rellenos'].append((tabla, columna))
 
@@ -305,8 +432,10 @@ def aplicar_esquema(connection, log=None):
             if tabla not in existentes or columna not in columnas_de(cursor, tabla):
                 continue
             cursor.execute(
-                f'UPDATE `{tabla}` SET `{columna}` = {valor} '
-                f'WHERE `{columna}` IS NULL'
+                f'UPDATE {_q(cursor, tabla)} SET '
+                f'{_q(cursor, columna)} = '
+                f'{_literal_para(cursor, tabla, columna, valor)} '
+                f'WHERE {_q(cursor, columna)} IS NULL'
             )
             if cursor.rowcount:
                 informe['rellenos'].append((tabla, columna))
@@ -322,7 +451,13 @@ def aplicar_esquema(connection, log=None):
                      % ', '.join(requiere)),
                 )
                 continue
-            cursor.execute(sql)
+            if (
+                tabla == 'horarios'
+                and columna == 'id_modulo'
+                and 'numero_modulo' not in columnas_de(cursor, 'horarios')
+            ):
+                continue
+            cursor.execute(_relleno_sql(cursor, tabla, columna, sql))
             if cursor.rowcount:
                 informe['rellenos'].append((tabla, columna))
                 log(f'~ relleno {tabla}.{columna}: {nota}')
@@ -340,7 +475,7 @@ def aplicar_esquema(connection, log=None):
                     (tabla, columna, 'quedan NULL; no se puede poner NOT NULL'),
                 )
                 continue
-            cursor.execute(f'ALTER TABLE `{tabla}` MODIFY COLUMN `{columna}` {ddl}')
+            _alter_modify(cursor, tabla, columna, ddl)
             informe['endurecidas'].append((tabla, columna))
             log(f'* {tabla}.{columna} -> NOT NULL')
 
@@ -352,7 +487,7 @@ def aplicar_esquema(connection, log=None):
             if es_nullable(cursor, tabla, columna) is True:
                 informe['omitidas'].append((tabla, columna))
                 continue
-            cursor.execute(f'ALTER TABLE `{tabla}` MODIFY COLUMN `{columna}` {ddl}')
+            _alter_modify(cursor, tabla, columna, ddl)
             informe['relajadas'].append((tabla, columna))
             log(f'* {tabla}.{columna} -> NULL permitido')
 
@@ -363,7 +498,15 @@ def aplicar_esquema(connection, log=None):
             if tabla not in existentes or columna not in columnas_de(cursor, tabla):
                 continue
             if spec['indice'] not in indices_de(cursor, tabla):
-                cursor.execute(f'ALTER TABLE `{tabla}` {spec["ddl_indice"]}')
+                if _vendor(cursor) == 'postgresql':
+                    cursor.execute(
+                        f'CREATE INDEX IF NOT EXISTS {_q(cursor, spec["indice"])} '
+                        f'ON {_q(cursor, tabla)} ({_q(cursor, columna)})'
+                    )
+                else:
+                    cursor.execute(
+                        f'ALTER TABLE `{tabla}` {spec["ddl_indice"]}'
+                    )
                 informe['indices'].append((tabla, spec['indice']))
                 log(f'+ índice {tabla}.{spec["indice"]}')
             if spec['fk_nombre'] not in constraints_de(cursor, tabla):
@@ -374,7 +517,9 @@ def aplicar_esquema(connection, log=None):
                         % spec['fk_referencia'],
                     ))
                     continue
-                cursor.execute(f'ALTER TABLE `{tabla}` {spec["ddl_fk"]}')
+                cursor.execute(
+                    f'ALTER TABLE {_q(cursor, tabla)} {spec["ddl_fk"]}'
+                )
                 informe['indices'].append((tabla, spec['fk_nombre']))
                 log(f'+ FK {tabla}.{spec["fk_nombre"]}')
 

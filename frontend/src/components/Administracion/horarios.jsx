@@ -16,10 +16,22 @@ import VistaHorarios from './VistaHorarios';
 import AccionesCelda from '../../components/Shared/AccionesCelda';
 import AvisoDatosMaestros from '../../components/Shared/AvisoDatosMaestros';
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
+import { mensajeErrorAmigable } from '../../utils/errores';
 import LoadingSpinner from '../Shared/LoadingSpinner';
 
-const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
-const MATERIA_EF = 'Educación Física';
+const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+function esMateriaEF(nombre) {
+  const normalizado = (nombre || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/^ed\.\s*/, 'educacion ')
+    .replace(/^ed\s+/, 'educacion ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return normalizado === 'educacion fisica';
+}
 
 function timeStr(value) {
   if (!value) return '';
@@ -43,20 +55,47 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
     setGuardando(true);
     setMensaje('');
     try {
-      const updates = Object.entries(celdas)
-        .filter(([, v]) => v !== (originalCeldas[Object.keys(celdas).find(k => celdas[k] === v)] || ''))
-        .map(([key, value]) => {
-          const [dia, moduloId] = key.split('|');
-          return updateHorario({ dia_semana: dia, hora_inicio: value.hora_inicio, hora_fin: value.hora_fin, aula: value.aula, id_curso_materia: moduloId, curso: cursoSeleccionado });
-        });
-      await Promise.all(updates);
+      // La clave de cada celda es `${dia_semana}_${id_modulo}` (ver cargarGrilla).
+      const clavesNuevas = Object.keys(celdas).filter((k) => !(k in originalCeldas));
+      const clavesEliminadas = Object.keys(originalCeldas).filter((k) => !(k in celdas));
+      const clavesActualizadas = Object.keys(celdas).filter(
+        (k) => k in originalCeldas
+          && celdas[k].id_curso_materia !== originalCeldas[k].id_curso_materia,
+      );
+
+      const celdasSiguientes = { ...celdas };
+
+      await Promise.all([
+        ...clavesNuevas.map(async (key) => {
+          const [dia, moduloId] = key.split('_');
+          const creado = await createHorario({
+            id_curso_materia: celdas[key].id_curso_materia,
+            id_modulo: Number(moduloId),
+            dia_semana: dia,
+          });
+          if (creado && creado.id_horario != null) {
+            celdasSiguientes[key] = {
+              ...celdasSiguientes[key],
+              id_horario: creado.id_horario,
+            };
+          }
+        }),
+        ...clavesActualizadas.map((key) => (
+          updateHorario(celdas[key].id_horario, {
+            id_curso_materia: celdas[key].id_curso_materia,
+          })
+        )),
+        ...clavesEliminadas.map((key) => deleteHorario(originalCeldas[key].id_horario)),
+      ]);
+
+      setCeldas(celdasSiguientes);
+      setOriginalCeldas(JSON.parse(JSON.stringify(celdasSiguientes)));
       setMensaje('Horarios guardados correctamente.');
-      setOriginalCeldas({ ...celdas });
       if (typeof refreshData === 'function') {
         try { await refreshData(); } catch { /* best-effort */ }
       }
-    } catch {
-      setMensaje('Error al guardar horarios.');
+    } catch (err) {
+      setMensaje(`Error al guardar horarios: ${mensajeErrorAmigable(err)}`);
     } finally {
       setGuardando(false);
     }
@@ -89,7 +128,7 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
         const horList = Array.isArray(horData) ? horData : horData.results || [];
 
         const materias = cmList
-          .filter((cm) => cm.materia_nombre && cm.materia_nombre !== MATERIA_EF)
+          .filter((cm) => cm.materia_nombre && !esMateriaEF(cm.materia_nombre))
           .map((cm) => ({ id: cm.id_curso_materia, nombre: cm.materia_nombre }));
 
         const unicas = [];
@@ -150,6 +189,14 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
     <div>
       {cursoSeleccionado && (
         <div>
+          {mensaje && (
+            <p
+              className={`form-error-message ${mensaje.includes('Error') ? '' : 'form-error-message--ok'}`}
+              role="status"
+            >
+              {mensaje}
+            </p>
+          )}
           {cargandoGrilla ? (
             <LoadingSpinner text="Cargando horarios..." size="sm" inline />
           ) : modulosSorted.length === 0 ? (
@@ -242,7 +289,7 @@ function EducacionFisica({ cursoIdExterno = '', soloLectura = false }) {
         const cmList = Array.isArray(cmData) ? cmData : cmData.results || [];
         const heList = Array.isArray(heData) ? heData : heData.results || [];
 
-        const ef = cmList.find((cm) => cm.materia_nombre === MATERIA_EF);
+        const ef = cmList.find((cm) => esMateriaEF(cm.materia_nombre));
         setCmEf(ef || null);
 
         heList.sort((a, b) => {
@@ -306,8 +353,8 @@ function EducacionFisica({ cursoIdExterno = '', soloLectura = false }) {
         return (a.hora_inicio || '').localeCompare(b.hora_inicio || '');
       });
       setHorarios(heList);
-    } catch {
-      toast.error('Error al guardar.');
+    } catch (err) {
+      toast.error(mensajeErrorAmigable(err));
     } finally {
       setGuardando(false);
     }
@@ -325,7 +372,7 @@ function EducacionFisica({ cursoIdExterno = '', soloLectura = false }) {
   };
 
   const handleEliminar = async (h) => {
-    await confirmarEliminacion('¿Está seguro de que desea eliminar este horario especial?\n\nEsta acción no se puede deshacer.', {
+    await confirmarEliminacion('¿Querés eliminar este horario especial?\n\nEl horario se dará de baja y no aparecerá más en los listados.', {
       onConfirm: async () => {
         try {
           await deleteHorarioEspecial(h.id_horario_especial);
@@ -340,8 +387,8 @@ function EducacionFisica({ cursoIdExterno = '', soloLectura = false }) {
             return (a.hora_inicio || '').localeCompare(b.hora_inicio || '');
           });
           setHorarios(heList);
-        } catch {
-          toast.error('Error al eliminar.');
+        } catch (err) {
+          toast.error(`No se pudo eliminar: ${mensajeErrorAmigable(err)}`);
         }
       },
     });

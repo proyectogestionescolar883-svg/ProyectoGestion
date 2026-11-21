@@ -367,7 +367,7 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
 
       const items = [];
       for (const fila of filas) {
-        if (fila.prenota1 || fila.nota1 || fila.diag) {
+        if (fila.calId1 || fila.prenota1 || fila.diag || (fila.nota1 !== '' && fila.nota1 != null)) {
           items.push({
             ...(fila.calId1 ? { id_calificacion: fila.calId1 } : {}),
             id_alumno: fila.id,
@@ -375,12 +375,12 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
             id_docente: docenteId,
             id_periodo: periodo1.id_periodo,
             pre_nota: fila.prenota1 || '',
-            nota_numerica: fila.nota1 !== '' ? fila.nota1 : null,
+            nota_numerica: fila.nota1 !== '' && fila.nota1 != null ? fila.nota1 : null,
             diagnostico: fila.diag || '',
           });
         }
 
-        if (periodo2 && (fila.prenota2 || fila.nota2)) {
+        if (periodo2 && (fila.calId2 || fila.prenota2 || (fila.nota2 !== '' && fila.nota2 != null))) {
           items.push({
             ...(fila.calId2 ? { id_calificacion: fila.calId2 } : {}),
             id_alumno: fila.id,
@@ -388,8 +388,7 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
             id_docente: docenteId,
             id_periodo: periodo2.id_periodo,
             pre_nota: fila.prenota2 || '',
-            nota_numerica: fila.nota2 !== '' ? fila.nota2 : null,
-            diagnostico: '',
+            nota_numerica: fila.nota2 !== '' && fila.nota2 != null ? fila.nota2 : null,
           });
         }
       }
@@ -464,6 +463,12 @@ return (
         />
       )}
 
+      <p className="text-muted">
+        La prenota registra el resultado cualitativo de mitad de período
+        (TEA/TEP/TED) y es independiente de la nota numérica final. Pueden diferir
+        sin que eso sea un error.
+      </p>
+
       <div className="table-responsive">
         <table>
           <thead>
@@ -473,7 +478,7 @@ return (
               <th>Nota 1</th>
               <th>Prenota 2 (TEA/TEP/TED)</th>
               <th>Nota 2</th>
-              <th>Diagnóstico Final</th>
+              <th>Diagnóstico del 1.er período</th>
             </tr>
           </thead>
           <tbody>
@@ -685,7 +690,7 @@ return (
         {cargandoPrevias ? (
           <p className="empty-state-message">Cargando previas...</p>
         ) : previas.length === 0 ? (
-          <p className="empty-state-message">No hay materias previas/adeudadas para este curso.</p>
+          <p className="empty-state-message">No hay materias previas/adeudadas para esta materia.</p>
         ) : (
           <div className="table-responsive">
             <table>

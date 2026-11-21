@@ -1,4 +1,5 @@
 import unicodedata
+from datetime import timedelta
 
 from rest_framework import serializers
 
@@ -8,7 +9,9 @@ from django.db import transaction
 from django.db.utils import IntegrityError
 
 from escuela.utils import (
+    HORA_CORTE_TURNO,
     es_estado_asistencia_base,
+    franjas_se_solapan,
     normalizar_dni,
     obtener_docente_activo,
 )
@@ -107,28 +110,32 @@ _sentinel = object()
 
 
 def _validar_programacion_estado(usuario):
-    """Valida el par de fechas programadas de una cuenta (punto 5.9).
+    """Valida las fechas programadas de una cuenta (punto 5.9, R1).
 
     `aplicar_programaciones_usuario` aplica el campo que ya venció y lo limpia,
-    así que las dos fechas forman una línea de tiempo que arranca en el estado
-    actual. Si la primera de las dos no es la acción opuesta a ese estado, no
-    hace nada y el usuario termina en un estado distinto al esperado.
+    así que las fechas forman una línea de tiempo que arranca en el estado
+    actual. La primera acción agendada tiene que ser la opuesta a ese estado; si
+    no, no aplica ningún cambio y el usuario queda distinto al esperado.
 
-    Se valida contra el estado actual de la cuenta, no contra la fecha de hoy:
-    agendar una re-habilitación posterior a una deshabilitación ya programada
-    es válido y tiene que poder hacerse.
+    Vale tanto con las dos fechas como con una sola: una cuenta habilitada no
+    puede programar solo una habilitación (no haría nada), y al revés. Se valida
+    contra el estado actual de la cuenta, no contra la fecha de hoy: agendar una
+    re-habilitación posterior a una deshabilitación ya programada es válido.
     """
     fecha_deshabilitacion = usuario.fecha_deshabilitacion_programada
     fecha_habilitacion = usuario.fecha_habilitacion_programada
-    if not fecha_deshabilitacion or not fecha_habilitacion:
+    if not fecha_deshabilitacion and not fecha_habilitacion:
         return
 
-    if fecha_deshabilitacion <= fecha_habilitacion:
+    if fecha_deshabilitacion and fecha_habilitacion:
+        if fecha_deshabilitacion <= fecha_habilitacion:
+            primero, campo_incorrecto = 'deshabilitacion', 'fecha_deshabilitacion_programada'
+        else:
+            primero, campo_incorrecto = 'habilitacion', 'fecha_habilitacion_programada'
+    elif fecha_deshabilitacion:
         primero, campo_incorrecto = 'deshabilitacion', 'fecha_deshabilitacion_programada'
-        fecha_primero, fecha_segunda = fecha_deshabilitacion, fecha_habilitacion
     else:
         primero, campo_incorrecto = 'habilitacion', 'fecha_habilitacion_programada'
-        fecha_primero, fecha_segunda = fecha_habilitacion, fecha_deshabilitacion
 
     esperada = 'deshabilitacion' if usuario.estado else 'habilitacion'
     if primero == esperada:
@@ -137,17 +144,104 @@ def _validar_programacion_estado(usuario):
     def _fmt(fecha):
         return timezone.localtime(fecha).strftime('%d/%m/%Y %H:%M') if fecha else '—'
 
-    if usuario.estado:
+    if fecha_deshabilitacion and fecha_habilitacion:
+        if usuario.estado:
+            mensaje = (
+                f'La cuenta está habilitada: la deshabilitación ({_fmt(fecha_deshabilitacion)}) '
+                f'tiene que ser anterior a la habilitación ({_fmt(fecha_habilitacion)}).'
+            )
+        else:
+            mensaje = (
+                f'La cuenta está deshabilitada: la habilitación ({_fmt(fecha_habilitacion)}) '
+                f'tiene que ser anterior a la deshabilitación ({_fmt(fecha_deshabilitacion)}).'
+            )
+    elif usuario.estado:
         mensaje = (
-            f'La cuenta está habilitada: la deshabilitación ({_fmt(fecha_deshabilitacion)}) '
-            f'tiene que ser anterior a la habilitación ({_fmt(fecha_habilitacion)}).'
+            'La cuenta está habilitada: la primera fecha programada tiene que ser una '
+            'deshabilitación (una habilitación no aplicaría ningún cambio).'
         )
     else:
         mensaje = (
-            f'La cuenta está deshabilitada: la habilitación ({_fmt(fecha_habilitacion)}) '
-            f'tiene que ser anterior a la deshabilitación ({_fmt(fecha_deshabilitacion)}).'
+            'La cuenta está deshabilitada: la primera fecha programada tiene que ser una '
+            'habilitación (una deshabilitación no aplicaría ningún cambio).'
         )
     raise serializers.ValidationError({campo_incorrecto: mensaje})
+
+
+def _proxima_accion_programada(usuario):
+    """Acción programada más próxima (la de menor fecha), o None (R2).
+
+    Antes se devolvía siempre la deshabilitación si existía, aunque la
+    habilitación fuera anterior. Con la validación de
+    `_validar_programacion_estado` la más temprana es la acción opuesta al
+    estado actual.
+    """
+    if not usuario:
+        return None
+    candidatas = []
+    if usuario.fecha_deshabilitacion_programada:
+        candidatas.append(('deshabilitar', usuario.fecha_deshabilitacion_programada))
+    if usuario.fecha_habilitacion_programada:
+        candidatas.append(('habilitar', usuario.fecha_habilitacion_programada))
+    if not candidatas:
+        return None
+    tipo, fecha = min(candidatas, key=lambda c: c[1])
+    return {'tipo': tipo, 'fecha': fecha.isoformat()}
+
+
+def _ciclo_lectivo_actual_id():
+    ciclo = CicloLectivo.objects.filter(estado=True).order_by('-anio').first()
+    return ciclo.pk if ciclo else None
+
+
+def _validar_cursos_preceptor(cursos_ids, preceptor=None):
+    """R7: no quitar cursos a otro preceptor sin aviso."""
+    if not cursos_ids:
+        return
+    conflictos = Curso.objects.filter(id_curso__in=cursos_ids).exclude(
+        id_preceptor__isnull=True,
+    )
+    if preceptor is not None:
+        conflictos = conflictos.exclude(id_preceptor=preceptor)
+    nombres = [
+        f'{c.nombre_curso} ({c.id_preceptor.nombre} {c.id_preceptor.apellido})'
+        for c in conflictos.select_related('id_preceptor')
+    ]
+    if nombres:
+        raise serializers.ValidationError({
+            'cursos_ids': (
+                'Estos cursos ya tienen otro preceptor asignado: '
+                + '; '.join(nombres)
+            ),
+        })
+
+
+def _validar_curso_materia_docente(ids, docente=None):
+    """R7: no reemplazar al docente titular sin aviso."""
+    if not ids:
+        return
+    qs = CursoMateria.objects.filter(id_curso_materia__in=ids).select_related(
+        'id_curso', 'id_materia', 'id_docente',
+    )
+    ciclo_id = _ciclo_lectivo_actual_id()
+    if ciclo_id:
+        qs = qs.filter(id_curso__id_ciclo_id=ciclo_id)
+    nombres = []
+    for cm in qs:
+        actual = cm.id_docente
+        if actual is None or (docente is not None and actual.pk == docente.pk):
+            continue
+        nombres.append(
+            f'{cm.id_curso.nombre_curso} - {cm.id_materia.nombre_materia} '
+            f'({actual.apellido}, {actual.nombre})'
+        )
+    if nombres:
+        raise serializers.ValidationError({
+            'curso_materia_ids': (
+                'Estas materias ya tienen otro docente titular: '
+                + '; '.join(nombres)
+            ),
+        })
 
 
 def _build_usuario_account(
@@ -180,6 +274,10 @@ def _build_usuario_account(
 
     if creating_usuario and not username:
         raise serializers.ValidationError({username_key: 'El usuario es obligatorio.'})
+    if creating_usuario and username and str(username).strip().isdigit():
+        raise serializers.ValidationError({
+            username_key: 'El nombre de usuario no puede ser sólo números; use letras y/o números.',
+        })
     if creating_usuario and require_password_on_create and not contrasena:
         raise serializers.ValidationError({'contrasena': 'La contrasena es obligatoria para crear el usuario.'})
     if creating_usuario and username and Usuario.objects.filter(usuario=username).exists():
@@ -199,6 +297,17 @@ def _build_usuario_account(
             if username is not None:
                 usuario.usuario = username
             if estado is not None:
+                # R3: al cambiar el estado a mano, las programaciones pendientes
+                # dejan de ser coherentes (la primera acción ya no sería la
+                # opuesta al nuevo estado). Si el cliente no manda fechas, se
+                # limpian para no bloquear el guardado con un error de fechas.
+                if (
+                    estado != usuario.estado
+                    and fecha_deshabilitacion_programada is _sentinel
+                    and fecha_habilitacion_programada is _sentinel
+                ):
+                    usuario.fecha_deshabilitacion_programada = None
+                    usuario.fecha_habilitacion_programada = None
                 usuario.estado = estado
             if fecha_deshabilitacion_programada is not _sentinel:
                 usuario.fecha_deshabilitacion_programada = fecha_deshabilitacion_programada
@@ -398,6 +507,13 @@ class CicloLectivoSerializer(serializers.ModelSerializer):
                     'La fecha de fin no puede ser anterior a la fecha de inicio.'
                 ),
             })
+        if inicio and inicio.month == 1:
+            raise serializers.ValidationError({
+                'fecha_inicio': (
+                    'El ciclo lectivo no puede comenzar en enero; use una fecha '
+                    'acorde al calendario escolar (desde febrero/marzo).'
+                ),
+            })
 
         # Un año con dos ciclos activos rompería los filtros por ciclo de toda
         # la aplicación (cursos, comunicados, reportes). La tabla no tiene
@@ -411,6 +527,23 @@ class CicloLectivoSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'anio': 'Ya existe un ciclo lectivo activo con ese año.',
                 })
+            for campo, fecha in (('fecha_inicio', inicio), ('fecha_fin', fin)):
+                if fecha is not None and fecha.year != anio:
+                    raise serializers.ValidationError({
+                        campo: f'La fecha debe corresponder al año lectivo {anio}.',
+                    })
+        if inicio and fin:
+            solapados = CicloLectivo.all_objects.filter(
+                estado=True,
+                fecha_inicio__lte=fin,
+                fecha_fin__gte=inicio,
+            )
+            if self.instance is not None:
+                solapados = solapados.exclude(pk=self.instance.pk)
+            if solapados.exists():
+                raise serializers.ValidationError({
+                    'fecha_inicio': 'Las fechas se superponen con otro ciclo lectivo activo.',
+                })
         return attrs
 
 
@@ -421,6 +554,19 @@ class MateriaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Materia
         fields = '__all__'
+
+    def validate(self, attrs):
+        if self.instance is None:
+            return attrs
+        nombre = attrs.get('nombre_materia', self.instance.nombre_materia)
+        if nombre:
+            normalizado = _normalizar_texto(nombre)
+            for m in Materia.objects.all().exclude(pk=self.instance.pk):
+                if _normalizar_texto(m.nombre_materia) == normalizado:
+                    raise serializers.ValidationError({
+                        'nombre_materia': 'Ya existe una materia con ese nombre.'
+                    })
+        return attrs
 
     def create(self, validated_data):
         nombre = validated_data.get('nombre_materia')
@@ -497,30 +643,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
         return [ur.id_rol.nombre_rol for ur in user_roles]
 
     def get_estado_label(self, obj):
+        if getattr(obj, 'eliminado', False):
+            return 'Eliminado'
         return 'Habilitado' if obj.estado else 'Deshabilitado'
 
     def get_proxima_accion_programada(self, obj):
-        if obj.estado and obj.fecha_deshabilitacion_programada:
-            return {
-                'tipo': 'deshabilitar',
-                'fecha': obj.fecha_deshabilitacion_programada.isoformat(),
-            }
-        if not obj.estado and obj.fecha_habilitacion_programada:
-            return {
-                'tipo': 'habilitar',
-                'fecha': obj.fecha_habilitacion_programada.isoformat(),
-            }
-        if obj.fecha_deshabilitacion_programada:
-            return {
-                'tipo': 'deshabilitar',
-                'fecha': obj.fecha_deshabilitacion_programada.isoformat(),
-            }
-        if obj.fecha_habilitacion_programada:
-            return {
-                'tipo': 'habilitar',
-                'fecha': obj.fecha_habilitacion_programada.isoformat(),
-            }
-        return None
+        return _proxima_accion_programada(obj)
 
     def get_directivo_nombre(self, obj):
         directivo = Directivo.objects.filter(id_usuario=obj).first()
@@ -541,6 +669,62 @@ class UsuarioSerializer(serializers.ModelSerializer):
     def get_directivo_cargo(self, obj):
         directivo = Directivo.objects.filter(id_usuario=obj).first()
         return directivo.cargo if directivo else None
+
+    def validate(self, attrs):
+        ahora = timezone.now()
+        fecha_desh = attrs.get(
+            'fecha_deshabilitacion_programada',
+            getattr(self.instance, 'fecha_deshabilitacion_programada', None),
+        )
+        fecha_hab = attrs.get(
+            'fecha_habilitacion_programada',
+            getattr(self.instance, 'fecha_habilitacion_programada', None),
+        )
+        if fecha_desh and fecha_desh <= ahora:
+            raise serializers.ValidationError({
+                'fecha_deshabilitacion_programada': 'La fecha debe ser futura.',
+            })
+        if fecha_hab and fecha_hab <= ahora:
+            raise serializers.ValidationError({
+                'fecha_habilitacion_programada': 'La fecha debe ser futura.',
+            })
+        if fecha_desh and fecha_hab and fecha_hab <= fecha_desh:
+            raise serializers.ValidationError({
+                'fecha_habilitacion_programada': (
+                    'La habilitación debe ser posterior a la deshabilitación.'
+                ),
+            })
+
+        usuario_nombre = attrs.get('usuario_nombre')
+        if usuario_nombre:
+            existentes = Usuario.objects.filter(usuario=usuario_nombre)
+            if self.instance is not None:
+                existentes = existentes.exclude(pk=self.instance.pk)
+            if existentes.exists():
+                raise serializers.ValidationError({
+                    'usuario_nombre': 'Ese nombre de usuario ya está en uso.',
+                })
+
+        dni = attrs.get('dni')
+        if dni:
+            dni = normalizar_dni(dni)
+            existentes = Directivo.all_objects.filter(dni=dni)
+            if self.instance is not None:
+                existentes = existentes.exclude(id_usuario=self.instance)
+            if existentes.exists():
+                raise serializers.ValidationError({
+                    'dni': 'Ese DNI ya pertenece a otro directivo.',
+                })
+
+        if (
+            self.instance is None
+            and attrs.get('id_usuario_existente') is None
+            and not attrs.get('contrasena')
+        ):
+            raise serializers.ValidationError({
+                'contrasena': 'La contraseña es obligatoria al crear un usuario.',
+            })
+        return attrs
 
     def create(self, validated_data):
         contrasena = validated_data.pop('contrasena', None)
@@ -648,6 +832,19 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
         if usuario_nombre is not None:
             instance.usuario = usuario_nombre
+
+        # R3: al cambiar el estado a mano se limpian las programaciones
+        # pendientes (dejarían de ser coherentes con el nuevo estado) si el
+        # cliente no mandó fechas explícitas.
+        nuevo_estado = validated_data.get('estado', _sentinel)
+        if (
+            nuevo_estado is not _sentinel
+            and nuevo_estado != instance.estado
+            and 'fecha_deshabilitacion_programada' not in validated_data
+            and 'fecha_habilitacion_programada' not in validated_data
+        ):
+            instance.fecha_deshabilitacion_programada = None
+            instance.fecha_habilitacion_programada = None
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -814,30 +1011,7 @@ class PadreTutorSerializer(serializers.ModelSerializer):
         return 'Habilitado' if obj.id_usuario.estado else 'Deshabilitado'
 
     def get_proxima_accion_programada(self, obj):
-        usuario = obj.id_usuario
-        if not usuario:
-            return None
-        if usuario.estado and usuario.fecha_deshabilitacion_programada:
-            return {
-                'tipo': 'deshabilitar',
-                'fecha': usuario.fecha_deshabilitacion_programada.isoformat(),
-            }
-        if not usuario.estado and usuario.fecha_habilitacion_programada:
-            return {
-                'tipo': 'habilitar',
-                'fecha': usuario.fecha_habilitacion_programada.isoformat(),
-            }
-        if usuario.fecha_deshabilitacion_programada:
-            return {
-                'tipo': 'deshabilitar',
-                'fecha': usuario.fecha_deshabilitacion_programada.isoformat(),
-            }
-        if usuario.fecha_habilitacion_programada:
-            return {
-                'tipo': 'habilitar',
-                'fecha': usuario.fecha_habilitacion_programada.isoformat(),
-            }
-        return None
+        return _proxima_accion_programada(obj.id_usuario)
 
     def get_usuario_estado(self, obj):
         return obj.id_usuario.estado if obj.id_usuario else None
@@ -1034,30 +1208,7 @@ class PreceptorSerializer(serializers.ModelSerializer):
         return 'Habilitado' if obj.id_usuario.estado else 'Deshabilitado'
 
     def get_proxima_accion_programada(self, obj):
-        usuario = obj.id_usuario
-        if not usuario:
-            return None
-        if usuario.estado and usuario.fecha_deshabilitacion_programada:
-            return {
-                'tipo': 'deshabilitar',
-                'fecha': usuario.fecha_deshabilitacion_programada.isoformat(),
-            }
-        if not usuario.estado and usuario.fecha_habilitacion_programada:
-            return {
-                'tipo': 'habilitar',
-                'fecha': usuario.fecha_habilitacion_programada.isoformat(),
-            }
-        if usuario.fecha_deshabilitacion_programada:
-            return {
-                'tipo': 'deshabilitar',
-                'fecha': usuario.fecha_deshabilitacion_programada.isoformat(),
-            }
-        if usuario.fecha_habilitacion_programada:
-            return {
-                'tipo': 'habilitar',
-                'fecha': usuario.fecha_habilitacion_programada.isoformat(),
-            }
-        return None
+        return _proxima_accion_programada(obj.id_usuario)
 
     def get_usuario_estado(self, obj):
         return obj.id_usuario.estado if obj.id_usuario else None
@@ -1135,6 +1286,12 @@ class PreceptorSerializer(serializers.ModelSerializer):
                     preceptor = Preceptor.objects.create(id_usuario=usuario, **validated_data)
 
                 if not es_jefe and cursos_ids:
+                    _validar_cursos_preceptor(cursos_ids, preceptor)
+                    cursos_a_desasignar = Curso.objects.filter(id_preceptor=preceptor)
+                    ciclo_id = _ciclo_lectivo_actual_id()
+                    if ciclo_id:
+                        cursos_a_desasignar = cursos_a_desasignar.filter(id_ciclo_id=ciclo_id)
+                    cursos_a_desasignar.update(id_preceptor=None)
                     Curso.objects.filter(id_curso__in=cursos_ids).update(id_preceptor=preceptor)
         except IntegrityError:
             raise serializers.ValidationError({
@@ -1157,7 +1314,12 @@ class PreceptorSerializer(serializers.ModelSerializer):
         instance.save()
 
         if cursos_ids is not None and not es_jefe:
-            Curso.objects.filter(id_preceptor=instance).update(id_preceptor=None)
+            _validar_cursos_preceptor(cursos_ids, instance)
+            cursos_a_desasignar = Curso.objects.filter(id_preceptor=instance)
+            ciclo_id = _ciclo_lectivo_actual_id()
+            if ciclo_id:
+                cursos_a_desasignar = cursos_a_desasignar.filter(id_ciclo_id=ciclo_id)
+            cursos_a_desasignar.update(id_preceptor=None)
             Curso.objects.filter(id_curso__in=cursos_ids).update(id_preceptor=instance)
 
         return instance
@@ -1167,6 +1329,7 @@ class DdjjDocenteSerializer(serializers.ModelSerializer):
     archivo = serializers.FileField(write_only=True, required=False)
     docente_nombre = serializers.CharField(source='id_docente.nombre', read_only=True)
     docente_apellido = serializers.CharField(source='id_docente.apellido', read_only=True)
+    ciclo_anio = serializers.CharField(source='id_ciclo.anio', read_only=True)
     nombre_archivo = serializers.SerializerMethodField()
     archivo_url = serializers.SerializerMethodField()
     presentada = serializers.SerializerMethodField()
@@ -1176,6 +1339,8 @@ class DdjjDocenteSerializer(serializers.ModelSerializer):
         fields = [
             'id_ddjj',
             'id_docente',
+            'id_ciclo',
+            'ciclo_anio',
             'docente_nombre',
             'docente_apellido',
             'archivo',
@@ -1185,6 +1350,24 @@ class DdjjDocenteSerializer(serializers.ModelSerializer):
             'presentada',
             'verificada',
         ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if 'id_ciclo' not in attrs or attrs['id_ciclo'] is None:
+            ciclo_id = _ciclo_lectivo_actual_id()
+            if ciclo_id:
+                attrs['id_ciclo'] = CicloLectivo.objects.filter(id_ciclo=ciclo_id).first()
+        docente = attrs.get('id_docente') or getattr(self.instance, 'id_docente', None)
+        ciclo = attrs.get('id_ciclo') or getattr(self.instance, 'id_ciclo', None)
+        if docente and ciclo:
+            qs = DdjjDocente.objects.filter(id_docente=docente, id_ciclo=ciclo)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {'id_docente': 'Ya existe una D.D.J.J. presentada para este docente en el ciclo lectivo actual.'}
+                )
+        return attrs
 
     def get_nombre_archivo(self, obj):
         if not obj.ruta_archivo:
@@ -1364,11 +1547,11 @@ class ActividadDocenteSerializer(serializers.ModelSerializer):
 
         curso_materia = attrs.get('id_curso_materia') or getattr(self.instance, 'id_curso_materia', None)
         if not curso_materia:
-            raise serializers.ValidationError({'id_curso_materia': 'Debes seleccionar un curso y una materia v?lidos.'})
+            raise serializers.ValidationError({'id_curso_materia': 'Debes seleccionar un curso y una materia válidos.'})
 
         resultado = obtener_docente_activo(curso_materia.id_curso_materia)
         if not resultado.docente or resultado.docente.id_docente != docente_actual.id_docente:
-            raise serializers.ValidationError({'id_curso_materia': 'No tienes permiso para usar esa asignaci?n.'})
+            raise serializers.ValidationError({'id_curso_materia': 'No tienes permiso para usar esa asignación.'})
 
         return attrs
 
@@ -1512,10 +1695,10 @@ class DocenteSerializer(serializers.ModelSerializer):
         return attrs
 
     def _get_ddjj(self, obj):
-        try:
-            return obj.ddjj_docente
-        except DdjjDocente.DoesNotExist:
+        ciclo_id = _ciclo_lectivo_actual_id()
+        if not ciclo_id:
             return None
+        return obj.ddjj_docente.filter(id_ciclo_id=ciclo_id).first()
 
     def get_ddjj_id(self, obj):
         ddjj = self._get_ddjj(obj)
@@ -1579,30 +1762,7 @@ class DocenteSerializer(serializers.ModelSerializer):
         return 'Habilitado' if obj.id_usuario.estado else 'Deshabilitado'
 
     def get_proxima_accion_programada(self, obj):
-        usuario = obj.id_usuario
-        if not usuario:
-            return None
-        if usuario.estado and usuario.fecha_deshabilitacion_programada:
-            return {
-                'tipo': 'deshabilitar',
-                'fecha': usuario.fecha_deshabilitacion_programada.isoformat(),
-            }
-        if not usuario.estado and usuario.fecha_habilitacion_programada:
-            return {
-                'tipo': 'habilitar',
-                'fecha': usuario.fecha_habilitacion_programada.isoformat(),
-            }
-        if usuario.fecha_deshabilitacion_programada:
-            return {
-                'tipo': 'deshabilitar',
-                'fecha': usuario.fecha_deshabilitacion_programada.isoformat(),
-            }
-        if usuario.fecha_habilitacion_programada:
-            return {
-                'tipo': 'habilitar',
-                'fecha': usuario.fecha_habilitacion_programada.isoformat(),
-            }
-        return None
+        return _proxima_accion_programada(obj.id_usuario)
 
     def create(self, validated_data):
         curso_materia_ids = validated_data.pop('curso_materia_ids', [])
@@ -1664,7 +1824,10 @@ class DocenteSerializer(serializers.ModelSerializer):
 
                 # Asignar curso_materia si se proporcionaron
                 if curso_materia_ids:
-                    CursoMateria.objects.filter(id_curso_materia__in=curso_materia_ids).update(id_docente=docente)
+                    _validar_curso_materia_docente(curso_materia_ids, docente)
+                    CursoMateria.objects.filter(
+                        id_curso_materia__in=curso_materia_ids,
+                    ).update(id_docente=docente)
         except IntegrityError:
             raise serializers.ValidationError({
                 'dni': 'Ya existe un/a docente con este/a dni.'
@@ -1673,6 +1836,7 @@ class DocenteSerializer(serializers.ModelSerializer):
         return docente
 
     def update(self, instance, validated_data):
+        curso_materia_ids = validated_data.pop('curso_materia_ids', None)
         usuario, validated_data = _build_usuario_account(
             instance=instance,
             validated_data=validated_data,
@@ -1683,6 +1847,12 @@ class DocenteSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.id_usuario = usuario
         instance.save()
+
+        if curso_materia_ids is not None:
+            _validar_curso_materia_docente(curso_materia_ids, instance)
+            CursoMateria.objects.filter(
+                id_curso_materia__in=curso_materia_ids,
+            ).update(id_docente=instance)
         return instance
 
 
@@ -1771,6 +1941,11 @@ class AlumnoSerializer(serializers.ModelSerializer):
 
     def validate_dni(self, value):
         value = normalizar_dni(value)
+        digitos = ''.join(ch for ch in str(value) if ch.isdigit())
+        if not digitos.isdigit() or not (30_000_000 <= int(digitos) <= 65_000_000):
+            raise serializers.ValidationError(
+                'El DNI del estudiante debe estar entre 30.000.000 y 65.000.000.'
+            )
         qs = Alumno.objects.filter(dni=value)
         if getattr(self.instance, 'id_alumno', None) is not None:
             qs = qs.exclude(id_alumno=self.instance.id_alumno)
@@ -1804,30 +1979,7 @@ class AlumnoSerializer(serializers.ModelSerializer):
         return 'Habilitado' if obj.id_usuario.estado else 'Deshabilitado'
 
     def get_proxima_accion_programada(self, obj):
-        usuario = obj.id_usuario
-        if not usuario:
-            return None
-        if usuario.estado and usuario.fecha_deshabilitacion_programada:
-            return {
-                'tipo': 'deshabilitar',
-                'fecha': usuario.fecha_deshabilitacion_programada.isoformat(),
-            }
-        if not usuario.estado and usuario.fecha_habilitacion_programada:
-            return {
-                'tipo': 'habilitar',
-                'fecha': usuario.fecha_habilitacion_programada.isoformat(),
-            }
-        if usuario.fecha_deshabilitacion_programada:
-            return {
-                'tipo': 'deshabilitar',
-                'fecha': usuario.fecha_deshabilitacion_programada.isoformat(),
-            }
-        if usuario.fecha_habilitacion_programada:
-            return {
-                'tipo': 'habilitar',
-                'fecha': usuario.fecha_habilitacion_programada.isoformat(),
-            }
-        return None
+        return _proxima_accion_programada(obj.id_usuario)
 
     def create(self, validated_data):
         id_usuario_existente = validated_data.get('id_usuario_existente')
@@ -1890,7 +2042,7 @@ class CursoSerializer(serializers.ModelSerializer):
         tarde = 0
         for h in horarios:
             if h.id_modulo and h.id_modulo.hora_inicio:
-                if h.id_modulo.hora_inicio.hour < 12:
+                if h.id_modulo.hora_inicio.hour < HORA_CORTE_TURNO:
                     manana += 1
                 else:
                     tarde += 1
@@ -1900,19 +2052,24 @@ class CursoSerializer(serializers.ModelSerializer):
             return 'Tarde'
         return ''
 
+    def validate(self, attrs):
+        nombre = attrs.get('nombre_curso', getattr(self.instance, 'nombre_curso', None))
+        ciclo = attrs.get('id_ciclo', getattr(self.instance, 'id_ciclo', None))
+        if nombre and ciclo is not None:
+            qs = Curso.objects.filter(nombre_curso=nombre, id_ciclo=ciclo)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError({
+                    'nombre_curso': 'Ya existe un curso con ese año, división y ciclo lectivo.'
+                })
+        return attrs
+
     def create(self, validated_data):
         from escuela.utils import activar_o_crear
-        nombre_curso = validated_data.get('nombre_curso')
-        id_ciclo = validated_data.get('id_ciclo')
-        if nombre_curso and id_ciclo and Curso.objects.filter(
-            nombre_curso=nombre_curso, id_ciclo=id_ciclo, activo=True,
-        ).exists():
-            raise serializers.ValidationError({
-                'nombre_curso': 'Ya existe un curso con ese año, división y ciclo lectivo.'
-            })
         lookup = {
-            'nombre_curso': nombre_curso,
-            'id_ciclo': id_ciclo,
+            'nombre_curso': validated_data.get('nombre_curso'),
+            'id_ciclo': validated_data.get('id_ciclo'),
         }
         defaults = {k: v for k, v in validated_data.items() if k not in lookup}
         instance, _ = activar_o_crear(Curso, lookup, defaults)
@@ -1949,16 +2106,25 @@ class CursoMateriaSerializer(serializers.ModelSerializer):
     def get_horarios_count(self, obj):
         return len(obj.horario_set.all()) + len(obj.horariosespeciales_set.all())
 
+    def validate(self, attrs):
+        curso = attrs.get('id_curso', getattr(self.instance, 'id_curso', None))
+        materia = attrs.get('id_materia', getattr(self.instance, 'id_materia', None))
+        if curso is not None and materia is not None:
+            qs = CursoMateria.objects.filter(id_curso=curso, id_materia=materia)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    'Ya existe una asignación de esa materia para este curso.'
+                )
+        return attrs
+
     def create(self, validated_data):
         from escuela.utils import activar_o_crear
         lookup = {
             'id_curso': validated_data.get('id_curso'),
             'id_materia': validated_data.get('id_materia'),
         }
-        if CursoMateria.objects.filter(**lookup, activo=True).exists():
-            raise serializers.ValidationError(
-                'Ya existe una asignación de esa materia para este curso.'
-            )
         defaults = {k: v for k, v in validated_data.items() if k not in lookup}
         instance, _ = activar_o_crear(CursoMateria, lookup, defaults)
         return instance
@@ -1980,6 +2146,27 @@ class CursoMateriaSerializer(serializers.ModelSerializer):
 
 # ---------- Suplencias docentes ----------
 
+DIAS_SEMANA_ES_SUPL = ('Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo')
+
+
+def _bloques_cm_suplencia(cm_id, dia_semana):
+    tiempos = []
+    for h in Horario.objects.filter(id_curso_materia_id=cm_id, dia_semana=dia_semana, id_modulo__isnull=False).select_related('id_modulo'):
+        if h.id_modulo and h.id_modulo.hora_inicio and h.id_modulo.hora_fin:
+            tiempos.append((h.id_modulo.hora_inicio, h.id_modulo.hora_fin))
+    for h in HorariosEspeciales.objects.filter(id_curso_materia_id=cm_id, dia_semana=dia_semana):
+        if h.hora_inicio and h.hora_fin:
+            tiempos.append((h.hora_inicio, h.hora_fin))
+    tiempos.sort(key=lambda x: x[0])
+    bloques = []
+    for inicio, fin in tiempos:
+        if bloques and inicio <= bloques[-1][1]:
+            bloques[-1] = (bloques[-1][0], max(bloques[-1][1], fin))
+        else:
+            bloques.append((inicio, fin))
+    return bloques
+
+
 class SuplenciaDocenteSerializer(serializers.ModelSerializer):
     curso_nombre = serializers.CharField(
         source='id_curso_materia.id_curso.nombre_curso', read_only=True, default=None,
@@ -1995,6 +2182,7 @@ class SuplenciaDocenteSerializer(serializers.ModelSerializer):
     titular_nombre = serializers.SerializerMethodField()
     docente_activo_hoy = serializers.SerializerMethodField()
     estado_label = serializers.SerializerMethodField()
+    fecha_finalizacion_real = serializers.SerializerMethodField()
     nuevo_docente = serializers.DictField(write_only=True, required=False, allow_null=True)
 
     class Meta:
@@ -2015,6 +2203,7 @@ class SuplenciaDocenteSerializer(serializers.ModelSerializer):
             'fecha_fin',
             'estado',
             'estado_label',
+            'fecha_finalizacion_real',
             'fecha_creacion',
             'fecha_modificacion',
             'nuevo_docente',
@@ -2087,7 +2276,21 @@ class SuplenciaDocenteSerializer(serializers.ModelSerializer):
         }
 
     def get_estado_label(self, obj):
-        return 'Activa' if obj.estado else 'Finalizada'
+        # C6/S2: una suplencia está "Finalizada" si fue dada de baja (estado=False)
+        # o si su `fecha_fin` ya pasó; no alcanza con mirar `estado`, porque
+        # "finalizar" conserva estado=True y cierra la fecha.
+        if not obj.estado:
+            return 'Finalizada'
+        if obj.fecha_fin and obj.fecha_fin < timezone.localdate():
+            return 'Finalizada'
+        return 'Activa'
+
+    def get_fecha_finalizacion_real(self, obj):
+        if obj.estado and obj.fecha_fin and obj.fecha_fin < timezone.localdate():
+            return obj.fecha_fin
+        if obj.fecha_modificacion:
+            return timezone.localtime(obj.fecha_modificacion).date()
+        return obj.fecha_fin
 
     def validate(self, attrs):
         cm = attrs.get('id_curso_materia') or (self.instance.id_curso_materia if self.instance else None)
@@ -2156,6 +2359,39 @@ class SuplenciaDocenteSerializer(serializers.ModelSerializer):
                 'Ya existe una suplencia activa de ese nivel para esa materia en el período indicado.'
             )
 
+        ciclo = CicloLectivo.objects.filter(estado=True).order_by('-anio').first()
+        if ciclo and (
+            (ciclo.fecha_inicio and fi < ciclo.fecha_inicio)
+            or (ciclo.fecha_fin and ff > ciclo.fecha_fin)
+        ):
+            raise serializers.ValidationError(
+                'Las fechas de la suplencia deben estar dentro del ciclo lectivo activo.'
+            )
+
+        if suplente is not None:
+            cm_ids = set(CursoMateria.objects.filter(id_docente=suplente).values_list('pk', flat=True))
+            cm_ids.update(
+                SuplenciaDocente.objects.filter(
+                    id_docente_suplente=suplente, estado=True,
+                    fecha_inicio__lte=ff, fecha_fin__gte=fi,
+                ).values_list('id_curso_materia_id', flat=True)
+            )
+            cm_ids.discard(cm.pk)
+            if exclude is not None:
+                cm_ids.discard(exclude.id_curso_materia_id)
+            dia = fi
+            while dia <= ff:
+                dia_semana = DIAS_SEMANA_ES_SUPL[dia.weekday()]
+                bloques_nuevos = _bloques_cm_suplencia(cm.pk, dia_semana)
+                for otro_cm_id in cm_ids:
+                    for ini_nuevo, fin_nuevo in bloques_nuevos:
+                        for ini_otro, fin_otro in _bloques_cm_suplencia(otro_cm_id, dia_semana):
+                            if franjas_se_solapan(ini_nuevo, fin_nuevo, ini_otro, fin_otro):
+                                raise serializers.ValidationError(
+                                    'El docente suplente ya tiene otra clase asignada en ese horario.'
+                                )
+                dia += timedelta(days=1)
+
         return attrs
 
     def create(self, validated_data):
@@ -2212,6 +2448,59 @@ class ModuloSerializer(serializers.ModelSerializer):
         return attrs
 
 
+def _conflicto_de_horario(
+    *, curso_id, docente_id, aula, dia_semana, hora_inicio, hora_fin,
+    excluir_horario=None, excluir_especial=None,
+):
+    """Busca choques de curso, docente o aula contra la grilla ya cargada.
+
+    Compara contra los horarios regulares (la franja sale del módulo) y los
+    horarios especiales (hora_inicio/hora_fin) por igual: un curso, un docente
+    o un aula no pueden estar en dos lugares a la vez. Devuelve el mensaje del
+    primer choque encontrado, o ``None`` si no hay ninguno.
+    """
+    if not dia_semana or hora_inicio is None or hora_fin is None:
+        return None
+
+    aula_norm = (aula or '').strip().lower()
+    candidatos = []
+    for h in Horario.objects.filter(
+        dia_semana__iexact=dia_semana, id_modulo__isnull=False,
+    ).select_related('id_modulo', 'id_curso_materia'):
+        if excluir_horario is not None and h.pk == excluir_horario:
+            continue
+        candidatos.append((
+            h.id_curso_materia.id_curso_id,
+            h.id_curso_materia.id_docente_id,
+            h.aula,
+            h.id_modulo.hora_inicio,
+            h.id_modulo.hora_fin,
+        ))
+    for h in HorariosEspeciales.objects.filter(
+        dia_semana__iexact=dia_semana,
+    ).select_related('id_curso_materia'):
+        if excluir_especial is not None and h.pk == excluir_especial:
+            continue
+        candidatos.append((
+            h.id_curso_materia.id_curso_id,
+            h.id_curso_materia.id_docente_id,
+            h.aula,
+            h.hora_inicio,
+            h.hora_fin,
+        ))
+
+    for curso_existente, docente_existente, aula_existente, ini, fin in candidatos:
+        if not franjas_se_solapan(hora_inicio, hora_fin, ini, fin):
+            continue
+        if curso_id is not None and curso_existente == curso_id:
+            return 'El curso ya tiene otra materia asignada en ese día y franja horaria.'
+        if docente_id is not None and docente_existente == docente_id:
+            return 'El docente ya tiene otra clase en ese día y franja horaria.'
+        if aula_norm and (aula_existente or '').strip().lower() == aula_norm:
+            return 'El aula ya está ocupada por otro curso en ese día y franja horaria.'
+    return None
+
+
 class HorarioSerializer(serializers.ModelSerializer):
     curso_nombre = serializers.CharField(
         source='id_curso_materia.id_curso.nombre_curso',
@@ -2242,12 +2531,32 @@ class HorarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Horario
         fields = '__all__'
+        read_only_fields = ('fecha_eliminacion',)
 
     def get_docente_nombre(self, obj):
         docente = getattr(obj.id_curso_materia, 'id_docente', None)
         if docente:
             return f'{docente.apellido}, {docente.nombre}'
         return None
+
+    def validate(self, attrs):
+        cm = attrs.get('id_curso_materia', getattr(self.instance, 'id_curso_materia', None))
+        modulo = attrs.get('id_modulo', getattr(self.instance, 'id_modulo', None))
+        dia_semana = attrs.get('dia_semana', getattr(self.instance, 'dia_semana', None))
+        aula = attrs.get('aula', getattr(self.instance, 'aula', None))
+        if cm is not None and modulo is not None:
+            err = _conflicto_de_horario(
+                curso_id=cm.id_curso_id,
+                docente_id=cm.id_docente_id,
+                aula=aula,
+                dia_semana=dia_semana,
+                hora_inicio=modulo.hora_inicio,
+                hora_fin=modulo.hora_fin,
+                excluir_horario=self.instance.pk if self.instance else None,
+            )
+            if err:
+                raise serializers.ValidationError({'non_field_errors': [err]})
+        return attrs
 
 
 class HorarioEspecialSerializer(serializers.ModelSerializer):
@@ -2267,6 +2576,31 @@ class HorarioEspecialSerializer(serializers.ModelSerializer):
     class Meta:
         model = HorariosEspeciales
         fields = '__all__'
+        read_only_fields = ('fecha_eliminacion',)
+
+    def validate(self, attrs):
+        inicio = attrs.get('hora_inicio', getattr(self.instance, 'hora_inicio', None))
+        fin = attrs.get('hora_fin', getattr(self.instance, 'hora_fin', None))
+        if inicio and fin and fin <= inicio:
+            raise serializers.ValidationError({
+                'hora_fin': 'La hora de fin debe ser posterior a la hora de inicio.',
+            })
+        cm = attrs.get('id_curso_materia', getattr(self.instance, 'id_curso_materia', None))
+        dia_semana = attrs.get('dia_semana', getattr(self.instance, 'dia_semana', None))
+        aula = attrs.get('aula', getattr(self.instance, 'aula', None))
+        if cm is not None and inicio and fin:
+            err = _conflicto_de_horario(
+                curso_id=cm.id_curso_id,
+                docente_id=cm.id_docente_id,
+                aula=aula,
+                dia_semana=dia_semana,
+                hora_inicio=inicio,
+                hora_fin=fin,
+                excluir_especial=self.instance.pk if self.instance else None,
+            )
+            if err:
+                raise serializers.ValidationError({'non_field_errors': [err]})
+        return attrs
 
 
 class InscripcionMateriaSerializer(serializers.ModelSerializer):
@@ -2295,11 +2629,38 @@ class CalificacionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Calificacion
         fields = '__all__'
+        read_only_fields = ('fecha_eliminacion',)
 
     def get_alumno_nombre(self, obj):
         if obj.id_alumno:
             return f'{obj.id_alumno.apellido}, {obj.id_alumno.nombre}'
         return None
+
+    def validate(self, attrs):
+        # N3: la nota se valida en el backend (1–10); el input del frontend no
+        # es suficiente porque la API es accesible directamente.
+        nota = attrs.get('nota_numerica', serializers.empty)
+        if nota is not serializers.empty and nota is not None:
+            if nota < 1 or nota > 10:
+                raise serializers.ValidationError({
+                    'nota_numerica': 'La nota debe estar entre 1 y 10.'
+                })
+
+        # N3: una sola calificación por alumno + materia (curso_materia) + período.
+        alumno = attrs.get('id_alumno', getattr(self.instance, 'id_alumno', None))
+        cm = attrs.get('id_curso_materia', getattr(self.instance, 'id_curso_materia', None))
+        periodo = attrs.get('id_periodo', getattr(self.instance, 'id_periodo', None))
+        if alumno is not None and cm is not None and periodo is not None:
+            qs = Calificacion.objects.filter(
+                id_alumno=alumno, id_curso_materia=cm, id_periodo=periodo,
+            )
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError({
+                    'id_periodo': 'Ya existe una calificación de este alumno para esta materia en este período.'
+                })
+        return attrs
 
 
 # ---------- Asistencias ----------
@@ -2327,6 +2688,28 @@ class AsistenciaSerializer(serializers.ModelSerializer):
         if obj.id_alumno:
             return f'{obj.id_alumno.apellido}, {obj.id_alumno.nombre}'
         return None
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        justificado = attrs.get('justificado', getattr(self.instance, 'justificado', False))
+        estado = attrs.get('id_estado_asistencia', getattr(self.instance, 'id_estado_asistencia', None))
+        nombre = getattr(estado, 'nombre_estado', None)
+        if justificado and nombre and nombre not in ('Ausente', 'Justificado'):
+            raise serializers.ValidationError(
+                {'justificado': 'Solo se puede justificar una asistencia ausente.'}
+            )
+        if nombre == 'Justificado':
+            ausente = EstadoAsistencia.objects.filter(nombre_estado='Ausente').first()
+            if ausente:
+                attrs['id_estado_asistencia'] = ausente
+                attrs['justificado'] = True
+        return attrs
+
+    def update(self, instance, validated_data):
+        estado = validated_data.get('id_estado_asistencia')
+        if estado and getattr(estado, 'nombre_estado', None) not in ('Ausente', 'Justificado'):
+            validated_data['justificado'] = False
+        return super().update(instance, validated_data)
 
 
 class AsistenciaDocenteSerializer(serializers.ModelSerializer):
@@ -2826,19 +3209,22 @@ class LibroTemaSerializer(serializers.ModelSerializer):
         fecha = attrs.get('fecha') or (self.instance.fecha if self.instance else None)
         hora_inicio = attrs.get('hora_inicio') or (self.instance.hora_inicio if self.instance else None)
         hora_fin = attrs.get('hora_fin') or (self.instance.hora_fin if self.instance else None)
+        if hora_inicio is not None and hora_fin is not None and hora_fin <= hora_inicio:
+            raise serializers.ValidationError({
+                'hora_fin': 'La hora de fin debe ser posterior a la hora de inicio.',
+            })
         if cm is not None and fecha is not None and hora_inicio is not None and hora_fin is not None:
             qs = LibroTema.objects.filter(
                 id_curso_materia=cm,
                 fecha=fecha,
-                hora_inicio=hora_inicio,
-                hora_fin=hora_fin,
             )
             if self.instance:
                 qs = qs.exclude(pk=self.instance.pk)
-            if qs.exists():
-                raise serializers.ValidationError(
-                    'Ya existe un registro del Libro de Temas para esta materia, fecha y horario.'
-                )
+            for registro in qs:
+                if franjas_se_solapan(hora_inicio, hora_fin, registro.hora_inicio, registro.hora_fin):
+                    raise serializers.ValidationError(
+                        'Ya existe un registro del Libro de Temas para esta materia y fecha en ese horario.'
+                    )
         return attrs
 
 
@@ -2927,6 +3313,11 @@ class AdelantoHorasSerializer(serializers.ModelSerializer):
         id_docente = attrs.get('id_docente') or (self.instance.id_docente if self.instance else None)
         fecha = attrs.get('fecha_adelanto') or (self.instance.fecha_adelanto if self.instance else None)
 
+        if fecha and fecha < timezone.localdate():
+            raise serializers.ValidationError(
+                {'fecha_adelanto': 'No se puede cargar un adelanto en una fecha pasada.'}
+            )
+
         # --- Módulos seleccionados → hora_inicio / hora_fin calculados ---
         modulos_ids = attrs.pop('modulos', None)
         if modulos_ids is not None:
@@ -2954,16 +3345,19 @@ class AdelantoHorasSerializer(serializers.ModelSerializer):
         hora_fin = attrs.get('hora_fin') or (self.instance.hora_fin if self.instance else None)
 
         # --- Relación docente + curso + materia (asignación real) ---
+        cm_adelanto = None
         if id_docente is not None and id_curso is not None and id_materia is not None:
-            if not CursoMateria.objects.filter(
-                id_curso=id_curso,
-                id_materia=id_materia,
-                id_docente=id_docente,
-                estado=True,
-            ).exists():
+            for candidato in CursoMateria.objects.filter(
+                id_curso=id_curso, id_materia=id_materia, estado=True,
+            ):
+                activo = obtener_docente_activo(candidato.pk, fecha or timezone.localdate())
+                if activo.docente and activo.docente.pk == id_docente.pk:
+                    cm_adelanto = candidato
+                    break
+            if cm_adelanto is None:
                 raise serializers.ValidationError(
                     {'non_field_errors': [
-                        'El docente no tiene asignada esa materia en ese curso.'
+                        'El docente no es el titular ni el suplente activo de esa materia en ese curso.'
                     ]}
                 )
 
@@ -2996,6 +3390,22 @@ class AdelantoHorasSerializer(serializers.ModelSerializer):
                         'Los módulos seleccionados se superponen con otro adelanto existente para este curso.'
                     ]}
                 )
+
+        if cm_adelanto and fecha and hora_inicio and hora_fin:
+            dia = DIAS_SEMANA_ES_SUPL[fecha.weekday()]
+            destino = _bloques_cm_suplencia(cm_adelanto.pk, dia)
+            otros_cm = CursoMateria.objects.filter(
+                id_docente=id_docente, estado=True,
+            ).exclude(pk=cm_adelanto.pk)
+            for otro in otros_cm:
+                for ini_otro, fin_otro in _bloques_cm_suplencia(otro.pk, dia):
+                    for ini_dest, fin_dest in destino:
+                        if franjas_se_solapan(ini_dest, fin_dest, ini_otro, fin_otro):
+                            raise serializers.ValidationError(
+                                {'non_field_errors': [
+                                    'El docente ya tiene otra clase asignada en esa fecha y horario.'
+                                ]}
+                            )
         return attrs
 
 
@@ -3033,6 +3443,13 @@ class IntensificacionAcademicaSerializer(serializers.ModelSerializer):
             a = historial.id_alumno
             return f'{a.apellido}, {a.nombre}'
         return ''
+
+    def validate_nota(self, value):
+        # N3: la nota de intensificación también se valida 1–10 en el backend
+        # (alimenta la regla de aprobación `_intensif_habilitada`/`_procesar`).
+        if value is not None and (value < 1 or value > 10):
+            raise serializers.ValidationError('La nota debe estar entre 1 y 10.')
+        return value
 
 
 class MateriaAdeudadaSerializer(serializers.ModelSerializer):

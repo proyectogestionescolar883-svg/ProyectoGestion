@@ -69,7 +69,7 @@ python manage.py test escuela
 Los catálogos base —ciclos lectivos, módulos horarios, períodos de evaluación,
 estados de asistencia y tipos de acta— se administran desde
 **Administración → Configuración** (solo `admin` y `director`), sin necesidad de
-`INSERT` manuales en MariaDB. Crear, editar, desactivar y reactivar está
+`INSERT` manuales en la base de datos. Crear, editar, desactivar y reactivar está
 disponible en pantalla; donde el registro está en uso, la interfaz lo explica y
 la API responde `HTTP 400` en vez de fallar.
 
@@ -116,7 +116,9 @@ cd dist && zip -r -X ../misecundaria7-frontend.zip . -x '.*' && cd ..
 Todo en [`docs/`](docs):
 
 - [`DOCUMENTACION_TECNICA.md`](docs/DOCUMENTACION_TECNICA.md) — arquitectura, esquema de BD, despliegue
-- [`REFERENCIA_BD.md`](docs/REFERENCIA_BD.md) — modelo de datos tabla por tabla
+- [`REFERENCIA_BD.md`](docs/REFERENCIA_BD.md) — modelo de datos tabla por tabla; ver §"Alineación con el esquema real"
+- [`DEPLOY_VERCEL_SUPABASE.md`](docs/DEPLOY_VERCEL_SUPABASE.md) — deploy en Vercel con PostgreSQL/Supabase
+- [`../ESTRUCTURA_BASE_DE_DATOS.md`](ESTRUCTURA_BASE_DE_DATOS.md) — volcado de las 80 tablas reales (columnas, nulabilidad y FKs)
 - [`HISTORIAL.md`](docs/HISTORIAL.md) — bitácora de cambios
 - [`REGLAS_DESARROLLO.md`](docs/REGLAS_DESARROLLO.md) — reglas de código
 - [`ESTANDARES_UI.md`](docs/ESTANDARES_UI.md) y [`VISUAL_STANDARD.md`](docs/VISUAL_STANDARD.md) — criterios visuales

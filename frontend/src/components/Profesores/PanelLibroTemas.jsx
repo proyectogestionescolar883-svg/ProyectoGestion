@@ -207,7 +207,7 @@ function PanelLibroTemas({ cursoMateriaId, materiaNombre, cursoNombre, miDocente
   };
 
   const handleEliminar = async (registro) => {
-    await confirmarEliminacion('¿Está seguro de eliminar este registro del Libro de Temas?\n\nEsta acción no se puede deshacer.', {
+    await confirmarEliminacion('¿Querés eliminar este registro del Libro de Temas?\n\nEl registro se dará de baja y no aparecerá más en los listados.', {
       onConfirm: async () => {
         try {
           await deleteLibroTema(registro.id_libro_tema);

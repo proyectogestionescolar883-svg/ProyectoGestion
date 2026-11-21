@@ -14,6 +14,7 @@ import {
   getServerTime,
 } from '../../services/api';
 import EmptyFiltros from './EmptyFiltros';
+import { formatearFecha } from '../../utils/fechas';
 import {
   estudiantesPorAnioYCurso,
   fechaHoy,
@@ -521,7 +522,7 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
                           <tr key={`fecha-${idx}`} className="date-group-header">
                             <td colSpan={7}>
                               <i className="far fa-calendar-alt" aria-hidden="true" />{' '}
-                              {new Intl.DateTimeFormat('es-AR', { dateStyle: 'long' }).format(new Date(r.fecha))}
+                              {formatearFecha(r.fecha)}
                             </td>
                           </tr>,
                         );

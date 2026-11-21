@@ -172,7 +172,7 @@ function PanelPlanif({ cursoMateriaId, docenteId, materiaNombre, cursoNombre, mi
   };
 
   const handleEliminar = async (proyecto) => {
-    await confirmarEliminacion('¿Está seguro de eliminar este proyecto?\n\nEsta acción no se puede deshacer.', {
+    await confirmarEliminacion('¿Querés eliminar este proyecto?\n\nEl registro se dará de baja y no aparecerá más en los listados.', {
       onConfirm: async () => {
         setError('');
         setSuccess('');

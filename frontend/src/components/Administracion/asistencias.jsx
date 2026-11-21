@@ -10,7 +10,7 @@ import {
   getHistorialAsistenciasDocentes,
 } from '../../services/api';
 import { hayBloqueoEscritura, getSuspensionInfo } from '../../utils/suspension';
-import { hoy } from '../../utils/fechas';
+import { formatearFecha, hoy } from '../../utils/fechas';
 
 function badgeClass(estado) {
   if (estado === 'Presente') return 'badge-presente';
@@ -404,7 +404,7 @@ function Asistencias() {
                           <tr key={`fecha-${idx}`} className="date-group-header">
                             <td colSpan={7}>
                               <i className="far fa-calendar-alt" aria-hidden="true" />{' '}
-                              {new Intl.DateTimeFormat('es-AR', { dateStyle: 'long' }).format(new Date(r.fecha))}
+                              {formatearFecha(r.fecha)}
                             </td>
                           </tr>,
                         );

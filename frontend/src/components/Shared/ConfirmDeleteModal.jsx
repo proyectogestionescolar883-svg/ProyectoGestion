@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
-const MENSAJE_DEFECTO = '¿Está seguro de que desea eliminar este registro?';
+const MENSAJE_DEFECTO = '¿Estás seguro de que querés eliminar este registro?';
 const NOTA_DEFECTO = 'Esta acción ocultará el registro del sistema.';
 const TITULO_DEFECTO = 'Confirmar eliminación';
 

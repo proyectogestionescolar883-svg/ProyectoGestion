@@ -584,7 +584,7 @@ function Docentes() {
   };
 
   const handleEliminarDocente = async (docente) => {
-    await confirmarEliminacion('¿Está seguro de que quiere eliminar este docente?\n\nEsta acción no se puede deshacer.', {
+    await confirmarEliminacion('¿Querés eliminar este docente?\n\nEl registro se dará de baja y no aparecerá más en los listados.', {
       onConfirm: async () => {
         setGuardandoDocente(true);
         try {
@@ -616,7 +616,7 @@ function Docentes() {
   }, [docentes, searchTerm, idsDocentesSinRol]);
 
   const handleEliminarDdjj = async (docente) => {
-    await confirmarEliminacion('¿Está seguro de eliminar esta D.D.J.J.?\n\nEsta acción no se puede deshacer.', {
+    await confirmarEliminacion('¿Querés eliminar esta D.D.J.J.?\n\nEsta acción no se puede deshacer.', {
       onConfirm: async () => {
         try {
           await deleteMiDdjjDocente(docente.id);

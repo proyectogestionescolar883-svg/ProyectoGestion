@@ -8,7 +8,7 @@ export function ConfirmProvider({ children }) {
   const [state, setState] = useState({
     open: false,
     title: 'Confirmar eliminación',
-    message: '¿Está seguro de que desea eliminar este registro?',
+    message: '¿Estás seguro de que querés eliminar este registro?',
     note: 'Esta acción ocultará el registro del sistema.',
     confirmText: 'Eliminar',
     loadingText: 'Eliminando...',
@@ -25,7 +25,7 @@ export function ConfirmProvider({ children }) {
     setState({
       open: true,
       title: opciones.title || 'Confirmar eliminación',
-      message: opciones.message || '¿Está seguro de que desea eliminar este registro?',
+      message: opciones.message || '¿Estás seguro de que querés eliminar este registro?',
       note: opciones.note || 'Esta acción ocultará el registro del sistema.',
       confirmText: opciones.confirmText || 'Eliminar',
       loadingText: opciones.loadingText || 'Eliminando...',

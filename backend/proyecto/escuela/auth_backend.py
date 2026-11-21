@@ -1,7 +1,12 @@
+import threading
+
 from django.contrib.auth.models import User
-from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.hashers import check_password
 
 from escuela.models import Usuario, UsuarioRol
+
+
+_rol_activo = threading.local()
 
 
 class UsuarioBackend:
@@ -16,7 +21,9 @@ class UsuarioBackend:
 
     def authenticate(self, request, username=None, password=None):
         try:
-            usuario = Usuario.objects.get(usuario=username, estado=True)
+            usuario = Usuario.objects.get(
+                usuario=username, estado=True, eliminado=False,
+            )
         except Usuario.DoesNotExist:
             return None
 
@@ -38,14 +45,8 @@ class UsuarioBackend:
             return None
 
 
-def get_roles_for_usuario(username):
-    """Devuelve los nombres de roles asignados a un usuario.
-
-    El resultado es determinista (orden alfabético por nombre de rol).
-    IMPORTANTE: el orden NO debe usarse para decidir el rol activo cuando
-    un usuario tiene varios roles; esa elección la hace el usuario en el
-    selector de rol del frontend.
-    """
+def get_roles_reales(username):
+    """Todos los roles asignados al usuario, sin importar el rol activo."""
     try:
         usuario = Usuario.objects.get(usuario=username)
     except Usuario.DoesNotExist:
@@ -56,3 +57,28 @@ def get_roles_for_usuario(username):
         .order_by('id_rol__nombre_rol')
     )
     return [ur.id_rol.nombre_rol for ur in roles]
+
+
+def get_roles_for_usuario(username):
+    """Roles vigentes para la operación (R6).
+
+    Si el middleware de rol activo recibió `X-Rol-Activo` y el rol pertenece
+    al usuario, se devuelve solo ese rol. Sin ese header se mantienen todos
+    los roles para no romper clientes externos.
+    """
+    roles = get_roles_reales(username)
+    rol = getattr(_rol_activo, 'rol', None)
+    if rol and rol in roles:
+        return [rol]
+    return roles
+
+
+def establecer_rol_activo(username, rol):
+    if not username or not rol:
+        _rol_activo.rol = None
+        return
+    _rol_activo.rol = rol if rol in get_roles_reales(username) else None
+
+
+def limpiar_rol_activo():
+    _rol_activo.rol = None

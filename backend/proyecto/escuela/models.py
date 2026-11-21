@@ -27,10 +27,15 @@ class PlanificacionManager(ActivoManager):
 
 
 class Usuario(models.Model):
+    # A diferencia de Planificacion, `estado` sí es habilitación/deshabilitación:
+    # al dar de baja lógica el usuario también queda deshabilitado.
+    borrado_tambien_deshabilita = True
+
     id_usuario = models.AutoField(primary_key=True)
     usuario = models.CharField(max_length=50, unique=True)
     contrasena = models.CharField(max_length=255)
     estado = models.BooleanField(default=True)
+    eliminado = models.BooleanField(default=False)
     fecha_deshabilitacion_programada = models.DateTimeField(blank=True, null=True)
     fecha_habilitacion_programada = models.DateTimeField(blank=True, null=True)
     ultimo_acceso = models.DateTimeField(blank=True, null=True)
@@ -77,6 +82,11 @@ class UsuarioRol(models.Model):
         managed = False
         db_table = 'usuario_roles'
         unique_together = (('id_usuario', 'id_rol'),)
+
+    def delete(self, using=None, keep_parents=False):
+        return type(self).objects.using(using).filter(
+            id_usuario_id=self.id_usuario_id, id_rol_id=self.id_rol_id,
+        ).delete()
 
 
 class PadreTutor(models.Model):
@@ -266,9 +276,13 @@ class Docente(models.Model):
 
 class DdjjDocente(models.Model):
     id_ddjj = models.AutoField(primary_key=True)
-    id_docente = models.OneToOneField(
+    id_docente = models.ForeignKey(
         Docente, on_delete=models.CASCADE, db_column='id_docente',
         related_name='ddjj_docente',
+    )
+    id_ciclo = models.ForeignKey(
+        CicloLectivo, on_delete=models.CASCADE, db_column='id_ciclo',
+        related_name='ddjj_docentes', blank=True, null=True,
     )
     ruta_archivo = models.FileField(upload_to='ddjj_docentes/', max_length=255)
     verificada = models.BooleanField(default=False)
@@ -277,6 +291,7 @@ class DdjjDocente(models.Model):
     class Meta:
         managed = False
         db_table = 'ddjj_docente'
+        unique_together = (('id_docente', 'id_ciclo'),)
 
     def __str__(self):
         return f'DDJJ {self.id_docente}'
@@ -473,6 +488,11 @@ class Calificacion(models.Model):
     )
     diagnostico = models.TextField(blank=True, null=True)
     fecha_carga = models.DateTimeField(blank=True, null=True)
+    estado = models.BooleanField(default=True)
+    fecha_eliminacion = models.DateTimeField(blank=True, null=True)
+
+    objects = ActivoManager()
+    all_objects = models.Manager()
 
     class Meta:
         managed = False
@@ -646,6 +666,11 @@ class Horario(models.Model):
         Modulos, on_delete=models.CASCADE, db_column='id_modulo',
         blank=True, null=True,
     )
+    estado = models.BooleanField(default=True)
+    fecha_eliminacion = models.DateTimeField(blank=True, null=True)
+
+    objects = ActivoManager()
+    all_objects = models.Manager()
 
     class Meta:
         managed = False
@@ -661,6 +686,11 @@ class HorariosEspeciales(models.Model):
     hora_inicio = models.TimeField()
     hora_fin = models.TimeField()
     aula = models.CharField(max_length=50, blank=True, null=True)
+    estado = models.BooleanField(default=True)
+    fecha_eliminacion = models.DateTimeField(blank=True, null=True)
+
+    objects = ActivoManager()
+    all_objects = models.Manager()
 
     class Meta:
         managed = False

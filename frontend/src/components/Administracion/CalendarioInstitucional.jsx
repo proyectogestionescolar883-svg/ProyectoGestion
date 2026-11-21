@@ -10,7 +10,7 @@ import {
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import LoadingSpinner from '../Shared/LoadingSpinner';
 import { mensajeErrorAmigable } from '../../utils/errores';
-import { hoy } from '../../utils/fechas';
+import { hoy, formatearFecha } from '../../utils/fechas';
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DIAS_CAB = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -23,6 +23,11 @@ const TIPO_COLORS = {
 };
 
 const TIPOS = ['Feriado', 'Suspension', 'Jornada Institucional', 'Otro'];
+
+function etiquetaTipoEvento(tipo) {
+  return tipo === 'Suspension' ? 'Suspensión' : tipo;
+}
+
 const ALCANCE_OPCIONES = [
   { value: 'todo_dia', label: 'Todo el día' },
   { value: 'manana', label: 'Turno mañana' },
@@ -195,8 +200,11 @@ function CalendarioInstitucional({ readOnly = false }) {
         await updateEventoInstitucional(eventoEditar.id_evento, payload);
         toast.success('Evento institucional actualizado correctamente.');
       } else {
-        await createEventoInstitucional(payload);
+        const creado = await createEventoInstitucional(payload);
         toast.success('Evento institucional creado correctamente.');
+        if (Array.isArray(creado?.eventos_reemplazados) && creado.eventos_reemplazados.length) {
+          toast.warning(`Se dieron de baja: ${creado.eventos_reemplazados.join(', ')}.`);
+        }
       }
       setModalAbierto(false);
       await cargarEventos();
@@ -208,7 +216,7 @@ function CalendarioInstitucional({ readOnly = false }) {
   };
 
   const handleEliminar = async (ev) => {
-    await confirmarEliminacion(`¿Eliminar el evento "${ev.tipo_evento}" del ${ev.fecha}?\n\nEsta acción no se puede deshacer.`, {
+    await confirmarEliminacion(`¿Querés eliminar el evento "${etiquetaTipoEvento(ev.tipo_evento)}" del ${formatearFecha(ev.fecha)}?\n\nEl evento se dará de baja y no aparecerá más en el calendario.`, {
       onConfirm: async () => {
         try {
           await deleteEventoInstitucional(ev.id_evento);
@@ -307,17 +315,17 @@ function CalendarioInstitucional({ readOnly = false }) {
             }}
           />
         </div>
-        {anio !== hoyActual.getFullYear() && (
+        {anio !== hoyActual.getFullYear() || mes !== hoyActual.getMonth() ? (
           <button type="button" className="btn btn-secondary btn-sm" onClick={irAHoy} title="Volver a hoy">
             Hoy
           </button>
-        )}
+        ) : null}
       </div>
 
       <div className="cal-leyenda">
         {Object.entries(TIPO_COLORS).map(([tipo, color]) => (
           <span key={tipo} className="cal-leyenda-item">
-            <span className="cal-leyenda-color" style={{ backgroundColor: color }} /> {tipo}
+            <span className="cal-leyenda-color" style={{ backgroundColor: color }} /> {etiquetaTipoEvento(tipo)}
           </span>
         ))}
       </div>
@@ -358,7 +366,7 @@ function CalendarioInstitucional({ readOnly = false }) {
                     style={{ cursor: 'pointer', flex: 1 }}
                     onClick={() => setEventoVer(ev)}
                   >
-                    <strong>{ev.tipo_evento}</strong>
+                    <strong>{etiquetaTipoEvento(ev.tipo_evento)}</strong>
                     <span className="text-muted">{ev.descripcion}</span>
                     {ev.permanente && <span className="badge" style={{ backgroundColor: '#0d6efd', color: '#fff', fontSize: '0.7em' }}>Permanente</span>}
                     <span className="text-muted" style={{ fontSize: '0.85em' }}>
@@ -404,9 +412,9 @@ function CalendarioInstitucional({ readOnly = false }) {
             </button>
           </div>
           <div style={{ padding: '12px 16px' }}>
-            <p><strong>Tipo:</strong> {eventoVer.tipo_evento}</p>
+            <p><strong>Tipo:</strong> {etiquetaTipoEvento(eventoVer.tipo_evento)}</p>
             <p><strong>Descripción:</strong> {eventoVer.descripcion}</p>
-            <p><strong>Fecha:</strong> {eventoVer.fecha}{eventoVer.permanente ? ' (Permanente — todos los años)' : ''}</p>
+            <p><strong>Fecha:</strong> {formatearFecha(eventoVer.fecha)}{eventoVer.permanente ? ' (Permanente — todos los años)' : ''}</p>
             <p><strong>Alcance:</strong> {ALCANCE_OPCIONES.find((a) => a.value === eventoVer.alcance)?.label || 'Todo el día'}</p>
             {eventoVer.alcance === 'franja' && eventoVer.hora_inicio && eventoVer.hora_fin && (
               <p><strong>Horario:</strong> {eventoVer.hora_inicio?.slice(0,5)} a {eventoVer.hora_fin?.slice(0,5)}</p>
@@ -435,7 +443,7 @@ function CalendarioInstitucional({ readOnly = false }) {
               <div className="form-group">
                 <label htmlFor="ev-tipo">Tipo de evento</label>
                 <select id="ev-tipo" className="form-control" value={form.tipo_evento} onChange={(e) => setForm({ ...form, tipo_evento: e.target.value })}>
-                  {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
+                  {TIPOS.map((t) => <option key={t} value={t}>{etiquetaTipoEvento(t)}</option>)}
                 </select>
               </div>
               <div className="form-group">

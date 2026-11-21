@@ -48,7 +48,10 @@ export default function ModalProgramarEstado({
     fechaHabilitacion ? { tipo: 'Habilitar', campo: 'fecha_habilitacion_programada', fecha: fechaHabilitacion } : null,
   ].filter(Boolean);
 
-  const proxima = pendientes.length ? pendientes[0] : null;
+  // R2: la próxima acción es la de menor fecha, no siempre la deshabilitación.
+  const proxima = pendientes.length
+    ? [...pendientes].sort((a, b) => new Date(a.fecha) - new Date(b.fecha))[0]
+    : null;
 
   return (
     <FormModal
@@ -88,14 +91,19 @@ export default function ModalProgramarEstado({
                 ? 'sin usuario'
                 : (estadoActual ? 'habilitada' : 'deshabilitada')}
             </strong>
-            . Definí las fechas
-            para que el cambio se aplique solo. Mientras haya una programación pendiente, el estado real del
-            usuario no cambia.
+            .{' '}
+            {estadoActual === null || estadoActual === undefined
+              ? 'Definí las fechas de deshabilitación y habilitación en el orden en que quieras aplicarlas.'
+              : estadoActual
+                ? 'Definí primero la fecha de deshabilitación; si querés volver a habilitarla después, agregá una fecha de habilitación posterior.'
+                : 'Definí primero la fecha de habilitación; si querés volver a deshabilitarla después, agregá una fecha de deshabilitación posterior.'}{' '}
+            El cambio se aplica recién en la fecha indicada. Mientras haya una programación pendiente, el estado real del usuario no cambia.
           </p>
 
           <div className="preceptor-form-row preceptor-form-row--two">
             <div className="form-group-filter">
               <label htmlFor="prog-deshabilitacion">Deshabilitación programada</label>
+              <small className="form-text">Fecha en que la cuenta pasa a deshabilitada.</small>
               <input
                 id="prog-deshabilitacion"
                 type="datetime-local"
@@ -108,6 +116,7 @@ export default function ModalProgramarEstado({
             </div>
             <div className="form-group-filter">
               <label htmlFor="prog-habilitacion">Habilitación programada</label>
+              <small className="form-text">Fecha en que la cuenta pasa a habilitada.</small>
               <input
                 id="prog-habilitacion"
                 type="datetime-local"
@@ -144,9 +153,9 @@ export default function ModalProgramarEstado({
                       className="btn btn-sm btn-secondary"
                       onClick={() => onCancelarProgramacion(p.campo)}
                       disabled={guardando}
-                      aria-label={`Cancelar la programación de ${p.tipo.toLowerCase()}`}
+                      aria-label={`Quitar la fecha de ${p.tipo.toLowerCase()}`}
                     >
-                      <i className="fas fa-xmark" aria-hidden="true" /> Cancelar programación
+                      <i className="fas fa-xmark" aria-hidden="true" /> Quitar fecha
                     </button>
                   </li>
                 ))}

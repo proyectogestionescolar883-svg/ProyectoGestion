@@ -62,6 +62,16 @@ export function esFechaValida(iso) {
 }
 
 /**
+ * Muestra un `YYYY-MM-DD` como `dd/mm/aaaa` (el formato que usa el resto de la
+ * app). Devuelve '—' si el valor no es una fecha válida.
+ */
+export function formatearFecha(iso) {
+  if (!esFechaValida(iso)) return '—';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+/**
  * Calcula los atributos `min`/`max` para un `<input type="date">`.
  * Devuelve `{}` cuando no hay límites que aplicar.
  */
@@ -111,7 +121,7 @@ export function proximaLaborable(fecha) {
 export function validarCambioFecha(valor, { min, max } = {}) {
   if (valor === '') return { valor: '', error: null };
   if (!esFechaValida(valor)) {
-    return { valor: '', error: 'La fecha ingressada no existe en el calendario.' };
+    return { valor: '', error: 'La fecha ingresada no existe en el calendario.' };
   }
   if (esFechaValida(min) && valor < min) {
     return { valor: min, error: `La fecha no puede ser anterior a ${min.split('-').reverse().join('/')}.` };

@@ -8,6 +8,8 @@ def aplicar_programaciones_usuario(now=None):
     now = now or timezone.now()
 
     usuarios = Usuario.objects.filter(
+        eliminado=False,
+    ).filter(
         models.Q(
             estado=True,
             fecha_deshabilitacion_programada__isnull=False,

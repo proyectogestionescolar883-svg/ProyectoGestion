@@ -63,6 +63,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'escuela.middleware.RolActivoMiddleware',
     'escuela.middleware.UsuarioEstadoProgramadoMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -130,6 +131,13 @@ DATABASES = {
 
 # Runner custom: replica el esquema real en la base de testing (sin datos).
 TEST_RUNNER = 'escuela.test_runner.EscuelaDiscoverRunner'
+
+# Los modelos de `escuela` son `managed=False`: el esquema se gestiona con
+# `schema.py` / `manage.py verificar_esquema`, no con migraciones. Sin esto,
+# `makemigrations --check --dry-run` propone un `initial` falso con un
+# `CreateModel` por tabla (HN3). Las migraciones 0001-0012 siguen en el repo
+# como registro de los cambios manuales aplicados a Postgres/Supabase.
+MIGRATION_MODULES = {'escuela': None}
 
 
 # Password validation

@@ -6,7 +6,6 @@ from django.db.models import Q
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.utils.dateparse import parse_date
 import re
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes, action
@@ -16,7 +15,7 @@ from rest_framework.parsers import FormParser, MultiPartParser, JSONParser
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from escuela.auth_backend import get_roles_for_usuario
+from escuela.auth_backend import get_roles_for_usuario, get_roles_reales
 from escuela.carga_unica import (
     CLAVE_ITEMS,
     bloques_del_dia,
@@ -72,9 +71,12 @@ from escuela.utils import (
     ACCION_FINALIZAR,
     ACCION_HABILITAR,
     ACCION_MODIFICAR,
+    HORA_CORTE_TURNO,
     es_estado_asistencia_base,
+    franjas_se_solapan,
     marcar_eliminado,
     obtener_docente_activo,
+    rango_del_turno,
     registrar_historial,
     resumen_registro,
 )
@@ -273,6 +275,22 @@ def _es_preceptor_operativo(request, roles):
     return True
 
 
+def _verificar_escritura_horario(request, curso_id):
+    """RF-4.1: admin/director/jefe gestionan cualquier curso; el preceptor,
+    solo los suyos. Se llama ANTES de guardar para no dejar escrituras
+    parciales cuando el permiso falla (H10).
+    """
+    username = request.user.username if request.user.is_authenticated else None
+    roles = get_roles_for_usuario(username) if username else []
+    if set(roles) & {'admin', 'director', 'jefe_preceptores'}:
+        return
+    if 'preceptor' in roles:
+        cursos_ids = _preceptor_cursos_ids(request)
+        if curso_id is not None and int(curso_id) in {int(c) for c in cursos_ids}:
+            return
+    raise PermissionDenied('No tienes permiso para modificar horarios de este curso.')
+
+
 def _alumno_curso(request):
     username = request.user.username if request.user.is_authenticated else None
     if not username:
@@ -365,8 +383,10 @@ def puede_modificar_libro_tema(libro_tema, fecha_hora_actual=None):
 def docente_puede_registrar_asistencia_alumnos(docente_id, curso_materia_id, fecha=None, hora=None):
     ahora = timezone.localtime()
     fecha = fecha or ahora.date()
+    if isinstance(fecha, str):
+        fecha = datetime.strptime(fecha[:10], '%Y-%m-%d').date()
     hora = hora or ahora.time()
-    dia = _dia_semana_es(ahora)
+    dia = _dia_semana_es(fecha)
 
     bloques = _obtener_bloques_horario(curso_materia_id, dia)
 
@@ -403,25 +423,108 @@ def docente_puede_registrar_asistencia_alumnos(docente_id, curso_materia_id, fec
 
 
 def limpiar_eventos_temporales_vencidos():
-    """Elimina eventos temporales cuya fecha ya pasó.
+    """Archiva solo los eventos vencidos que no bloquean clases.
 
-    Reutilizable desde:
-      - management commands
-      - cron jobs / Celery beat
-      - señales Django (post_save, etc.)
-      - cualquier proceso que necesite limpiar eventos vencidos
+    E5: antes se daba de baja *todo* evento temporal pasado. Eso hacía que un
+    día suspendido volviera a ser editable y que el evento desapareciera del
+    calendario histórico. Los eventos que suspenden clases se conservan activos
+    como registro histórico; los de alcance 'sin_bloqueo' no afectan ese día y
+    sí pueden archivarse.
 
-    Uso:
-        from escuela.views import limpiar_eventos_temporales_vencidos
-        limpiar_eventos_temporales_vencidos()
-
-    Retorna la cantidad de eventos eliminados.
+    Retorna la cantidad de eventos archivados.
     """
-    count = EventoInstitucional.objects.filter(
+    return EventoInstitucional.objects.filter(
         permanente=False,
         fecha__lt=timezone.localdate(),
+        alcance='sin_bloqueo',
+        estado=True,
     ).update(estado=False, fecha_eliminacion=timezone.now())
-    return count
+
+
+def _eventos_del_dia(fecha):
+    """Eventos activos que aplican a una fecha (explícitos o permanentes)."""
+    from django.db.models import Q
+    query = Q(fecha=fecha) | Q(
+        fecha__month=fecha.month, fecha__day=fecha.day, permanente=True,
+    )
+    eventos = list(EventoInstitucional.objects.filter(query))
+    trasladados = set(
+        EventoInstitucional.objects.filter(
+            fecha__year=fecha.year, permanente=False,
+        ).values_list('tipo_evento', flat=True)
+    )
+    return [
+        ev for ev in eventos
+        if not ev.permanente or ev.tipo_evento not in trasladados
+    ]
+
+
+def _rango_evento(ev, manana, tarde):
+    """Devuelve (inicio, fin, etiqueta) del evento; (None, None, ...) si es todo el día."""
+    if ev.alcance == 'todo_dia':
+        return None, None, 'Todo el día'
+    if ev.alcance == 'manana':
+        hi, hf = manana
+        return hi, hf, f'{hi.strftime("%H:%M")} a {hf.strftime("%H:%M")}'
+    if ev.alcance == 'tarde':
+        hi, hf = tarde
+        return hi, hf, f'{hi.strftime("%H:%M")} a {hf.strftime("%H:%M")}'
+    if ev.alcance == 'franja' and ev.hora_inicio and ev.hora_fin:
+        return (
+            ev.hora_inicio,
+            ev.hora_fin,
+            f'{ev.hora_inicio.strftime("%H:%M")} a {ev.hora_fin.strftime("%H:%M")}',
+        )
+    return None, None, None
+
+
+def _evento_activo_en_franja(fecha, inicio, fin=None):
+    """Única fuente de verdad: evento bloqueante que cubre una franja/instante.
+
+    E2: 'sin_bloqueo' solo anula eventos de prioridad igual o menor. Un Feriado
+    o una Suspensión siguen bloqueando aunque exista un "Acto" sin bloqueo el
+    mismo día.
+    E6: acá se decide tanto la consulta por instante como la de superposición.
+    """
+    fin = fin or inicio
+    eventos = _eventos_del_dia(fecha)
+    if not eventos:
+        return None
+
+    prioridad = EventoInstitucional.PRIORIDAD_MAP
+    bloqueantes = [ev for ev in eventos if ev.alcance != 'sin_bloqueo']
+    if not bloqueantes:
+        return None
+
+    mejor_bloqueante = min(prioridad.get(ev.tipo_evento, 99) for ev in bloqueantes)
+    if any(
+        prioridad.get(ev.tipo_evento, 99) < mejor_bloqueante
+        for ev in eventos if ev.alcance == 'sin_bloqueo'
+    ):
+        return None
+
+    modulos = list(Modulos.objects.order_by('hora_inicio'))
+    manana = rango_del_turno(
+        [m for m in modulos if m.hora_inicio.hour < HORA_CORTE_TURNO], 'manana',
+    )
+    tarde = rango_del_turno(
+        [m for m in modulos if m.hora_inicio.hour >= HORA_CORTE_TURNO], 'tarde',
+    )
+
+    for ev in sorted(bloqueantes, key=lambda e: prioridad.get(e.tipo_evento, 99)):
+        hi, hf, etiqueta = _rango_evento(ev, manana, tarde)
+        if ev.alcance == 'todo_dia':
+            return ev, hi, hf, etiqueta
+        if not hi or not hf:
+            continue
+        cubre = (
+            hi <= inicio < hf
+            if inicio == fin
+            else franjas_se_solapan(inicio, fin, hi, hf)
+        )
+        if cubre:
+            return ev, hi, hf, etiqueta
+    return None
 
 
 def evento_institucional_activo(fecha=None, hora=None):
@@ -429,52 +532,11 @@ def evento_institucional_activo(fecha=None, hora=None):
     fecha = fecha or ahora.date()
     hora = hora or ahora.time()
 
-    from django.db.models import Q
-    query = Q(fecha=fecha) | Q(fecha__month=fecha.month, fecha__day=fecha.day, permanente=True)
-    eventos = list(EventoInstitucional.objects.filter(query))
-
-    if not eventos:
+    activo = _evento_activo_en_franja(fecha, hora, hora)
+    if not activo:
         return False, None, None, None, None, None
-
-    # A26: si hay un evento con alcance 'sin_bloqueo', no se aplica ningún
-    # bloqueo ese día (anula suspensiones/feriados cargados en simultáneo).
-    if any(ev.alcance == 'sin_bloqueo' for ev in eventos):
-        return False, None, None, None, None, None
-
-    prioridad = EventoInstitucional.PRIORIDAD_MAP
-    eventos.sort(key=lambda e: prioridad.get(e.tipo_evento, 99))
-
-    modulos_manana = list(Modulos.objects.filter(hora_inicio__hour__lt=12).order_by('hora_inicio'))
-    modulos_tarde = list(Modulos.objects.filter(hora_inicio__hour__gte=12).order_by('hora_inicio'))
-
-    def _turno_rango(modulos):
-        if not modulos:
-            return None, None
-        return modulos[0].hora_inicio, modulos[-1].hora_fin
-
-    for ev in eventos:
-        if ev.alcance == 'sin_bloqueo':
-            # A26: alcance explícito que no genera ningún bloqueo.
-            continue
-
-        if ev.alcance == 'todo_dia':
-            return True, ev.tipo_evento, ev.descripcion, 'Todo el día', None, None
-
-        elif ev.alcance == 'manana':
-            hi, hf = _turno_rango(modulos_manana)
-            if hi and hf and hi <= hora < hf:
-                return True, ev.tipo_evento, ev.descripcion, f'{hi.strftime("%H:%M")} a {hf.strftime("%H:%M")}', hi, hf
-
-        elif ev.alcance == 'tarde':
-            hi, hf = _turno_rango(modulos_tarde)
-            if hi and hf and hi <= hora < hf:
-                return True, ev.tipo_evento, ev.descripcion, f'{hi.strftime("%H:%M")} a {hf.strftime("%H:%M")}', hi, hf
-
-        elif ev.alcance == 'franja':
-            if ev.hora_inicio and ev.hora_fin and ev.hora_inicio <= hora < ev.hora_fin:
-                return True, ev.tipo_evento, ev.descripcion, f'{ev.hora_inicio.strftime("%H:%M")} a {ev.hora_fin.strftime("%H:%M")}', ev.hora_inicio, ev.hora_fin
-
-    return False, None, None, None, None, None
+    ev, hi, hf, etiqueta = activo
+    return True, ev.tipo_evento, ev.descripcion, etiqueta, hi, hf
 
 
 def _bloquear_si_evento_institucional(fecha, hora=None):
@@ -498,18 +560,6 @@ def _bloquear_si_evento_institucional(fecha, hora=None):
 
 
 # ---------- Adelantos de horas ----------
-
-def _franjas_se_solapan(hora_inicio_a, hora_fin_a, hora_inicio_b, hora_fin_b):
-    """Indica si dos franjas 'HH:MM' se superponen (extremos excluidos)."""
-    def _a_tiempo(valor):
-        if isinstance(valor, time):
-            return valor
-        return datetime.strptime(str(valor)[:5], '%H:%M').time()
-
-    ini_a, fin_a = _a_tiempo(hora_inicio_a), _a_tiempo(hora_fin_a)
-    ini_b, fin_b = _a_tiempo(hora_inicio_b), _a_tiempo(hora_fin_b)
-    return ini_a < fin_b and fin_a > ini_b
-
 
 def adelanto_activo_para_clase(curso_id, materia_id, fecha, hora=None, hora_inicio=None, hora_fin=None):
     """Retorna el adelanto de horas activo (estado=1) que cubre una clase.
@@ -554,50 +604,8 @@ def clase_original_cancelada_por_adelanto(curso_id, materia_id, fecha, hora_inic
 
 
 def _evento_cubre_franja(fecha, inicio, fin):
-    """True si un evento institucional (que afecta las clases) cubre esa
-    franja horaria en la fecha dada.
-
-    Un evento con alcance 'sin_bloqueo' anula cualquier bloqueo: si existe,
-    ninguna franja queda cubierta.
-    """
-    query = Q(fecha=fecha) | Q(
-        fecha__month=fecha.month, fecha__day=fecha.day, permanente=True,
-    )
-    eventos = list(EventoInstitucional.objects.filter(query))
-    if not eventos:
-        return False
-    if any(ev.alcance == 'sin_bloqueo' for ev in eventos):
-        return False
-
-    modulos = list(Modulos.objects.order_by('hora_inicio'))
-
-    def _rango_turno(turno_modulos):
-        if not turno_modulos:
-            return None, None
-        return turno_modulos[0].hora_inicio, turno_modulos[-1].hora_fin
-
-    manana = _rango_turno([m for m in modulos if m.hora_inicio.hour < 12])
-    tarde = _rango_turno([m for m in modulos if m.hora_inicio.hour >= 12])
-
-    def _solapa(a_ini, a_fin, b_ini, b_fin):
-        if a_ini is None or b_ini is None:
-            return False
-        return a_ini < b_fin and b_ini < a_fin
-
-    for ev in eventos:
-        if ev.alcance == 'todo_dia':
-            return True
-        if ev.alcance == 'manana' and _solapa(inicio, fin, manana[0], manana[1]):
-            return True
-        if ev.alcance == 'tarde' and _solapa(inicio, fin, tarde[0], tarde[1]):
-            return True
-        if (
-            ev.alcance == 'franja'
-            and ev.hora_inicio and ev.hora_fin
-            and _solapa(inicio, fin, ev.hora_inicio, ev.hora_fin)
-        ):
-            return True
-    return False
+    """True si un evento bloqueante cubre la franja (mismo criterio que E6)."""
+    return _evento_activo_en_franja(fecha, inicio, fin) is not None
 
 
 def _bloque_afectado(cm, fecha, inicio, fin):
@@ -617,31 +625,28 @@ def _bloque_afectado(cm, fecha, inicio, fin):
 
 
 def _validar_contexto_adelanto(curso, materia, docente, fecha_adelanto, hora_inicio, hora_fin):
-    """A25 — Valida el horario de destino de un adelanto de horas.
-
-    Regla aplicada:
-      El horario de destino elegido (hora_inicio a hora_fin) no debe
-      superponerse con otra clase del mismo curso que siga activa ese día
-      (sin suspensión institucional ni falta registrada del docente). Si la
-      materia no tiene clase ese día o su clase no está suspendida, el
-      adelanto igualmente se permite: solo se bloquea cuando el destino
-      choca con una clase activa del curso.
-
-    Devuelve un mensaje de error o None si el adelanto es válido.
-    """
+    """Valida el horario de destino de un adelanto de horas."""
     if not (curso and materia and docente and fecha_adelanto and hora_inicio and hora_fin):
         return None
-
-    cm = CursoMateria.objects.filter(
-        id_curso=curso, id_materia=materia, id_docente=docente, estado=True,
-    ).first()
-    if cm is None:
-        return None  # el serializer ya valida la asignación del docente
 
     if not isinstance(fecha_adelanto, datetime):
         fecha_adelanto = datetime.combine(fecha_adelanto, time(12, 0))
     dia = _dia_semana_es(fecha_adelanto)
     fecha = fecha_adelanto.date()
+
+    if _evento_cubre_franja(fecha, hora_inicio, hora_fin):
+        return 'No se puede crear un adelanto en una fecha u horario con evento institucional.'
+
+    cm = None
+    for candidato in CursoMateria.objects.filter(
+        id_curso=curso, id_materia=materia, estado=True,
+    ):
+        activo = obtener_docente_activo(candidato.pk, fecha)
+        if activo.docente and activo.docente.pk == docente.pk:
+            cm = candidato
+            break
+    if cm is None:
+        return 'El docente indicado no es el titular ni el suplente activo de esa materia en esa fecha.'
 
     otras = CursoMateria.objects.filter(
         id_curso_id=curso.id_curso, estado=True,
@@ -1210,13 +1215,9 @@ def login_view(request):
     username = serializer.validated_data['usuario']
     password = serializer.validated_data['contrasena']
 
-    usuario_obj = Usuario.objects.filter(usuario=username).first()
-    if usuario_obj and not usuario_obj.estado:
-        return Response(
-            {'error': 'Su usuario se encuentra deshabilitado. Comuníquese con la administración.'},
-            status=status.HTTP_401_UNAUTHORIZED,
-        )
-
+    # R10: primero se valida la contraseña. El backend ya exige estado=True y
+    # eliminado=False, así que un usuario inexistente, deshabilitado o de baja
+    # responde exactamente lo mismo: no se filtran cuentas existentes.
     user = authenticate(request, username=username, password=password)
     if user is None:
         return Response(
@@ -1224,7 +1225,8 @@ def login_view(request):
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
-    roles = get_roles_for_usuario(username)
+    usuario_obj = Usuario.objects.filter(usuario=username).first()
+    roles = get_roles_reales(username)
 
     refresh = RefreshToken.for_user(user)
     return Response({
@@ -1249,7 +1251,7 @@ def rol_activo_usuario(request):
     rol = request.headers.get('X-Rol-Activo')
     if not rol:
         return None
-    roles = get_roles_for_usuario(username)
+    roles = get_roles_reales(username)
     return rol if rol in roles else None
 
 
@@ -1275,7 +1277,7 @@ def roles_efectivos(request):
 def me_view(request):
     """Devuelve info del usuario autenticado y sus roles."""
     username = request.user.username
-    roles = get_roles_for_usuario(username)
+    roles = get_roles_reales(username)
     usuario_obj = Usuario.objects.filter(usuario=username).first()
     return Response({
         'id_usuario': usuario_obj.id_usuario if usuario_obj else None,
@@ -1290,14 +1292,14 @@ def seleccionar_rol(request):
     """Valida que el rol solicitado pertenezca al usuario autenticado.
 
     El 'rol activo' es una elección de sesión del frontend (qué panel
-    mostrar). El backend autoriza cada recurso con los roles reales del
-    usuario en la base de datos, por lo que seleccionar un rol jamás
-    otorga permisos adicionales. Este endpoint solo garantiza que el
-    frontend no use un rol que el usuario no posee.
+    mostrar). El backend autoriza cada recurso con ese rol elegido, siempre
+    que pertenezca a los roles reales del usuario; por eso seleccionar un rol
+    jamás otorga permisos adicionales. Este endpoint valida la elección contra
+    la lista completa de roles del usuario.
     """
     username = request.user.username
     rol = request.data.get('rol')
-    roles = get_roles_for_usuario(username)
+    roles = get_roles_reales(username)
     if rol not in roles:
         return Response(
             {'error': 'El rol solicitado no está asignado a tu usuario.'},
@@ -1569,7 +1571,7 @@ class UsuarioViewSet(HistorialMixin, viewsets.ModelViewSet):
     historial_soft_delete = True
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().filter(eliminado=False)
 
         username = self.request.user.username if self.request.user.is_authenticated else None
         if not username:
@@ -1668,6 +1670,14 @@ class UsuarioViewSet(HistorialMixin, viewsets.ModelViewSet):
         if has_admin_role and 'director' not in roles:
             raise PermissionDenied("Solo directores pueden eliminar administradores")
 
+        # R4: la baja definitiva descarta cualquier programación pendiente,
+        # aunque el middleware ya ignora usuarios eliminados.
+        instance.fecha_deshabilitacion_programada = None
+        instance.fecha_habilitacion_programada = None
+        instance.save(update_fields=[
+            'fecha_deshabilitacion_programada',
+            'fecha_habilitacion_programada',
+        ])
         super().perform_destroy(instance)
 
     @action(detail=False, methods=['post'], url_path='quitar-rol', permission_classes=[IsAuthenticated, PuedeGestionarPersonas])
@@ -1800,14 +1810,14 @@ class UsuarioViewSet(HistorialMixin, viewsets.ModelViewSet):
             # Al quitar el rol docente se liberan sus asignaciones de curso_materia:
             # las materias quedan sin docente y disponibles para asignarle a otro.
             if nombre_rol == 'docente':
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        'UPDATE curso_materia cm '
-                        'JOIN docentes d ON d.id_docente = cm.id_docente '
-                        'SET cm.id_docente = NULL '
-                        'WHERE d.id_usuario = %s',
-                        [id_usuario],
-                    )
+                docentes_ids = list(
+                    Docente.all_objects.filter(
+                        id_usuario=usuario,
+                    ).values_list('id_docente', flat=True)
+                )
+                CursoMateria.all_objects.filter(
+                    id_docente_id__in=docentes_ids,
+                ).update(id_docente=None)
 
         return Response({
             'success': True,
@@ -2088,6 +2098,8 @@ class DocenteViewSet(HistorialMixin, viewsets.ModelViewSet):
         if 'jefe_preceptores' in roles and 'admin' not in roles and 'director' not in roles:
             raise PermissionDenied('No tenés permiso para eliminar docentes.')
         self._require_preceptor_access(instance)
+        # R9: el baja lógica debe liberar las materias, igual que quitar_rol.
+        CursoMateria.objects.filter(id_docente=instance).update(id_docente=None)
         super().perform_destroy(instance)
 
 
@@ -2113,6 +2125,9 @@ class DdjjDocenteViewSet(viewsets.ModelViewSet):
     def _can_view_all(self):
         roles = self._roles()
         return 'admin' in roles or 'director' in roles
+
+    def _ciclo_actual(self):
+        return CicloLectivo.objects.filter(estado=True).order_by('-anio').first()
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -2142,13 +2157,18 @@ class DdjjDocenteViewSet(viewsets.ModelViewSet):
         if not docente:
             raise PermissionDenied('No se encontró un perfil de docente asociado al usuario.')
 
-        ddjj = DdjjDocente.objects.filter(id_docente=docente).first()
+        ciclo = self._ciclo_actual()
+        ddjj = None
+        if ciclo:
+            ddjj = DdjjDocente.objects.filter(id_docente=docente, id_ciclo=ciclo).first()
 
         if request.method == 'GET':
             if not ddjj:
                 return Response({
                     'id_ddjj': None,
                     'id_docente': docente.id_docente,
+                    'id_ciclo': ciclo.id_ciclo if ciclo else None,
+                    'ciclo_anio': ciclo.anio if ciclo else None,
                     'docente_nombre': docente.nombre,
                     'docente_apellido': docente.apellido,
                     'archivo_url': None,
@@ -2164,6 +2184,23 @@ class DdjjDocenteViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied('No tienes permiso para eliminar esta DDJJ.')
             if not ddjj:
                 return Response({'error': 'No existe una D.D.J.J. para eliminar.'}, status=status.HTTP_404_NOT_FOUND)
+            if ddjj.verificada:
+                return Response(
+                    {'error': 'No se puede eliminar una D.D.J.J. verificada.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            registrar_historial(
+                usuario=_usuario_request(request),
+                accion=ACCION_ELIMINAR,
+                tabla='ddjj_docente',
+                id_registro=ddjj.pk,
+                valor_anterior={
+                    'id_docente': ddjj.id_docente_id,
+                    'ruta_archivo': ddjj.ruta_archivo.name if ddjj.ruta_archivo else None,
+                    'verificada': ddjj.verificada,
+                },
+                valor_nuevo=None,
+            )
             if ddjj.ruta_archivo and ddjj.ruta_archivo.storage.exists(ddjj.ruta_archivo.name):
                 ddjj.ruta_archivo.storage.delete(ddjj.ruta_archivo.name)
             ddjj.delete()
@@ -2187,14 +2224,17 @@ class DdjjDocenteViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if not ciclo:
+            raise ValidationError({'id_ciclo': 'No hay un ciclo lectivo activo para cargar la D.D.J.J.'})
         incoming_data = {
             'id_docente': docente.id_docente,
+            'id_ciclo': ciclo.id_ciclo,
             'archivo': archivo,
         }
         serializer = self.get_serializer(ddjj, data=incoming_data, partial=bool(ddjj))
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        instance = serializer.save(id_docente=docente)
+        instance = serializer.save(id_docente=docente, id_ciclo=ciclo)
         _notificar_ddjj_presentada(instance)
         return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
 
@@ -2232,7 +2272,7 @@ class DdjjDocenteViewSet(viewsets.ModelViewSet):
         if not ddjj.verificada:
             DdjjDocente.objects.filter(id_ddjj=ddjj.id_ddjj).update(verificada=True)
             ddjj.verificada = True
-            verificado_por = f"{request.user.first_name} {request.user.last_name}".strip() or 'El directivo'
+            verificado_por = _nombre_actor_directivo(request)
             _notificar_ddjj_verificada(ddjj, verificado_por=verificado_por)
         return Response(self.get_serializer(ddjj).data)
 
@@ -2251,6 +2291,20 @@ class DdjjDocenteViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         if not self._can_view_all():
             raise PermissionDenied('No tienes permiso para eliminar esta DDJJ.')
+        if instance.verificada:
+            raise ValidationError({'error': 'No se puede eliminar una D.D.J.J. verificada.'})
+        registrar_historial(
+            usuario=_usuario_request(self.request),
+            accion=ACCION_ELIMINAR,
+            tabla='ddjj_docente',
+            id_registro=instance.pk,
+            valor_anterior={
+                'id_docente': instance.id_docente_id,
+                'ruta_archivo': instance.ruta_archivo.name if instance.ruta_archivo else None,
+                'verificada': instance.verificada,
+            },
+            valor_nuevo=None,
+        )
         if instance.ruta_archivo and instance.ruta_archivo.storage.exists(instance.ruta_archivo.name):
             instance.ruta_archivo.storage.delete(instance.ruta_archivo.name)
         instance.delete()
@@ -2281,7 +2335,7 @@ class ActividadDocenteViewSet(viewsets.ModelViewSet):
         roles = get_roles_for_usuario(username) if username else []
         usuario_obj = Usuario.objects.filter(usuario=username).first() if username else None
 
-        if 'preceptor' in roles and usuario_obj:
+        if _es_preceptor_operativo(request, roles) and usuario_obj:
             preceptor = Preceptor.objects.filter(id_usuario=usuario_obj).first()
             if preceptor:
                 cursos_ids = list(
@@ -2508,7 +2562,18 @@ class PreceptorViewSet(HistorialMixin, viewsets.ModelViewSet):
         usuario = instance.id_usuario
         Curso.objects.filter(id_preceptor=instance).update(id_preceptor=None)
         if usuario:
-            UsuarioRol.objects.filter(id_usuario=usuario).delete()
+            # Quitar SOLO el rol del perfil eliminado (preceptor o jefe de
+            # preceptores). No se deben borrar los demás roles del usuario.
+            from django.db import connection
+            nombre_rol = 'jefe_preceptores' if self._is_jefe_target() else 'preceptor'
+            rol = Rol.objects.filter(nombre_rol=nombre_rol).first()
+            if rol is not None:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        'DELETE FROM usuario_roles '
+                        'WHERE id_usuario = %s AND id_rol = %s',
+                        [usuario.id_usuario, rol.id_rol],
+                    )
         super().perform_destroy(instance)
 
 
@@ -2611,7 +2676,17 @@ class PadreTutorViewSet(HistorialMixin, viewsets.ModelViewSet):
         Alumno.objects.filter(id_tutor=instance).update(id_tutor=None)
         usuario = instance.id_usuario
         if usuario:
-            UsuarioRol.objects.filter(id_usuario=usuario).delete()
+            # Quitar SOLO el rol "familia" del tutor eliminado. No se deben
+            # borrar los demás roles del usuario.
+            from django.db import connection
+            rol = Rol.objects.filter(nombre_rol='familia').first()
+            if rol is not None:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        'DELETE FROM usuario_roles '
+                        'WHERE id_usuario = %s AND id_rol = %s',
+                        [usuario.id_usuario, rol.id_rol],
+                    )
         super().perform_destroy(instance)
 
 
@@ -2816,17 +2891,19 @@ class CursoMateriaViewSet(HistorialMixin, viewsets.ModelViewSet):
             qs = qs.filter(activo=True)
         username = self.request.user.username if self.request.user.is_authenticated else None
         roles = get_roles_for_usuario(username) if username else []
-        if 'preceptor' in roles:
+        if _es_preceptor_operativo(self.request, roles):
             cursos_ids = _preceptor_cursos_ids(self.request)
             if not cursos_ids:
                 return qs.none()
             qs = qs.filter(id_curso__in=cursos_ids)
-        if 'alumno' in roles:
+        elif es_rol_amplio(self.request):
+            pass
+        elif 'alumno' in roles:
             curso_id = _alumno_curso(self.request)
             if not curso_id:
                 return qs.none()
             qs = qs.filter(id_curso=curso_id)
-        if 'familia' in roles:
+        elif 'familia' in roles:
             cursos_ids = _familia_cursos_ids(self.request)
             if not cursos_ids:
                 return qs.none()
@@ -2917,14 +2994,24 @@ class SuplenciaDocenteViewSet(HistorialMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='finalizar')
     def finalizar(self, request, pk=None):
         suplencia = self.get_object()
-        if not suplencia.estado:
+        hoy = timezone.localdate()
+        if suplencia.fecha_fin < hoy:
             return Response(
                 {'error': 'La suplencia ya se encuentra finalizada.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if suplencia.fecha_inicio > hoy:
+            return Response(
+                {'error': 'La suplencia todavía no comenzó; para cancelarla, elimínela.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # C6: "finalizar" NO usa el campo de borrado lógico (`estado`), que es el
+        # mismo que usa "eliminar". Se cierra la suplencia adelantando `fecha_fin`
+        # a hoy, así queda registrada y visible en el historial (el manager sigue
+        # filtrando `estado=True`).
         valor_anterior = resumen_registro(suplencia)
-        suplencia.estado = False
-        suplencia.save(update_fields=['estado', 'fecha_modificacion'])
+        suplencia.fecha_fin = hoy
+        suplencia.save(update_fields=['fecha_fin', 'fecha_modificacion'])
         self._historial_registrar(
             ACCION_FINALIZAR,
             self.get_historial_tabla(),
@@ -3026,7 +3113,7 @@ class AdelantoHorasViewSet(HistorialMixin, viewsets.ModelViewSet):
         h_fin = datos.get('hora_fin', instancia.hora_fin)
         error = _validar_contexto_adelanto(curso, materia, docente, fecha or instancia.fecha_adelanto, h_ini or instancia.hora_inicio, h_fin or instancia.hora_fin)
         if error:
-            raise ValidationError({'error': error})
+            raise ValidationError({'error': error.replace('No se pudo crear', 'No se pudo actualizar')})
         super().perform_update(serializer)
 
     def perform_destroy(self, instance):
@@ -3047,7 +3134,9 @@ class ModuloViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdminOrDirectorForWrite]
 
     def perform_destroy(self, instance):
-        horarios = Horario.objects.filter(id_modulo=instance).count()
+        # `all_objects`: un horario con borrado lógico conserva la FK viva, así
+        # que igual haría fallar el DELETE físico del módulo (RESTRICT).
+        horarios = Horario.all_objects.filter(id_modulo=instance).count()
         if horarios:
             raise ValidationError({
                 'detalle': (
@@ -3058,29 +3147,33 @@ class ModuloViewSet(viewsets.ModelViewSet):
         super().perform_destroy(instance)
 
 
-class HorarioEspecialViewSet(viewsets.ModelViewSet):
+class HorarioEspecialViewSet(HistorialMixin, viewsets.ModelViewSet):
     queryset = HorariosEspeciales.objects.select_related('id_curso_materia').prefetch_related(
         'id_curso_materia__id_curso',
         'id_curso_materia__id_materia',
         ).all()
     serializer_class = HorarioEspecialSerializer
     permission_classes = [IsAuthenticated, PuedeGestionarHorarios]
+    historial_tabla = 'horarios_especiales'
+    historial_soft_delete = True
 
     def get_queryset(self):
         qs = super().get_queryset()
         username = self.request.user.username if self.request.user.is_authenticated else None
         roles = get_roles_for_usuario(username) if username else []
-        if 'preceptor' in roles:
+        if _es_preceptor_operativo(self.request, roles):
             cursos_ids = _preceptor_cursos_ids(self.request)
             if not cursos_ids:
                 return qs.none()
             qs = qs.filter(id_curso_materia__id_curso__in=cursos_ids)
-        if 'alumno' in roles:
+        elif es_rol_amplio(self.request):
+            pass
+        elif 'alumno' in roles:
             curso_id = _alumno_curso(self.request)
             if not curso_id:
                 return qs.none()
             qs = qs.filter(id_curso_materia__id_curso=curso_id)
-        if 'familia' in roles:
+        elif 'familia' in roles:
             cursos_ids = _familia_cursos_ids(self.request)
             if not cursos_ids:
                 return qs.none()
@@ -3091,31 +3184,28 @@ class HorarioEspecialViewSet(viewsets.ModelViewSet):
             qs = qs.filter(id_curso_materia__id_curso=curso)
         return qs
 
-    def _check_horario_write_access(self, instance):
-        """Solo admin/director escriben horarios (el preceptor es solo lectura)."""
-        username = self.request.user.username if self.request.user.is_authenticated else None
-        roles = get_roles_for_usuario(username) if username else []
-        if 'admin' in roles or 'director' in roles:
-            return
-        raise PermissionDenied('No tienes permiso para modificar horarios.')
+    def _check_horario_write_access(self, objetivo):
+        if hasattr(objetivo, 'id_curso_materia'):
+            objetivo = objetivo.id_curso_materia
+        curso_id = getattr(objetivo, 'id_curso_id', None)
+        _verificar_escritura_horario(self.request, curso_id)
 
     def perform_create(self, serializer):
         cm = serializer.validated_data.get('id_curso_materia')
         if cm is not None:
             self._check_horario_write_access(cm)
-        instance = serializer.save()
-        self._check_horario_write_access(instance)
+        super().perform_create(serializer)
 
     def perform_update(self, serializer):
-        instance = serializer.save()
-        self._check_horario_write_access(instance)
+        self._check_horario_write_access(serializer.instance)
+        super().perform_update(serializer)
 
     def perform_destroy(self, instance):
         self._check_horario_write_access(instance)
-        instance.delete()
+        super().perform_destroy(instance)
 
 
-class HorarioViewSet(viewsets.ModelViewSet):
+class HorarioViewSet(HistorialMixin, viewsets.ModelViewSet):
     queryset = Horario.objects.select_related('id_curso_materia', 'id_modulo').prefetch_related(
         'id_curso_materia__id_curso',
         'id_curso_materia__id_materia',
@@ -3123,25 +3213,30 @@ class HorarioViewSet(viewsets.ModelViewSet):
         ).all()
     serializer_class = HorarioSerializer
     permission_classes = [IsAuthenticated, PuedeGestionarHorarios]
+    historial_tabla = 'horarios'
+    historial_soft_delete = True
 
     def get_queryset(self):
         qs = super().get_queryset()
         username = self.request.user.username if self.request.user.is_authenticated else None
         roles = get_roles_for_usuario(username) if username else []
 
-        if 'preceptor' in roles:
+        if _es_preceptor_operativo(self.request, roles):
             cursos_ids = _preceptor_cursos_ids(self.request)
             if not cursos_ids:
                 return qs.none()
             qs = qs.filter(id_curso_materia__id_curso__in=cursos_ids)
 
-        if 'alumno' in roles:
+        elif es_rol_amplio(self.request):
+            pass
+
+        elif 'alumno' in roles:
             curso_id = _alumno_curso(self.request)
             if not curso_id:
                 return qs.none()
             qs = qs.filter(id_curso_materia__id_curso=curso_id)
 
-        if 'familia' in roles:
+        elif 'familia' in roles:
             cursos_ids = _familia_cursos_ids(self.request)
             if not cursos_ids:
                 return qs.none()
@@ -3156,31 +3251,28 @@ class HorarioViewSet(viewsets.ModelViewSet):
             qs = qs.filter(id_curso_materia=curso_materia)
         return qs
 
-    def _check_horario_write_access(self, instance):
-        """Solo admin/director escriben horarios (el preceptor es solo lectura)."""
-        username = self.request.user.username if self.request.user.is_authenticated else None
-        roles = get_roles_for_usuario(username) if username else []
-        if 'admin' in roles or 'director' in roles:
-            return
-        raise PermissionDenied('No tienes permiso para modificar horarios.')
+    def _check_horario_write_access(self, objetivo):
+        if hasattr(objetivo, 'id_curso_materia'):
+            objetivo = objetivo.id_curso_materia
+        curso_id = getattr(objetivo, 'id_curso_id', None)
+        _verificar_escritura_horario(self.request, curso_id)
 
     def perform_create(self, serializer):
         cm = serializer.validated_data.get('id_curso_materia')
         if cm is not None:
             self._check_horario_write_access(cm)
-        instance = serializer.save()
-        self._check_horario_write_access(instance)
-        _notificar_cambio_horario(instance, accion='creado')
+        super().perform_create(serializer)
+        _notificar_cambio_horario(serializer.instance, accion='creado')
 
     def perform_update(self, serializer):
-        instance = serializer.save()
-        self._check_horario_write_access(instance)
-        _notificar_cambio_horario(instance, accion='actualizado')
+        self._check_horario_write_access(serializer.instance)
+        super().perform_update(serializer)
+        _notificar_cambio_horario(serializer.instance, accion='actualizado')
 
     def perform_destroy(self, instance):
         self._check_horario_write_access(instance)
         _notificar_cambio_horario(instance, accion='eliminado')
-        instance.delete()
+        super().perform_destroy(instance)
 
 
 class InscripcionMateriaViewSet(viewsets.ModelViewSet):
@@ -3226,7 +3318,7 @@ class PeriodoEvaluacionViewSet(viewsets.ModelViewSet):
             raise ValidationError({
                 'detalle': (
                     'No se puede desactivar este período de evaluación porque '
-                    f'has {calificaciones} calificación(es) cargadas. '
+                    f'hay {calificaciones} calificación(es) cargadas. '
                     'Desactivarlo dejaría notas sin consolidar.'
                 ),
             })
@@ -3234,13 +3326,15 @@ class PeriodoEvaluacionViewSet(viewsets.ModelViewSet):
         marcar_eliminado(instance)
 
 
-class CalificacionViewSet(viewsets.ModelViewSet):
+class CalificacionViewSet(HistorialMixin, viewsets.ModelViewSet):
     queryset = Calificacion.objects.select_related(
         'id_alumno', 'id_curso_materia__id_materia',
         'id_curso_materia__id_curso', 'id_docente', 'id_periodo',
         ).all()
     serializer_class = CalificacionSerializer
     permission_classes = [IsAuthenticated, PuedeEscribirCalificaciones]
+    historial_tabla = 'calificaciones'
+    historial_soft_delete = True
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -3276,35 +3370,47 @@ class CalificacionViewSet(viewsets.ModelViewSet):
         if not isinstance(items, list) or not items:
             raise ValidationError('Se esperaba una lista no vacía en "items".')
 
+        docente_autenticado = _docente_autenticado(request)
+        if docente_autenticado is None:
+            roles = get_roles_for_usuario(request.user.username)
+            if not ({'admin', 'director'} & set(roles)):
+                raise PermissionDenied('No hay un perfil de docente asociado al usuario.')
+
         created = []
         updated = []
         materias = {}
         materias_verificadas = set()
         for item in items:
             item = dict(item)
+            id_docente_item = item.get('id_docente')
+            if docente_autenticado is not None:
+                if str(id_docente_item) != str(docente_autenticado.pk):
+                    raise PermissionDenied('El docente de las calificaciones debe ser el usuario autenticado.')
+            elif not id_docente_item:
+                raise ValidationError({'id_docente': 'El docente es obligatorio.'})
             cal_id = item.pop('id_calificacion', None)
-            serializer = CalificacionSerializer(data=item)
+            instancia = get_object_or_404(Calificacion, pk=cal_id) if cal_id else None
+            serializer = CalificacionSerializer(instancia, data=item)
             serializer.is_valid(raise_exception=True)
-            cm = serializer.validated_data.get('id_curso_materia')
-            if cm is None and cal_id:
-                instancia = get_object_or_404(Calificacion, pk=cal_id)
-                cm = instancia.id_curso_materia
+            cm = serializer.validated_data.get('id_curso_materia') or (
+                instancia.id_curso_materia if instancia is not None else None
+            )
             if cm is not None:
                 materias.setdefault(cm.id_curso_materia, cm)
                 if cm.id_curso_materia not in materias_verificadas:
                     _verificar_docente_activo_materia(request, cm.id_curso_materia)
                     materias_verificadas.add(cm.id_curso_materia)
-            if cal_id:
-                instancia = get_object_or_404(Calificacion, pk=cal_id)
-                serializer = CalificacionSerializer(instancia, data=item)
-                serializer.is_valid(raise_exception=True)
+            if instancia is not None:
+                valor_anterior = resumen_registro(instancia)
                 serializer.save()
+                self._historial_modificacion(serializer, valor_anterior)
                 _notificar_calificacion(serializer.instance, accion='actualizada')
                 if serializer.instance.pre_nota:
                     _notificar_prenota(serializer.instance)
                 updated.append(serializer.instance)
             else:
                 instancia = serializer.save()
+                self._historial_alta(serializer)
                 _notificar_calificacion(instancia, accion='cargada')
                 if instancia.pre_nota:
                     _notificar_prenota(instancia)
@@ -3574,7 +3680,7 @@ class AsistenciaViewSet(viewsets.ModelViewSet):
                     if not a.mantener_horario_original:
                         horarios = [
                             h for h in horarios
-                            if not _franjas_se_solapan(
+                            if not franjas_se_solapan(
                                 h['hora_inicio'], h['hora_fin'],
                                 a.hora_inicio.strftime('%H:%M'), a.hora_fin.strftime('%H:%M'),
                             )
@@ -3689,8 +3795,9 @@ class AsistenciaViewSet(viewsets.ModelViewSet):
         if 'preceptor' not in roles and 'admin' not in roles and 'director' not in roles and 'jefe_preceptores' not in roles:
             return Response({'error': 'Acceso no autorizado.'}, status=status.HTTP_403_FORBIDDEN)
 
-        cursos_ids = _preceptor_cursos_ids(request) if 'preceptor' in roles else None
-        if 'preceptor' in roles and not cursos_ids:
+        es_preceptor = _es_preceptor_operativo(request, roles)
+        cursos_ids = _preceptor_cursos_ids(request) if es_preceptor else None
+        if es_preceptor and not cursos_ids:
             return Response({'error': 'Preceptor sin cursos asignados.'}, status=status.HTTP_403_FORBIDDEN)
 
         cm_id = request.query_params.get('curso_materia')
@@ -3898,9 +4005,22 @@ class AsistenciaViewSet(viewsets.ModelViewSet):
         justificado = request.data.get('justificado')
         if justificado is None:
             return Response({'error': 'Se requiere justificado.'}, status=status.HTTP_400_BAD_REQUEST)
+        estado_nombre = (
+            asistencia.id_estado_asistencia.nombre_estado
+            if asistencia.id_estado_asistencia else ''
+        )
+        if bool(justificado) and estado_nombre not in ('Ausente', 'Justificado'):
+            return Response(
+                {'error': 'Solo se puede justificar una asistencia ausente.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if estado_nombre == 'Justificado':
+            ausente = EstadoAsistencia.objects.filter(nombre_estado='Ausente').first()
+            if ausente:
+                asistencia.id_estado_asistencia = ausente
 
         asistencia.justificado = bool(justificado)
-        asistencia.save(update_fields=['justificado'])
+        asistencia.save(update_fields=['justificado', 'id_estado_asistencia'])
         return Response({'id': asistencia.id_asistencia, 'justificado': asistencia.justificado})
 
     def _resolver_modulo(self, asistencia, dia_semana):
@@ -3953,6 +4073,28 @@ class AsistenciaViewSet(viewsets.ModelViewSet):
 
         return None
 
+    def _bloque_actual(self, cm_id, dia_semana, fecha, hora):
+        """Franja (inicio, fin) del bloque horario que contiene `hora`.
+
+        Fusiona módulos contiguos (igual que `_resolver_modulo`) para que una
+        materia con dos módulos seguidos cuente como un solo bloque. Devuelve
+        None si la hora no cae dentro de ningún bloque (p. ej. carga única).
+        """
+        bloques = self._horarios_hoy(cm_id, dia_semana, fecha)
+        hora_str = hora.strftime('%H:%M')
+        idx = next(
+            (i for i, b in enumerate(bloques) if b['hora_inicio'] <= hora_str < b['hora_fin']),
+            None,
+        )
+        if idx is None:
+            return None
+        ini = fin = idx
+        while ini > 0 and bloques[ini - 1]['hora_fin'] == bloques[ini]['hora_inicio']:
+            ini -= 1
+        while fin < len(bloques) - 1 and bloques[fin]['hora_fin'] == bloques[fin + 1]['hora_inicio']:
+            fin += 1
+        return bloques[ini]['hora_inicio'], bloques[fin]['hora_fin']
+
     def create(self, request, *args, **kwargs):
         ahora = timezone.localtime()
         dia = _dia_semana_es(ahora)
@@ -3965,12 +4107,32 @@ class AsistenciaViewSet(viewsets.ModelViewSet):
         if not cm_id:
             return Response({'error': 'id_curso_materia es requerido.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        fecha_enviada = request.data.get('fecha')
-        fecha_registro = parse_date(fecha_enviada) if fecha_enviada else None
-        if fecha_enviada and fecha_registro is None:
-            return Response({'error': 'Fecha inválida.'}, status=status.HTTP_400_BAD_REQUEST)
-        if fecha_registro is None:
-            fecha_registro = ahora.date()
+        # T2: el preceptor operativo (sin roles de gestión) solo puede registrar
+        # asistencias en los cursos que tiene asignados. Antes podía hacerlo en
+        # cualquier curso enviando otro `id_curso_materia`.
+        if _es_preceptor_operativo(request, roles):
+            curso_del_cm = CursoMateria.objects.filter(
+                pk=cm_id,
+            ).values_list('id_curso_id', flat=True).first()
+            if curso_del_cm is None:
+                return Response({'error': 'Curso materia no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+            if curso_del_cm not in _preceptor_cursos_ids(request):
+                return Response(
+                    {'error': 'No autorizado para registrar asistencias en este curso.'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+        # C4: la carga única es siempre del día de hoy (se crea y se resuelve con
+        # `timezone.localdate()`), por lo que la asistencia solo puede registrarse
+        # para la fecha de hoy. Se ignora la fecha enviada por el cliente para que
+        # no se puedan cargar asistencias en fechas pasadas/futuras.
+        fecha_registro = ahora.date()
+
+        # Carga única de 20 minutos otorgada por el preceptor: dentro de la
+        # ventana activa el docente puede cargar aunque no esté en horario;
+        # una vez cargada (o vencida la ventana) no puede volver a cargarse.
+        estado_carga = carga_de_item(cm_id, ahora.date(), 'asistencias')
+        ventana_carga_autoriza = estado_carga['estado'] == 'permitido'
 
         # Punto 2.2: el bloqueo por evento institucional se valida SIEMPRE, incluso
         # dentro de la ventana de carga que otorga el preceptor. Antes solo se
@@ -3988,13 +4150,8 @@ class AsistenciaViewSet(viewsets.ModelViewSet):
                 'evento_activo': True,
             }, status=status.HTTP_403_FORBIDDEN)
 
-        # Carga única de 20 minutos otorgada por el preceptor: dentro de la
-        # ventana activa el docente puede cargar aunque no esté en horario;
-        # una vez cargada (o vencida la ventana) no puede volver a cargarse.
-        estado_carga = carga_de_item(cm_id, ahora.date(), 'asistencias')
         if estado_carga['estado'] in ('bloqueado_cargado', 'bloqueado_vencido'):
             return Response({'error': estado_carga['mensaje']}, status=status.HTTP_403_FORBIDDEN)
-        ventana_carga_autoriza = estado_carga['estado'] == 'permitido'
 
         if not ventana_carga_autoriza:
             horarios_hoy = self._horarios_hoy(cm_id, dia)
@@ -4031,11 +4188,21 @@ class AsistenciaViewSet(viewsets.ModelViewSet):
             'hora': ahora.time(),
             'id_usuario': usuario_actual.id_usuario,
         }
-        existing = Asistencia.objects.filter(
-            id_alumno=data['id_alumno'],
-            id_curso_materia=data['id_curso_materia'],
-            fecha=data['fecha'],
-        ).first()
+        # T1: una materia puede tener dos bloques el mismo día. Si se busca solo
+        # por alumno + materia + fecha, la asistencia del segundo bloque pisa la
+        # del primero. Se acota la búsqueda al bloque horario actual (módulos
+        # contiguos fusionados). Sin bloque (p. ej. carga única) se mantiene la
+        # búsqueda por día.
+        filtro_existente = {
+            'id_alumno': data['id_alumno'],
+            'id_curso_materia': data['id_curso_materia'],
+            'fecha': data['fecha'],
+        }
+        bloque = self._bloque_actual(cm_id, dia, fecha_registro, ahora.time())
+        if bloque:
+            filtro_existente['hora__gte'] = bloque[0]
+            filtro_existente['hora__lt'] = bloque[1]
+        existing = Asistencia.objects.filter(**filtro_existente).first()
         if existing:
             serializer = self.get_serializer(existing, data=data, partial=True)
             serializer.is_valid(raise_exception=True)
@@ -4060,8 +4227,9 @@ class AsistenciaDocenteViewSet(viewsets.ViewSet):
         if 'preceptor' not in roles and 'admin' not in roles and 'director' not in roles and 'jefe_preceptores' not in roles:
             return Response({'error': 'Acceso no autorizado.'}, status=status.HTTP_403_FORBIDDEN)
 
-        cursos_ids = _preceptor_cursos_ids(request) if 'preceptor' in roles else None
-        if 'preceptor' in roles and not cursos_ids:
+        es_preceptor = _es_preceptor_operativo(request, roles)
+        cursos_ids = _preceptor_cursos_ids(request) if es_preceptor else None
+        if es_preceptor and not cursos_ids:
             return Response({'error': 'Preceptor sin cursos asignados.'}, status=status.HTTP_403_FORBIDDEN)
 
         curso_nombre = request.query_params.get('curso')
@@ -4244,8 +4412,9 @@ class AsistenciaDocenteViewSet(viewsets.ViewSet):
         if 'preceptor' not in roles and 'admin' not in roles and 'director' not in roles:
             return Response({'error': 'Acceso no autorizado.'}, status=status.HTTP_403_FORBIDDEN)
 
-        cursos_ids = _preceptor_cursos_ids(request) if 'preceptor' in roles else None
-        if 'preceptor' in roles and not cursos_ids:
+        es_preceptor = _es_preceptor_operativo(request, roles)
+        cursos_ids = _preceptor_cursos_ids(request) if es_preceptor else None
+        if es_preceptor and not cursos_ids:
             return Response({'error': 'Preceptor sin cursos asignados.'}, status=status.HTTP_403_FORBIDDEN)
 
         curso_nombre = request.query_params.get('curso')
@@ -4370,8 +4539,9 @@ class AsistenciaDocenteViewSet(viewsets.ViewSet):
         if 'preceptor' not in roles and 'admin' not in roles and 'director' not in roles:
             return Response({'error': 'Acceso no autorizado.'}, status=status.HTTP_403_FORBIDDEN)
 
-        cursos_ids = _preceptor_cursos_ids(request) if 'preceptor' in roles else None
-        if 'preceptor' in roles and not cursos_ids:
+        es_preceptor = _es_preceptor_operativo(request, roles)
+        cursos_ids = _preceptor_cursos_ids(request) if es_preceptor else None
+        if es_preceptor and not cursos_ids:
             return Response({'error': 'Preceptor sin cursos asignados.'}, status=status.HTTP_403_FORBIDDEN)
 
         curso_nombre = request.query_params.get('curso')
@@ -4415,8 +4585,9 @@ class AsistenciaDocenteViewSet(viewsets.ViewSet):
         if 'preceptor' not in roles and 'admin' not in roles and 'director' not in roles:
             return Response({'error': 'Acceso no autorizado.'}, status=status.HTTP_403_FORBIDDEN)
 
-        cursos_ids = _preceptor_cursos_ids(request) if 'preceptor' in roles else None
-        if 'preceptor' in roles and not cursos_ids:
+        es_preceptor = _es_preceptor_operativo(request, roles)
+        cursos_ids = _preceptor_cursos_ids(request) if es_preceptor else None
+        if es_preceptor and not cursos_ids:
             return Response({'error': 'Preceptor sin cursos asignados.'}, status=status.HTTP_403_FORBIDDEN)
 
         docente_id = request.data.get('docente_id')
@@ -4566,28 +4737,40 @@ def _verificar_solapamiento(nuevo_alcance, nueva_fecha, nueva_hora_inicio, nueva
     if nuevo_permanente:
         query = Q(fecha__month=nueva_fecha.month, fecha__day=nueva_fecha.day, permanente=True)
     else:
-        query = Q(Q(fecha=nueva_fecha, permanente=False) | Q(fecha=nueva_fecha, permanente=True))
+        # E4: un permanente cargado en 2026 también aplica al mismo día de 2027.
+        query = Q(fecha=nueva_fecha, permanente=False) | Q(
+            fecha__month=nueva_fecha.month,
+            fecha__day=nueva_fecha.day,
+            permanente=True,
+        )
 
     if exclude_id:
         query = query & ~Q(id_evento=exclude_id)
 
     otros = list(EventoInstitucional.objects.filter(query))
+    trasladados = set(
+        EventoInstitucional.objects.filter(
+            fecha__year=nueva_fecha.year, permanente=False,
+        ).values_list('tipo_evento', flat=True)
+    )
+    otros = [
+        ev for ev in otros
+        if not ev.permanente or ev.tipo_evento not in trasladados
+    ]
     if not otros:
         return None
 
     if nuevo_alcance == 'todo_dia':
         return None
 
-    mod_manana = list(Modulos.objects.filter(hora_inicio__hour__lt=12).order_by('hora_inicio'))
-    mod_tarde = list(Modulos.objects.filter(hora_inicio__hour__gte=12).order_by('hora_inicio'))
-
-    def _rango_turno(modulos):
-        if not modulos:
-            return None, None
-        return modulos[0].hora_inicio, modulos[-1].hora_fin
-
-    m_hi, m_hf = _rango_turno(mod_manana)
-    t_hi, t_hf = _rango_turno(mod_tarde)
+    mod_manana = list(
+        Modulos.objects.filter(hora_inicio__hour__lt=HORA_CORTE_TURNO).order_by('hora_inicio'),
+    )
+    mod_tarde = list(
+        Modulos.objects.filter(hora_inicio__hour__gte=HORA_CORTE_TURNO).order_by('hora_inicio'),
+    )
+    manana = rango_del_turno(mod_manana, 'manana')
+    tarde = rango_del_turno(mod_tarde, 'tarde')
 
     for ev in otros:
         if nuevo_alcance == 'manana':
@@ -4603,14 +4786,18 @@ def _verificar_solapamiento(nuevo_alcance, nueva_fecha, nueva_hora_inicio, nueva
                 continue
             if ev.alcance == 'todo_dia':
                 return 'Existe un evento de todo el día para esa fecha.'
-            if ev.alcance == 'manana' and m_hi and m_hf:
-                if nueva_hora_inicio < m_hf and nueva_hora_fin > m_hi:
-                    return 'La franja horaria se superpone con el turno mañana.'
-            if ev.alcance == 'tarde' and t_hi and t_hf:
-                if nueva_hora_inicio < t_hf and nueva_hora_fin > t_hi:
-                    return 'La franja horaria se superpone con el turno tarde.'
+            if ev.alcance == 'manana' and franjas_se_solapan(
+                nueva_hora_inicio, nueva_hora_fin, *manana,
+            ):
+                return 'La franja horaria se superpone con el turno mañana.'
+            if ev.alcance == 'tarde' and franjas_se_solapan(
+                nueva_hora_inicio, nueva_hora_fin, *tarde,
+            ):
+                return 'La franja horaria se superpone con el turno tarde.'
             if ev.alcance == 'franja' and ev.hora_inicio and ev.hora_fin:
-                if nueva_hora_inicio < ev.hora_fin and nueva_hora_fin > ev.hora_inicio:
+                if franjas_se_solapan(
+                    nueva_hora_inicio, nueva_hora_fin, ev.hora_inicio, ev.hora_fin,
+                ):
                     cubre = nueva_hora_inicio <= ev.hora_inicio and nueva_hora_fin >= ev.hora_fin
                     if not cubre:
                         return 'Ya existe un evento con franja horaria superpuesta.'
@@ -4648,12 +4835,26 @@ def _eventos_a_reemplazar(nuevo_alcance, nueva_fecha, nueva_hora_inicio, nueva_h
     if nuevo_permanente:
         query = Q(fecha__month=nueva_fecha.month, fecha__day=nueva_fecha.day, permanente=True)
     else:
-        query = Q(fecha=nueva_fecha, permanente=False)
+        # E4: también reemplaza el permanente que cae en esa fecha de otro año.
+        query = Q(fecha=nueva_fecha, permanente=False) | Q(
+            fecha__month=nueva_fecha.month,
+            fecha__day=nueva_fecha.day,
+            permanente=True,
+        )
 
     if exclude_id:
         query = query & ~Q(id_evento=exclude_id)
 
-    otros = EventoInstitucional.objects.filter(query)
+    otros = list(EventoInstitucional.objects.filter(query))
+    trasladados = set(
+        EventoInstitucional.objects.filter(
+            fecha__year=nueva_fecha.year, permanente=False,
+        ).values_list('tipo_evento', flat=True)
+    )
+    otros = [
+        ev for ev in otros
+        if not ev.permanente or ev.tipo_evento not in trasladados
+    ]
     ids_reemplazar = []
 
     for ev in otros:
@@ -4674,10 +4875,22 @@ class EventoInstitucionalViewSet(HistorialMixin, viewsets.ModelViewSet):
     historial_tabla = 'eventos_institucionales'
     historial_soft_delete = True
 
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        reemplazados = getattr(request, '_eventos_reemplazados', None)
+        if reemplazados and isinstance(response.data, dict):
+            response.data['eventos_reemplazados'] = reemplazados
+        return response
+
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
         usuario = Usuario.objects.filter(usuario=self.request.user.username).first()
         data = serializer.validated_data
+        if data.get('alcance', 'todo_dia') == 'franja':
+            hora_inicio = data.get('hora_inicio')
+            hora_fin = data.get('hora_fin')
+            if hora_inicio and hora_fin and hora_inicio >= hora_fin:
+                raise ValidationError({'hora_fin': 'La hora de fin debe ser posterior a la hora de inicio.'})
         err = _verificar_solapamiento(
             data.get('alcance', 'todo_dia'),
             data.get('fecha'),
@@ -4696,6 +4909,11 @@ class EventoInstitucionalViewSet(HistorialMixin, viewsets.ModelViewSet):
         )
         if ids_reemplazar:
             reemplazados = list(EventoInstitucional.objects.filter(id_evento__in=ids_reemplazar))
+            tipos = dict(EventoInstitucional.TIPO_EVENTO_CHOICES)
+            self.request._eventos_reemplazados = [
+                f'{tipos.get(ev.tipo_evento, ev.tipo_evento)} del {ev.fecha.strftime("%d/%m/%Y")}'
+                for ev in reemplazados
+            ]
             resumenes = [(ev.pk, resumen_registro(ev)) for ev in reemplazados]
             EventoInstitucional.objects.filter(id_evento__in=ids_reemplazar).update(
                 estado=False,
@@ -5174,7 +5392,7 @@ class PlanificacionViewSet(viewsets.ModelViewSet):
             )
             planificacion.estado = 'Verificado'
             planificacion.fecha_ultima_modificacion = ahora
-            verificado_por = f"{request.user.first_name} {request.user.last_name}".strip() or 'El directivo'
+            verificado_por = _nombre_actor_directivo(request)
             _notificar_planificacion_verificada(planificacion, verificado_por=verificado_por)
         return Response(PlanificacionSerializer(planificacion).data)
 
@@ -5383,12 +5601,9 @@ class LibroTemaViewSet(HistorialMixin, viewsets.ModelViewSet):
                     'activo': activo,
                 }
             else:
-                info = {
-                    'fecha': fecha_hoy,
-                    'hora_inicio': ahora.time().replace(second=0, microsecond=0),
-                    'hora_fin': (ahora + timedelta(minutes=20)).time().replace(second=0, microsecond=0),
-                    'activo': activo,
-                }
+                raise ValidationError({
+                    'detail': 'No hay bloques horarios cargados para esta fecha; no se puede inferir el horario de la clase.'
+                })
         else:
             info = self._validar_puede_cargar(cm_id)
 
@@ -5642,7 +5857,7 @@ class NotificacionViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         roles = set(get_roles_for_usuario(request.user.username) or [])
-        if 'preceptor' in roles:
+        if _es_preceptor_operativo(request, roles):
             cursos_permitidos = _preceptor_cursos_ids(request)
             if not cursos_permitidos:
                 raise PermissionDenied('No tenés cursos asignados para notificar.')
@@ -6489,6 +6704,16 @@ class MateriaAdeudadaViewSet(viewsets.ModelViewSet):
         periodo = request.data.get('periodo')
         anio = request.data.get('anio_rendicion') or timezone.now().year
         observaciones = request.data.get('observaciones', '')
+        try:
+            anio = int(anio)
+        except (TypeError, ValueError):
+            return Response({'error': 'El año de rendición es inválido.'}, status=status.HTTP_400_BAD_REQUEST)
+        anio_origen = ma.fecha_generacion.year if ma.fecha_generacion else anio
+        if anio < anio_origen or anio > timezone.now().year:
+            return Response(
+                {'error': f'El año de rendición debe estar entre {anio_origen} y {timezone.now().year}.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if nota is None or not periodo:
             return Response({'error': 'Nota y período son obligatorios.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -6512,30 +6737,16 @@ class MateriaAdeudadaViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Regla de secuencia: toda instancia anterior (dentro del ciclo) debe
-        # tener una rendición registrada antes de habilitar la actual.
-        rendidas = set(
-            RendicionMateriaAdeudada.objects.filter(id_materia_adeudada=ma)
-            .values_list('periodo', flat=True)
-        )
-        orden_actual = PERIODO_ORDEN[periodo]
-        for p, ord_p in PERIODO_ORDEN.items():
-            if ord_p < orden_actual and p not in rendidas:
-                return Response(
-                    {'error': f'Debe registrar primero la instancia {PERIODO_LABELS.get(p, p)}.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
         try:
             nota_num = float(str(nota).replace(',', '.'))
         except (TypeError, ValueError):
             return Response(
-                {'error': 'La nota debe ser un número entre 0 y 10.'},
+                {'error': 'La nota debe ser un número entre 1 y 10.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if not (0 <= nota_num <= 10):
+        if not (1 <= nota_num <= 10):
             return Response(
-                {'error': 'La nota debe estar entre 0 y 10.'},
+                {'error': 'La nota debe estar entre 1 y 10.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -6545,8 +6756,15 @@ class MateriaAdeudadaViewSet(viewsets.ModelViewSet):
                 {'error': 'El docente que toma la rendición es obligatorio.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        docente_autenticado = _docente_autenticado(request)
+        if docente_autenticado is None:
+            roles = get_roles_for_usuario(request.user.username)
+            if not ({'admin', 'director'} & set(roles)):
+                raise PermissionDenied('No hay un perfil de docente asociado al usuario.')
+        elif str(id_docente) != str(docente_autenticado.pk):
+            raise PermissionDenied('El docente de la rendición debe ser el usuario autenticado.')
 
-        resultado = 'APROBADA' if nota_num >= 7 else 'DESAPROBADA'
+        resultado = 'APROBADA' if nota_num >= NOTA_APROBACION else 'DESAPROBADA'
 
         rendicion = RendicionMateriaAdeudada.objects.create(
             id_materia_adeudada=ma,
@@ -6561,30 +6779,7 @@ class MateriaAdeudadaViewSet(viewsets.ModelViewSet):
             fecha_registro=timezone.now()
         )
 
-        RegistroRendicionPrevia.objects.create(
-            id_alumno=ma.id_alumno,
-            id_materia_adeudada=ma,
-            id_materia=ma.id_materia,
-            id_curso_origen=ma.id_curso_origen,
-            anio_rendicion=anio,
-            periodo=periodo,
-            nota=nota_num,
-            resultado=resultado,
-            id_docente_id=id_docente,
-            observaciones=observaciones,
-            fecha_rendicion=timezone.now()
-        )
-
         if resultado == 'APROBADA':
-            # Unica por (alumno, materia): al aprobar se eliminan las DE
-            # otros registros de la misma materia adeudada del alumno para
-            # evitar duplicados (se queda solo esta aprobada).
-            MateriaAdeudada.objects.filter(
-                id_alumno_id=ma.id_alumno_id,
-                id_materia_id=ma.id_materia_id,
-                id_curso_origen_id=ma.id_curso_origen_id,
-                estado='ADEUDADA',
-            ).exclude(pk=ma.pk).delete()
             ma.estado = 'APROBADA'
             ma.fecha_aprobacion = timezone.now()
             ma.save(update_fields=['estado', 'fecha_aprobacion'])
@@ -6915,6 +7110,28 @@ def _usuario_request(request):
     if not username:
         return None
     return Usuario.objects.filter(usuario=username).first()
+
+
+def _docente_autenticado(request):
+    usuario = _usuario_request(request)
+    if not usuario:
+        return None
+    return Docente.objects.filter(id_usuario=usuario).first()
+
+
+def _nombre_actor_directivo(request):
+    """Nombre real del admin/director para los avisos (R14).
+
+    El usuario de Django nunca tiene first_name/last_name cargados: la fuente
+    de verdad es el perfil `Directivo` vinculado al usuario del sistema.
+    """
+    usuario = _usuario_request(request)
+    if not usuario:
+        return 'El directivo'
+    directivo = Directivo.objects.filter(id_usuario=usuario).first()
+    if directivo:
+        return f'{directivo.apellido}, {directivo.nombre}'.strip(', ')
+    return usuario.usuario
 
 
 def _usuarios_con_rol(nombre_rol):
@@ -7881,9 +8098,32 @@ def cierre_ciclo_api_view(request):
     roles = get_roles_for_usuario(username)
     if 'admin' not in roles and 'director' not in roles:
         return Response({'error': 'Solo administradores o directores pueden ejecutar el cierre de ciclo.'}, status=status.HTTP_403_FORBIDDEN)
-    anio = request.data.get('anio_lectivo') or timezone.now().year
-    procesar_cierre_ciclo(int(anio))
-    return Response({'status': 'Cierre de ciclo ejecutado correctamente', 'anio': anio})
+    hoy = timezone.localdate()
+    anio_solicitado = request.data.get('anio_lectivo')
+    if anio_solicitado:
+        try:
+            anio_solicitado = int(anio_solicitado)
+        except (TypeError, ValueError):
+            return Response({'error': 'El año lectivo es inválido.'}, status=status.HTTP_400_BAD_REQUEST)
+        ciclo = CicloLectivo.objects.filter(anio=anio_solicitado).first()
+        if not ciclo:
+            return Response({'error': 'El ciclo lectivo indicado no existe.'}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        ciclo = (
+            CicloLectivo.objects.filter(fecha_fin__lte=hoy).order_by('-anio').first()
+            or CicloLectivo.objects.filter(anio__lt=hoy.year).order_by('-anio').first()
+        )
+        if not ciclo:
+            return Response({'error': 'No hay un ciclo lectivo finalizado para cerrar.'}, status=status.HTTP_400_BAD_REQUEST)
+    if ciclo.fecha_fin and ciclo.fecha_fin > hoy:
+        return Response({'error': 'El ciclo lectivo todavía no finalizó.'}, status=status.HTTP_400_BAD_REQUEST)
+    resultado = procesar_cierre_ciclo(ciclo.anio)
+    return Response({
+        'status': 'Cierre de ciclo ejecutado correctamente',
+        'anio': ciclo.anio,
+        'procesados': resultado['procesados'],
+        'omitidos': resultado['omitidos'],
+    })
 
 
 @api_view(['GET'])
@@ -7915,7 +8155,7 @@ def boletin_academico_api_view(request, alumno_id):
         )
         ints_qs = IntensificacionAcademica.objects.filter(
             id_historial__in=historiales_curso,
-        ).select_related('id_historial__id_materia')
+        ).select_related('id_historial__id_materia').order_by('fecha_registro', 'id_intensificacion')
 
         # Bucket por materia → { 1c: nota, diciembre: nota, febrero: nota }
         buckets = {}
@@ -8003,9 +8243,13 @@ def boletin_academico_api_view(request, alumno_id):
     for p in MateriaAdeudada.objects.filter(
         id_alumno=alumno, tipo_deuda='PREVIA',
     ).select_related('id_materia', 'id_curso_origen'):
-        regs = RegistroRendicionPrevia.objects.filter(
+        regs = RendicionMateriaAdeudada.objects.filter(
             id_materia_adeudada=p,
         ).order_by('anio_rendicion', 'periodo')
+        if not regs.exists():
+            regs = RegistroRendicionPrevia.objects.filter(
+                id_materia_adeudada=p,
+            ).order_by('anio_rendicion', 'periodo')
         rendiciones = {}
         for r in regs:
             peri_label = PERIODO_LABEL.get(r.periodo, r.periodo)

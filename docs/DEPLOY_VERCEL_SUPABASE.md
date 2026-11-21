@@ -31,6 +31,7 @@
 - `backend/requirements.txt`: se agregó `psycopg2-binary`.
 - `frontend/vercel.json`: rewrites para el base path `/misecundaria7/`.
 - `backend/vercel.json` y `backend/.vercelignore`.
+- `backend/proyecto/settings.py`: `MIGRATION_MODULES = {'escuela': None}`. Los modelos son `managed=False` y el esquema se controla con `schema.py` / `manage.py verificar_esquema` (ahora compatible con Postgres); `makemigrations --check --dry-run` ya no propone un `initial` falso. Las migraciones 0001–0012 quedan como registro histórico, no se ejecutan automáticamente..
 
 ## Pendientes / al pendiente
 

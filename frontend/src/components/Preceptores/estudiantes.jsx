@@ -4,12 +4,13 @@ import { useData } from '../../context/DataContext';
 import { createEstudiante, updateEstudiante, deleteEstudiante } from '../../services/api';
 import EmptyFiltros from './EmptyFiltros';
 import FormModal from '../../components/Shared/FormModal';
+import ModalProgramarEstado from '../../components/Shared/ModalProgramarEstado';
 import AccionesLeyenda from '../../components/Shared/AccionesLeyenda';
 import { estudiantesPorAnioYCurso, cursosPorAnio, filtrosCompletos, aListaCursos } from './preceptorUtils';
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import { useToast } from '../../context/ToastContext';
 import { mensajeErrorAmigable } from '../../utils/errores';
-import { aInputDateTime as toInputDateTime, errorProgramacion } from '../../utils/programacionEstado';
+import { aInputDateTime as toInputDateTime } from '../../utils/programacionEstado';
 import NumericInput from '../Shared/NumericInput';
 
 const formVacio = {
@@ -82,7 +83,6 @@ function Estudiantes({ readOnly = false, preceptorCursos = [], anioLectivo: anio
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [programando, setProgramando] = useState(null);
-  const [progForm, setProgForm] = useState({ fecha_deshabilitacion_programada: '', fecha_habilitacion_programada: '' });
 
   const esControlado =
     anioGlobal !== undefined &&
@@ -224,7 +224,7 @@ function Estudiantes({ readOnly = false, preceptorCursos = [], anioLectivo: anio
   };
 
   const eliminarEstudiante = async (estudiante) => {
-    await confirmarEliminacion('¿Estás seguro de que querés eliminar este estudiante?\n\nEsta acción no se puede deshacer.', {
+    await confirmarEliminacion('¿Estás seguro de que querés eliminar este estudiante?\n\nEl registro se dará de baja y no aparecerá más en los listados.', {
       onConfirm: async () => {
         setGuardando(true);
         setMensaje('');
@@ -247,6 +247,10 @@ function Estudiantes({ readOnly = false, preceptorCursos = [], anioLectivo: anio
     try {
       await updateEstudiante(estudiante.id, {
         estado: !(estudiante.usuario_estado !== false),
+        // R3: al cambiar el estado a mano se limpian las programaciones
+        // pendientes, que dejarían de ser coherentes con el nuevo estado.
+        fecha_deshabilitacion_programada: null,
+        fecha_habilitacion_programada: null,
       });
       toast.success(estudiante.usuario_estado !== false ? 'Estudiante deshabilitado correctamente.' : 'Estudiante habilitado correctamente.');
       await refreshData();
@@ -259,10 +263,6 @@ function Estudiantes({ readOnly = false, preceptorCursos = [], anioLectivo: anio
 
   const abrirProgramar = (estudiante) => {
     setProgramando(estudiante.id);
-    setProgForm({
-      fecha_deshabilitacion_programada: toInputDateTime(estudiante.usuario_fecha_deshabilitacion_programada),
-      fecha_habilitacion_programada: toInputDateTime(estudiante.usuario_fecha_habilitacion_programada),
-    });
   };
 
   const cerrarProgramar = () => {
@@ -270,30 +270,12 @@ function Estudiantes({ readOnly = false, preceptorCursos = [], anioLectivo: anio
     setMensaje('');
   };
 
-  const guardarProgramar = async () => {
+  const guardarProgramar = async (fechas) => {
     if (!programando) return;
-    const deshab = progForm.fecha_deshabilitacion_programada;
-    const hab = progForm.fecha_habilitacion_programada;
-    // 5.9 — la validación depende del estado actual de la cuenta: la primera
-    // acción agendada tiene que ser la opuesta a ese estado. Antes se exigía
-    // siempre "habilitación antes que deshabilitación", lo que impedía agendar
-    // la re-habilitación posterior a una deshabilitación ya programada.
-    const errorFecha = errorProgramacion({
-      estadoInicial: estadoProgramando?.usuario_estado,
-      deshabilitacion: deshab,
-      habilitacion: hab,
-    });
-    if (errorFecha) {
-      toast.warning(errorFecha);
-      return;
-    }
     setGuardando(true);
     setMensaje('');
     try {
-      await updateEstudiante(programando, {
-        fecha_deshabilitacion_programada: deshab || null,
-        fecha_habilitacion_programada: hab || null,
-      });
+      await updateEstudiante(programando, fechas);
       toast.success('Fechas actualizadas correctamente.');
       setProgramando(null);
       await refreshData();
@@ -306,7 +288,7 @@ function Estudiantes({ readOnly = false, preceptorCursos = [], anioLectivo: anio
 
   const limpiarProgramar = async () => {
     if (!programando) return;
-    await confirmarEliminacion('¿Desea eliminar todas las fechas programadas para este usuario?\n\nEsta acción no se puede deshacer.', {
+    await confirmarEliminacion('¿Querés quitar las fechas programadas de este usuario?', {
       onConfirm: async () => {
         setGuardando(true);
         setMensaje('');
@@ -631,49 +613,24 @@ function Estudiantes({ readOnly = false, preceptorCursos = [], anioLectivo: anio
                     </td>
                   )}
                 </tr>,
-                !readOnly && programando === a.id && (
-                  <tr key={a.id + '-prog'}>
-                    <td colSpan={6} style={{ padding: 0 }}>
-                      <div className="inline-form-container">
-                        <div className="preceptor-form-row preceptor-form-row--two">
-                          <div className="form-group-filter">
-                            <label>Fecha deshabilitación programada</label>
-                            <input
-                              type="datetime-local"
-                              value={progForm.fecha_deshabilitacion_programada}
-                              onChange={(e) => setProgForm((p) => ({ ...p, fecha_deshabilitacion_programada: e.target.value }))}
-                            />
-                          </div>
-                          <div className="form-group-filter">
-                            <label>Fecha habilitación programada</label>
-                            <input
-                              type="datetime-local"
-                              value={progForm.fecha_habilitacion_programada}
-                              onChange={(e) => setProgForm((p) => ({ ...p, fecha_habilitacion_programada: e.target.value }))}
-                            />
-                          </div>
-                        </div>
-                        <div className="flex-row flex-gap-16 mt-16">
-                          <button type="button" className="btn btn-primary" onClick={guardarProgramar} disabled={guardando}>
-                            {guardando ? 'Guardando...' : 'Guardar'}
-                          </button>
-                          <button type="button" className="btn btn-danger" onClick={limpiarProgramar} disabled={guardando}>
-                            Limpiar
-                          </button>
-                          <button type="button" className="btn btn-secondary" onClick={cerrarProgramar}>
-                            Cancelar
-                          </button>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                ),
+
               ];
             })
           )}
         </tbody>
       </table>
     </div>
+      <ModalProgramarEstado
+        abierto={programando !== null}
+        persona={estadoProgramando}
+        estadoActual={estadoProgramando?.usuario_estado}
+        fechaDeshabilitacion={estadoProgramando?.usuario_fecha_deshabilitacion_programada}
+        fechaHabilitacion={estadoProgramando?.usuario_fecha_habilitacion_programada}
+        guardando={guardando}
+        onCerrar={cerrarProgramar}
+        onGuardar={guardarProgramar}
+        onCancelarProgramacion={limpiarProgramar}
+      />
     </>
   );
 

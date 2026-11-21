@@ -372,6 +372,8 @@
 | `diciembre` | numeric(4,2) | si |  |  |
 | `febrero` | numeric(4,2) | si |  |  |
 | `calificacion_final` | numeric(4,2) | si |  |  |
+| `estado` | boolean | no | true | agregada en C5 |
+| `fecha_eliminacion` | timestamp | si |  | agregada en C5 |
 
 ### cargas_unicas
 
@@ -644,6 +646,8 @@
 | `dia_semana` | varchar(20) | si |  |  |
 | `aula` | varchar(50) | si |  |  |
 | `id_modulo` | integer | si |  | FK->modulos(id_modulo) |
+| `estado` | boolean | no | true | agregada en C5 |
+| `fecha_eliminacion` | timestamp | si |  | agregada en C5 |
 
 ### horarios_especiales
 
@@ -655,6 +659,8 @@
 | `hora_inicio` | time | no |  |  |
 | `hora_fin` | time | no |  |  |
 | `aula` | varchar(50) | si |  |  |
+| `estado` | boolean | no | true | agregada en C5 |
+| `fecha_eliminacion` | timestamp | si |  | agregada en C5 |
 
 ### inclusion_educativa
 

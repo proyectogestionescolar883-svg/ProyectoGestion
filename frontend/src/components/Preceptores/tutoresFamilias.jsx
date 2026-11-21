@@ -5,13 +5,14 @@ import { createPadreTutor, updatePadreTutor, deletePadreTutor, getUsuariosConRol
 import FormModal from '../../components/Shared/FormModal';
 import AgregarRolModal from '../../components/Shared/AgregarRolModal';
 import QuitarRolModal from '../../components/Shared/QuitarRolModal';
+import ModalProgramarEstado from '../../components/Shared/ModalProgramarEstado';
 import TutoresEstudiantesEditor from '../../components/Shared/TutoresEstudiantesEditor';
 import AccionesLeyenda from '../../components/Shared/AccionesLeyenda';
 import { aListaCursos, cursosPorAnio, estudiantesPorAnioYCurso, filtrosCompletos, tutoresPorAnioYCurso } from './preceptorUtils';
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import { useToast } from '../../context/ToastContext';
 import { mensajeErrorAmigable } from '../../utils/errores';
-import { aInputDateTime as toInputDateTime, errorProgramacion } from '../../utils/programacionEstado';
+import { aInputDateTime as toInputDateTime } from '../../utils/programacionEstado';
 import NumericInput from '../Shared/NumericInput';
 
 const TIPOS_TUTOR = ['Padre', 'Madre', 'Tutor'];
@@ -93,7 +94,6 @@ function TutoresFamilias({
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [programando, setProgramando] = useState(null);
-  const [progForm, setProgForm] = useState({ fecha_deshabilitacion_programada: '', fecha_habilitacion_programada: '' });
   const [anioEstudiante, setAnioEstudiante] = useState('');
   const [cursoEstudiante, setCursoEstudiante] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -268,7 +268,7 @@ function TutoresFamilias({
   };
 
   const eliminarTutor = async (t) => {
-    await confirmarEliminacion('¿Estás seguro de que querés eliminar este tutor?\n\nEsta acción no se puede deshacer.', {
+    await confirmarEliminacion('¿Estás seguro de que querés eliminar este tutor?\n\nEl registro se dará de baja y no aparecerá más en los listados.', {
       onConfirm: async () => {
         setGuardando(true);
         setMensaje('');
@@ -351,6 +351,10 @@ function TutoresFamilias({
     try {
       await updatePadreTutor(t.id_tutor, {
         estado: !(t.usuario_estado !== false),
+        // R3: al cambiar el estado a mano se limpian las programaciones
+        // pendientes, que dejarían de ser coherentes con el nuevo estado.
+        fecha_deshabilitacion_programada: null,
+        fecha_habilitacion_programada: null,
       });
       toast.success(t.usuario_estado !== false ? 'Tutor deshabilitado correctamente.' : 'Tutor habilitado correctamente.');
       await refreshData();
@@ -363,10 +367,6 @@ function TutoresFamilias({
 
   const abrirProgramar = (t) => {
     setProgramando(t.id_tutor);
-    setProgForm({
-      fecha_deshabilitacion_programada: toInputDateTime(t.usuario_fecha_deshabilitacion_programada),
-      fecha_habilitacion_programada: toInputDateTime(t.usuario_fecha_habilitacion_programada),
-    });
   };
 
   const cerrarProgramar = () => {
@@ -374,30 +374,12 @@ function TutoresFamilias({
     setMensaje('');
   };
 
-  const guardarProgramar = async () => {
+  const guardarProgramar = async (fechas) => {
     if (!programando) return;
-    const deshab = progForm.fecha_deshabilitacion_programada;
-    const hab = progForm.fecha_habilitacion_programada;
-    // 5.9 — la validación depende del estado actual de la cuenta: la primera
-    // acción agendada tiene que ser la opuesta a ese estado. Antes se exigía
-    // siempre "habilitación antes que deshabilitación", lo que impedía agendar
-    // la deshabilitación posterior a una habilitación ya programada.
-    const errorFecha = errorProgramacion({
-      estadoInicial: estadoProgramando?.usuario_estado,
-      deshabilitacion: deshab,
-      habilitacion: hab,
-    });
-    if (errorFecha) {
-      toast.warning(errorFecha);
-      return;
-    }
     setGuardando(true);
     setMensaje('');
     try {
-      await updatePadreTutor(programando, {
-        fecha_deshabilitacion_programada: deshab || null,
-        fecha_habilitacion_programada: hab || null,
-      });
+      await updatePadreTutor(programando, fechas);
       toast.success('Fechas actualizadas correctamente.');
       setProgramando(null);
       await refreshData();
@@ -410,7 +392,7 @@ function TutoresFamilias({
 
   const limpiarProgramar = async () => {
     if (!programando) return;
-    await confirmarEliminacion('¿Desea eliminar todas las fechas programadas para este usuario?\n\nEsta acción no se puede deshacer.', {
+    await confirmarEliminacion('¿Querés quitar las fechas programadas de este usuario?', {
       onConfirm: async () => {
         setGuardando(true);
         setMensaje('');
@@ -530,49 +512,24 @@ function TutoresFamilias({
                     </td>
                   )}
                 </tr>,
-                !readOnly && programando === t.id_tutor && (
-                  <tr key={t.id_tutor + '-prog'}>
-                    <td colSpan={9} style={{ padding: 0 }}>
-                      <div className="inline-form-container">
-                        <div className="preceptor-form-row preceptor-form-row--two">
-                          <div className="form-group-filter">
-                            <label>Fecha deshabilitación programada</label>
-                            <input
-                              type="datetime-local"
-                              value={progForm.fecha_deshabilitacion_programada}
-                              onChange={(e) => setProgForm((p) => ({ ...p, fecha_deshabilitacion_programada: e.target.value }))}
-                            />
-                          </div>
-                          <div className="form-group-filter">
-                            <label>Fecha habilitación programada</label>
-                            <input
-                              type="datetime-local"
-                              value={progForm.fecha_habilitacion_programada}
-                              onChange={(e) => setProgForm((p) => ({ ...p, fecha_habilitacion_programada: e.target.value }))}
-                            />
-                          </div>
-                        </div>
-                        <div className="flex-row flex-gap-16 mt-16">
-                          <button type="button" className="btn btn-primary" onClick={guardarProgramar} disabled={guardando}>
-                            {guardando ? 'Guardando...' : 'Guardar'}
-                          </button>
-                          <button type="button" className="btn btn-danger" onClick={limpiarProgramar} disabled={guardando}>
-                            Limpiar
-                          </button>
-                          <button type="button" className="btn btn-secondary" onClick={cerrarProgramar}>
-                            Cancelar
-                          </button>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                ),
+
               ];
             })
           )}
         </tbody>
       </table>
     </div>
+      <ModalProgramarEstado
+        abierto={programando !== null}
+        persona={estadoProgramando}
+        estadoActual={estadoProgramando?.usuario_estado}
+        fechaDeshabilitacion={estadoProgramando?.usuario_fecha_deshabilitacion_programada}
+        fechaHabilitacion={estadoProgramando?.usuario_fecha_habilitacion_programada}
+        guardando={guardando}
+        onCerrar={cerrarProgramar}
+        onGuardar={guardarProgramar}
+        onCancelarProgramacion={limpiarProgramar}
+      />
     </>
   );
 

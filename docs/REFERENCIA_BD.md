@@ -1770,3 +1770,96 @@ asignado a N horario(s)". Agregar `estado`/`fecha_eliminacion` a `modulos`,
 Las tablas de historial guardan el **año como entero**, no como FK a
 `ciclos_lectivos`. Por eso desactivar un ciclo lectivo **no rompe el historial** y
 no hace falta reasignar nada.
+
+---
+
+## Alineación con el esquema real (auditoría D1–D6, D9, D11)
+
+Las secciones anteriores describen el modelo en el momento en que se escribieron.
+La referencia operativa es el volcado de las **80 tablas** de PostgreSQL
+(Supabase) en [`ESTRUCTURA_BASE_DE_DATOS.md`](../ESTRUCTURA_BASE_DE_DATOS.md),
+generado el 2026-11-16. Los modelos de `escuela` son `managed = False`: `migrate`
+no crea ni altera tablas; los cambios físicos se declaran en
+`backend/proyecto/escuela/schema.py`.
+
+### D1 — Motor y collation
+
+El documento de especificación y el README hablaban de **MariaDB**, pero el
+volcado de origen era **MySQL 9.7** con collation `utf8mb4_0900_ai_ci`, que
+MariaDB no soporta en las versiones habituales. Hoy la producción corre
+**PostgreSQL (Supabase)**; los comentarios "MySQL"/"MariaDB" que quedan en
+`schema.py` son históricos. El comando `verificar_esquema` usa `DATABASE()` y por
+eso falla en Postgres (ver `HALLAZGOS_NUEVOS.md` §2): no se usa para validar el
+esquema de producción.
+
+### D2 — `historial_academico`
+
+Tabla central del cierre de ciclo y del RITE que no figuraba en el documento de
+56 tablas. Columnas reales en `ESTRUCTURA_BASE_DE_DATOS.md#historial_academico`:
+`id_historial`, `id_alumno`, `id_curso_materia`, `id_curso`, `id_materia`,
+`anio_lectivo`, `nota_1_cuatrimestre`, `nota_2_cuatrimestre`, `nota_final`,
+`estado_materia` (texto, default `no_cursada`), `periodo_aprobacion`,
+`anio_aprobacion`, `es_recursada`, `estado`, `fecha_eliminacion`. Guarda el año
+como entero, no como FK a `ciclos_lectivos`.
+
+### D3 — Tablas sin modelo, pantalla ni documentación
+
+Estas 13 tablas existen en la base y están documentadas solo en el volcado real;
+**no tienen modelo Django, endpoint ni pantalla**. La carpeta
+`frontend/src/components/Orientacion/` solo contiene un subdirectorio `Shared/`
+vacío:
+
+`actas_documentacion`, `agenda_orientacion`, `derivaciones`,
+`inclusion_educativa`, `informes_distritales`, `informes_orientacion`,
+`mediaciones_acuerdos`, `proyectos_pii`, `red_institucional`,
+`seguimiento_eoe`, `seguimiento_social`, `situacion_estudiante`,
+`situaciones_conflicto`.
+
+Darles alta funcional sería un proyecto nuevo, no una corrección de este plan.
+
+### D4 — Nulabilidad real
+
+El documento declaraba `NOT NULL` columnas que en la base aceptan `NULL`:
+
+| Tabla | Columnas |
+|---|---|
+| `horarios` | `dia_semana`, `id_modulo` |
+| `cursos` | `id_preceptor`, `id_ciclo` |
+| `ciclos_lectivos` | `fecha_inicio`, `fecha_fin` (y `estado`, opcional con default `true`) |
+| `alumnos` | `fecha_nacimiento`, `direccion`, `telefono`, `procedencia` |
+| `docentes` | `id_usuario`, `correo`, `telefono` |
+| `periodos_evaluacion` | `nombre_periodo`, `orden_periodo` |
+
+Cualquier validación nueva debe respetar estos nulos: no se puede asumir que
+siempre llegan.
+
+### D5 — Columnas y valores ausentes del documento
+
+- `ddjj_docente.verificada`: `boolean NOT NULL DEFAULT false`.
+- `notificaciones.rol`: `varchar(32) NULL`.
+- `eventos_institucionales.alcance = 'sin_bloqueo'`: anula cualquier bloqueo de
+  horario (ver `models.py:922` y `views.py:441`, `456`, `557`).
+- `planificaciones.estado = 'Verificado'`: valor admitido además del default
+  `Borrador`.
+
+### D6 — Columnas de `calificaciones` que nadie llena
+
+`intensificacion_1c`, `diciembre`, `febrero` y `calificacion_final` son
+`numeric(4,2) NULL`, no están mapeadas en el modelo Django y ningún flujo las
+carga: duplican lo que ya hacen `intensificaciones_academicas` e
+`historial_academico`. Se documentan para evitar que se vuelvan a usar por
+error. Tras la corrección C5 la tabla también tiene `estado` (boolean, default
+`true`) y `fecha_eliminacion` (timestamp, nullable).
+
+### D9 — FK engañosa en `bloqueos_materias_recursadas`
+
+`id_materia_recursada` apunta a **`materias_adeudadas(id_materia_adeudada)`**, no
+a `recursadas_materias` como sugiere su nombre. El nombre no se cambia (sería un
+cambio rompiente para la API); se documenta aquí.
+
+### D11 — Collation distinta
+
+En el volcado MySQL histórico, `eventos_institucionales` usa
+`utf8mb4_unicode_ci` mientras el resto usa `utf8mb4_0900_ai_ci`. En PostgreSQL
+no hay collation por tabla equivalente en este esquema: el dato ya migró y no
+requiere acción, solo constancia para quien compare ambos volcados.

@@ -184,6 +184,7 @@ function FormAdelanto({ formData, setFormData, editing, guardando, onSubmit, onC
             <input
               id="adh-fecha"
               type="date"
+              min={hoy()}
               value={formData.fecha_adelanto || ''}
               onChange={(e) => setFormData((p) => ({ ...p, fecha_adelanto: e.target.value }))}
               onBlur={(e) => {

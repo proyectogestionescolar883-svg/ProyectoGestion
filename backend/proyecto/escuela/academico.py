@@ -4,10 +4,32 @@ from django.db import transaction
 from escuela.models import (
     Alumno, Curso, Materia, CursoMateria, Calificacion, PeriodoEvaluacion,
     HistorialAcademico, MateriaAdeudada, HistorialCursoAlumno, PromocionAlumno,
+    IntensificacionAcademica,
     RecursadaMateria, BloqueoHorarioAlumno, RegistroRendicionPrevia,
-    RendicionMateriaAdeudada, SituacionMateriaAlumno, Horario, HorariosEspeciales
+    RendicionMateriaAdeudada, SituacionMateriaAlumno, Horario, HorariosEspeciales,
+    NOTA_APROBACION,
 )
 from escuela.notifications import notificar_alumno
+
+
+def estado_por_cuatrimestres(nota1, nota2):
+    """Regla ÚNICA de aprobación por cuatrimestres, compartida con las
+    intensificaciones (`_intensif_habilitada` en views.py): una materia se
+    aprueba sólo si AMBOS cuatrimestres tienen nota y alcanzan
+    `NOTA_APROBACION`. Con un solo cuatrimestre cargado NO se aprueba (no se
+    promedia una sola nota). Devuelve `(estado_materia, periodo_aprobacion)`.
+
+    Antes el cierre aprobaba por promedio de las notas disponibles, lo que
+    contradecía la habilitación de intensificaciones (Diciembre se habilita si
+    el 2.º cuatrimestre es < NOTA_APROBACION) y aprobaba materias con una sola
+    nota cargada."""
+    if nota1 is None and nota2 is None:
+        return 'no_cursada', None
+    if nota1 is None or nota2 is None:
+        return 'adeudada', None
+    if nota1 >= NOTA_APROBACION and nota2 >= NOTA_APROBACION:
+        return 'aprobada', 'cuatrimestre'
+    return 'adeudada', None
 
 
 def consolidar_historial_alumno(alumno, anio_lectivo):
@@ -37,14 +59,17 @@ def consolidar_historial_alumno(alumno, anio_lectivo):
         notas_validos = [n for n in [nota1, nota2] if n is not None]
         nota_final = sum(notas_validos) / len(notas_validos) if notas_validos else None
 
-        estado_materia = 'no_cursada'
-        periodo_aprob = None
-        if nota_final is not None:
-            if nota_final >= 7:
-                estado_materia = 'aprobada'
-                periodo_aprob = 'cuatrimestre'
-            else:
-                estado_materia = 'adeudada'
+        estado_materia, periodo_aprob = estado_por_cuatrimestres(nota1, nota2)
+        intensificacion_aprobada = IntensificacionAcademica.objects.filter(
+            id_historial__id_alumno=alumno,
+            id_historial__id_materia=cm.id_materia,
+            id_historial__anio_lectivo=anio_lectivo,
+            estado='APROBADA',
+        ).exists()
+        if intensificacion_aprobada:
+            estado_materia = 'intensificacion'
+            periodo_aprob = 'intensificacion'
+            nota_final = None
 
         HistorialAcademico.objects.update_or_create(
             id_alumno=alumno,
@@ -112,18 +137,57 @@ def _notificar_consolidacion(alumno, cm, estado_materia):
 def procesar_cierre_ciclo(anio_lectivo):
     """Procesa el cierre de ciclo lectivo para todos los alumnos activos."""
     alumnos = Alumno.objects.filter(estado=True).select_related('id_curso')
+    procesados = 0
+    omitidos = []
     for alumno in alumnos:
         if not alumno.id_curso:
+            omitidos.append({
+                'id_alumno': alumno.id_alumno,
+                'nombre': f'{alumno.apellido}, {alumno.nombre}',
+            })
             continue
         consolidar_historial_alumno(alumno, anio_lectivo)
+        procesados += 1
 
-        HistorialCursoAlumno.objects.update_or_create(
+        historial_curso, _ = HistorialCursoAlumno.objects.update_or_create(
             id_alumno=alumno,
             anio_lectivo=anio_lectivo,
             defaults={
                 'id_curso': alumno.id_curso,
                 'estado': 'FINALIZADO',
                 'fecha_finalizacion': timezone.now().date()
+            }
+        )
+
+        materias_curso = list(CursoMateria.objects.filter(id_curso=alumno.id_curso, activo=True))
+        historiales_anio = {
+            h.id_curso_materia_id: h.estado_materia
+            for h in HistorialAcademico.objects.filter(
+                id_alumno=alumno, anio_lectivo=anio_lectivo,
+                id_curso_materia__in=[cm.pk for cm in materias_curso],
+            )
+        }
+        todas_aprobadas = bool(materias_curso) and all(
+            historiales_anio.get(cm.pk) in ('aprobada', 'intensificacion')
+            for cm in materias_curso
+        )
+        curso_destino = Curso.objects.filter(
+            id_ciclo__anio=anio_lectivo + 1,
+            nombre_curso=alumno.id_curso.nombre_curso,
+            orientacion=alumno.id_curso.orientacion,
+        ).first() or Curso.objects.filter(
+            id_ciclo__anio=anio_lectivo + 1,
+            nombre_curso=alumno.id_curso.nombre_curso,
+        ).first()
+        PromocionAlumno.objects.update_or_create(
+            id_alumno=alumno,
+            id_historial_curso=historial_curso,
+            anio_lectivo=anio_lectivo,
+            defaults={
+                'resultado': 'PROMOVIDO' if todas_aprobadas else 'REPITENTE',
+                'curso_origen': alumno.id_curso,
+                'curso_destino': curso_destino,
+                'fecha_resolucion': timezone.now(),
             }
         )
 
@@ -136,11 +200,19 @@ def procesar_cierre_ciclo(anio_lectivo):
             for ex in excedentes:
                 ex.tipo_deuda = 'RECURSADA'
                 ex.save(update_fields=['tipo_deuda'])
+                curso_recursada = Curso.objects.filter(
+                    id_ciclo__anio=anio_lectivo + 1,
+                    nombre_curso=ex.id_curso_origen.nombre_curso,
+                    orientacion=ex.id_curso_origen.orientacion,
+                ).first() or Curso.objects.filter(
+                    id_ciclo__anio=anio_lectivo + 1,
+                    nombre_curso=ex.id_curso_origen.nombre_curso,
+                ).first() or ex.id_curso_origen
                 RecursadaMateria.objects.get_or_create(
                     id_alumno=alumno,
                     id_materia=ex.id_materia,
                     id_curso_origen=ex.id_curso_origen,
-                    id_curso_recursada=ex.id_curso_origen,
+                    id_curso_recursada=curso_recursada,
                     anio_inicio=anio_lectivo,
                     defaults={
                         'estado': 'ACTIVA',
@@ -148,6 +220,8 @@ def procesar_cierre_ciclo(anio_lectivo):
                         'fecha_registro': timezone.now()
                     }
                 )
+
+    return {'procesados': procesados, 'omitidos': omitidos}
 
 
 def detectar_superposiciones_y_bloqueos(alumno, anio_lectivo):
