@@ -1,6 +1,9 @@
 import os
 from datetime import datetime, time, timedelta
+from io import BytesIO
 from django.contrib.auth import authenticate
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.db import models, transaction
 from django.db.models import Q
 from django.http import FileResponse
@@ -38,6 +41,7 @@ from escuela.notifications import (
     notificar_estado_cuenta,
     segmento_de_rol_activo,
 )
+from escuela.storage import media_url, normalizar_ruta
 from escuela.permissions import (
     IsAdminOrDirectorForWrite,
     PuedeGestionarCurso,
@@ -5249,11 +5253,9 @@ class PlanificacionViewSet(viewsets.ModelViewSet):
         safe_curso = re.sub(r'[\\/*?:"<>|]', '', (curso_nombre or '')).replace(' ', '_')
         filename = f'Proyecto_{safe_materia}_{safe_curso}_{anio}.pdf'
 
-        dest_dir = os.path.join(settings.MEDIA_ROOT, 'planificaciones')
-        os.makedirs(dest_dir, exist_ok=True)
-        filepath = os.path.join(dest_dir, filename)
+        buffer = BytesIO()
 
-        doc = SimpleDocTemplate(filepath, pagesize=A4,
+        doc = SimpleDocTemplate(buffer, pagesize=A4,
                                 topMargin=2.5 * cm, bottomMargin=2 * cm,
                                 leftMargin=2.5 * cm, rightMargin=2.5 * cm)
 
@@ -5296,7 +5298,11 @@ class PlanificacionViewSet(viewsets.ModelViewSet):
             elements.append(Paragraph(fundamentacion.replace('\n', '<br/>'), cuerpo_style))
 
         doc.build(elements)
-        return f'{settings.MEDIA_URL}planificaciones/{filename}'
+        ruta = default_storage.save(
+            f'planificaciones/{filename}',
+            ContentFile(buffer.getvalue(), name=filename),
+        )
+        return media_url(ruta, 3600)
 
     def create(self, request, *args, **kwargs):
         mutable = request.data.copy()
@@ -5362,13 +5368,7 @@ class PlanificacionViewSet(viewsets.ModelViewSet):
 
         # Remove old PDF file if it exists
         if planificacion.ruta_archivo:
-            rel_path = planificacion.ruta_archivo.replace(settings.MEDIA_URL, '', 1) if planificacion.ruta_archivo.startswith(settings.MEDIA_URL) else planificacion.ruta_archivo
-            old_path = os.path.join(settings.MEDIA_ROOT, rel_path)
-            if os.path.exists(old_path):
-                try:
-                    os.remove(old_path)
-                except OSError:
-                    pass
+            default_storage.delete(normalizar_ruta(planificacion.ruta_archivo))
 
         pdf_url = self._generar_pdf(
             planificacion,
@@ -6376,33 +6376,16 @@ def supervision_preceptores(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def upload_file(request):
-    import os
     from pathlib import PurePath
-    from django.conf import settings
 
     archivo = request.FILES.get('archivo')
     if not archivo:
         return Response({'error': 'No se envió ningún archivo.'}, status=400)
 
     carpeta = PurePath(request.data.get('carpeta') or 'general').name or 'general'
-    dest_dir = os.path.join(settings.MEDIA_ROOT, carpeta)
-    os.makedirs(dest_dir, exist_ok=True)
-
     nombre = PurePath(archivo.name).name
-    ruta = os.path.join(dest_dir, nombre)
-    counter = 1
-    base, ext = os.path.splitext(nombre)
-    while os.path.exists(ruta):
-        nombre = f'{base}_{counter}{ext}'
-        ruta = os.path.join(dest_dir, nombre)
-        counter += 1
-
-    with open(ruta, 'wb+') as f:
-        for chunk in archivo.chunks():
-            f.write(chunk)
-
-    url = f'{settings.MEDIA_URL}{carpeta}/{nombre}'
-    return Response({'url': url, 'nombre': nombre})
+    ruta = default_storage.save(f'{carpeta}/{nombre}', archivo)
+    return Response({'url': media_url(ruta, 3600), 'nombre': PurePath(ruta).name})
 
 
 class HistorialAcademicoViewSet(viewsets.ModelViewSet):

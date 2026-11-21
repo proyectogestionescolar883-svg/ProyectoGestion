@@ -42,8 +42,12 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
     cursosObj, cursoMateria, estadosAsistencia,
     refreshData,
     eventosInstitucionales,
+    ensureData,
   } = useData();
   const { user } = useAuth();
+  useEffect(() => {
+    ensureData(['inscripciones', 'eventosInstitucionales']);
+  }, [ensureData]);
   const toast = useToast();
 
   const [tab, setTab] = useState('dia');

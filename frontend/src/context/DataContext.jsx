@@ -76,6 +76,49 @@ function nombreCorto(estudiante) {
   return `${estudiante.nombre} ${estudiante.apellido}`;
 }
 
+function construirInscripciones(raw, cursoMateria, cursosObj) {
+  return (Array.isArray(raw) ? raw : []).map((i) => {
+    const cm = cursoMateria.find((c) => c.id === i.id_curso_materia);
+    const cursoObj = cm ? cursosObj.find((c) => c.id_curso === cm.id_curso) : null;
+    return {
+      id: i.id_inscripcion,
+      alumnoId: i.id_alumno,
+      anioLectivo: cursoObj?.ciclo_anio || 0,
+      curso: cursoObj?.nombre_curso || '',
+    };
+  });
+}
+
+function construirEventosInstitucionales(raw) {
+  return (Array.isArray(raw) ? raw : []).map((ev) => ({
+    id: ev.id_evento,
+    tipo_evento: ev.tipo_evento,
+    descripcion: ev.descripcion,
+    fecha: ev.fecha,
+    permanente: ev.permanente,
+    alcance: ev.alcance || 'todo_dia',
+    hora_inicio: ev.hora_inicio || null,
+    hora_fin: ev.hora_fin || null,
+  }));
+}
+
+const LOADERS = {
+  inscripciones: {
+    fetch: getInscripciones,
+    apply: (raw, datos) => ({
+      inscripciones: construirInscripciones(
+        raw,
+        datos?.cursoMateria || [],
+        datos?.cursosObj || [],
+      ),
+    }),
+  },
+  eventosInstitucionales: {
+    fetch: getEventosInstitucionales,
+    apply: (raw) => ({ eventosInstitucionales: construirEventosInstitucionales(raw) }),
+  },
+};
+
 function scopeFromAlcance(alcance) {
   if (!alcance) return 'general';
   const hasCiclo = alcance.id_ciclo !== null && alcance.id_ciclo !== undefined;
@@ -122,6 +165,10 @@ export function DataProvider({ children }) {
   // Parte 8: navegación desde notificaciones
   const [navIntent, setNavIntent] = useState(null);
   const hasLoadedRef = useRef(false);
+  const dataRef = useRef(null);
+  const cargadasRef = useRef(new Set());
+  const enCursoRef = useRef(new Map());
+  const generacionRef = useRef(0);
 
   // Selector global de curso y materia para el panel docente
   const [selectedCursoId, setSelectedCursoId] = useState('');
@@ -270,6 +317,8 @@ export function DataProvider({ children }) {
       setRefreshing(true);
     }
     setError(null);
+    generacionRef.current += 1;
+    cargadasRef.current.clear();
     try {
       const [
         estudiantesRaw,
@@ -325,7 +374,7 @@ export function DataProvider({ children }) {
         getCiclosLectivos().catch(() => []),
         getEstadosAsistencia().catch(() => []),
         getNotificaciones().catch(() => []),
-        getInscripciones().catch(() => []),
+        Promise.resolve([]),
         getPadresTutores().catch(() => []),
         getPeriodos().catch(() => []),
         getComunicados().catch(() => []),
@@ -333,7 +382,7 @@ export function DataProvider({ children }) {
         getPlanificaciones().catch(() => []),
         getDirectivos().catch(() => []),
         getSuplencias().catch(() => []),
-        getEventosInstitucionales().catch(() => []),
+        Promise.resolve([]),
       ]);
 
       const estudiantesPreCurso = (Array.isArray(estudiantesRaw) ? estudiantesRaw : []).map((a) => ({
@@ -523,16 +572,7 @@ export function DataProvider({ children }) {
       const ciclosLectivos = (Array.isArray(ciclosRaw) ? ciclosRaw : []);
       const aniosLectivos = ciclosLectivos.map((c) => c.anio);
 
-      const inscripciones = (Array.isArray(inscripcionesRaw) ? inscripcionesRaw : []).map((i) => {
-        const cm = cursoMateria.find((c) => c.id === i.id_curso_materia);
-        const cursoObj = cm ? cursosObjArr.find((c) => c.id_curso === cm.id_curso) : null;
-        return {
-          id: i.id_inscripcion,
-          alumnoId: i.id_alumno,
-          anioLectivo: cursoObj?.ciclo_anio || 0,
-          curso: cursoObj?.nombre_curso || '',
-        };
-      });
+      const inscripciones = [];
 
       const asignacionesDocente = cursoMateria.map((cm) => {
         const cursoObj = cursosObjArr.find((c) => c.id_curso === cm.id_curso);
@@ -777,16 +817,7 @@ export function DataProvider({ children }) {
       }));
       const mapSuplencias = suplenciasActivasEnFecha(suplencias);
 
-      const eventosInstitucionales = (Array.isArray(eventosInstitucionalesRaw) ? eventosInstitucionalesRaw : []).map((ev) => ({
-        id: ev.id_evento,
-        tipo_evento: ev.tipo_evento,
-        descripcion: ev.descripcion,
-        fecha: ev.fecha,
-        permanente: ev.permanente,
-        alcance: ev.alcance || 'todo_dia',
-        hora_inicio: ev.hora_inicio || null,
-        hora_fin: ev.hora_fin || null,
-      }));
+      const eventosInstitucionales = [];
 
       const notificaciones = (Array.isArray(notificacionesRaw) ? notificacionesRaw : []).map(normalizarNotificacion);
 
@@ -798,7 +829,7 @@ export function DataProvider({ children }) {
       if (idsInicialesRef.current === null) {
         idsInicialesRef.current = new Set(notificaciones.map((n) => n.id));
       }
-      setData({
+      const datos = {
         estudiantes,
         docentes,
         preceptores,
@@ -852,7 +883,9 @@ export function DataProvider({ children }) {
             .filter((a) => a.alumnoId === alumnoId)
             .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
         refreshData: null,
-      });
+      };
+      dataRef.current = datos;
+      setData(datos);
     } catch (err) {
       console.error('Error fetching data:', err);
       setError('Error al cargar datos del servidor');
@@ -861,6 +894,42 @@ export function DataProvider({ children }) {
       setRefreshing(false);
     }
   }, []);
+
+  const aplicarParcial = useCallback((parcial) => {
+    const siguiente = { ...(dataRef.current || {}), ...parcial };
+    dataRef.current = siguiente;
+    setData(siguiente);
+  }, []);
+
+  const ensureData = useCallback(async (claves) => {
+    const lista = Array.isArray(claves) ? claves : [claves];
+    await Promise.all(lista.map(async (clave) => {
+      const loader = LOADERS[clave];
+      if (!loader || cargadasRef.current.has(clave)) return;
+      if (enCursoRef.current.has(clave)) return enCursoRef.current.get(clave);
+      const generacion = generacionRef.current;
+      const promesa = loader.fetch()
+        .then((raw) => {
+          if (generacion !== generacionRef.current) return;
+          aplicarParcial(loader.apply(raw, dataRef.current || {}));
+          cargadasRef.current.add(clave);
+        })
+        .catch((err) => {
+          console.error(`Error al cargar ${clave}:`, err);
+        })
+        .finally(() => {
+          enCursoRef.current.delete(clave);
+        });
+      enCursoRef.current.set(clave, promesa);
+      return promesa;
+    }));
+  }, [aplicarParcial]);
+
+  useEffect(() => {
+    if (data) {
+      ensureData(['inscripciones', 'eventosInstitucionales']);
+    }
+  }, [data, ensureData]);
 
   const refreshAdminCursos = useCallback(async (incluirInactivos = false) => {
     const params = incluirInactivos ? { incluir_inactivos: 1 } : {};
@@ -1095,6 +1164,7 @@ export function DataProvider({ children }) {
       adminCursos, adminMaterias, adminCursoMateria,
       refreshAdminCursos, refreshAdminMaterias, refreshAdminCursoMateria,
       refreshCatalogosMaestros,
+      ensureData,
       marcarNotificacionLeida,
       marcarTodasNotificacionesLeidas,
       navegarDesdeNotificacion,
@@ -1179,6 +1249,7 @@ export function useData() {
       refreshAdminMaterias: () => {},
       refreshAdminCursoMateria: () => {},
       refreshCatalogosMaestros: () => {},
+      ensureData: () => {},
       marcarNotificacionLeida: () => {},
       marcarTodasNotificacionesLeidas: () => {},
       navegarDesdeNotificacion: () => {},
@@ -1212,6 +1283,7 @@ export function useData() {
     refreshAdminMaterias: ctx.refreshAdminMaterias,
     refreshAdminCursoMateria: ctx.refreshAdminCursoMateria,
     refreshCatalogosMaestros: ctx.refreshCatalogosMaestros,
+    ensureData: ctx.ensureData,
     marcarNotificacionLeida: ctx.marcarNotificacionLeida,
     marcarTodasNotificacionesLeidas: ctx.marcarTodasNotificacionesLeidas,
     navegarDesdeNotificacion: ctx.navegarDesdeNotificacion,

@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.db.utils import IntegrityError
 
+from escuela.storage import media_url
 from escuela.utils import (
     HORA_CORTE_TURNO,
     es_estado_asistencia_base,
@@ -1372,7 +1373,7 @@ class DdjjDocenteSerializer(serializers.ModelSerializer):
         try:
             return obj.ruta_archivo.url
         except Exception:
-            return f'/media/{obj.ruta_archivo.name}'
+            return media_url(obj.ruta_archivo.name)
 
     def get_presentada(self, obj):
         return bool(obj.ruta_archivo)
@@ -1423,7 +1424,7 @@ class ActividadDocenteArchivoSerializer(serializers.ModelSerializer):
         try:
             return obj.ruta_archivo.url
         except Exception:
-            return f'/media/{obj.ruta_archivo.name}'
+            return media_url(obj.ruta_archivo.name)
 
     def get_es_principal(self, obj):
         actividad = getattr(obj, '_actividad', None) or getattr(obj, 'id_actividad', None)
@@ -1509,13 +1510,13 @@ class ActividadDocenteSerializer(serializers.ModelSerializer):
             try:
                 return archivos[0].ruta_archivo.url
             except Exception:
-                return f'/media/{archivos[0].ruta_archivo.name}'
+                return media_url(archivos[0].ruta_archivo.name)
         if not obj.ruta_archivo:
             return None
         try:
             return obj.ruta_archivo.url
         except Exception:
-            return f'/media/{obj.ruta_archivo.name}'
+            return media_url(obj.ruta_archivo.name)
 
     def get_hora_subida(self, obj):
         if not obj.fecha_creacion:
@@ -1703,7 +1704,7 @@ class DocenteSerializer(serializers.ModelSerializer):
         try:
             return ddjj.ruta_archivo.url
         except Exception:
-            return f'/media/{ddjj.ruta_archivo.name}'
+            return media_url(ddjj.ruta_archivo.name)
 
     def get_ddjj_presentada(self, obj):
         return self._get_ddjj(obj) is not None
@@ -1731,7 +1732,7 @@ class DocenteSerializer(serializers.ModelSerializer):
         try:
             return ddjj.ruta_archivo.url
         except Exception:
-            return f'/media/{ddjj.ruta_archivo.name}'
+            return media_url(ddjj.ruta_archivo.name)
 
     def get_usuario_estado(self, obj):
         return obj.id_usuario.estado if obj.id_usuario else None
@@ -2751,6 +2752,11 @@ class ActaSerializer(serializers.ModelSerializer):
             return obj.id_usuario_creador.usuario
         return None
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['ruta_archivo'] = media_url(data.get('ruta_archivo'))
+        return data
+
 
 class ActaAlumnoSerializer(serializers.ModelSerializer):
     class Meta:
@@ -2776,6 +2782,11 @@ class ComunicadoArchivoSerializer(serializers.ModelSerializer):
     class Meta:
         model = ComunicadoArchivo
         fields = '__all__'
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['ruta_archivo'] = media_url(data.get('ruta_archivo'))
+        return data
 
 
 class ComunicadoAlcanceSerializer(serializers.ModelSerializer):
@@ -2942,6 +2953,11 @@ class PlanificacionSerializer(serializers.ModelSerializer):
         if obj.id_docente_id and hasattr(obj, 'id_docente') and obj.id_docente:
             return f"{obj.id_docente.nombre} {obj.id_docente.apellido}"
         return ''
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['ruta_archivo'] = media_url(data.get('ruta_archivo'))
+        return data
 
 
 # ---------- Diagnósticos grupales ----------
@@ -3195,6 +3211,11 @@ class LibroTemaSerializer(serializers.ModelSerializer):
         if obj.id_docente_id:
             return f'{obj.id_docente.apellido}, {obj.id_docente.nombre}'
         return None
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['ruta_archivo'] = media_url(data.get('ruta_archivo'))
+        return data
 
     def validate(self, attrs):
         cm = attrs.get('id_curso_materia') or (self.instance.id_curso_materia if self.instance else None)
@@ -3474,6 +3495,11 @@ class ActividadMateriaAdeudadaSerializer(serializers.ModelSerializer):
         if obj.id_docente:
             return f"{obj.id_docente.apellido}, {obj.id_docente.nombre}"
         return ''
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['archivo_pdf'] = media_url(data.get('archivo_pdf'))
+        return data
 
 
 class RendicionMateriaAdeudadaSerializer(serializers.ModelSerializer):

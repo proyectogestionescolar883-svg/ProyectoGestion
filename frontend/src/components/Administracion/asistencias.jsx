@@ -29,7 +29,11 @@ function Asistencias() {
     selectedCursoId,
     selectedCursos,
     selectedCursoIds,
+    ensureData,
   } = useData();
+  useEffect(() => {
+    ensureData('eventosInstitucionales');
+  }, [ensureData]);
 
   // Punto 1.4: la vista consume la selección global del header de Administración.
   // No se vuelve a mostrar el selector de Año/División dentro de la vista.

@@ -56,6 +56,29 @@ DDL_FECHA_ELIMINACION = 'DATETIME NULL'
 DDL_FECHA_MODIFICACION = 'DATETIME NULL'
 DDL_TEXTO = 'TEXT NULL'
 
+TABLAS_NUEVAS = {
+    'media_blobs': {
+        'postgresql': (
+            'CREATE TABLE IF NOT EXISTS media_blobs ('
+            'ruta VARCHAR(500) PRIMARY KEY, '
+            'contenido BYTEA NOT NULL, '
+            'content_type VARCHAR(255) NULL, '
+            'tamano BIGINT NOT NULL, '
+            'creado_en TIMESTAMPTZ NOT NULL DEFAULT now()'
+            ')'
+        ),
+        'mysql': (
+            'CREATE TABLE IF NOT EXISTS media_blobs ('
+            'ruta VARCHAR(500) PRIMARY KEY, '
+            'contenido LONGBLOB NOT NULL, '
+            'content_type VARCHAR(255) NULL, '
+            'tamano BIGINT NOT NULL, '
+            'creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP'
+            ')'
+        ),
+    },
+}
+
 # Tablas con borrado lógico mediante `estado` (ver ActivoManager y
 # utils.marcar_eliminado). Cada una recibe `estado` + `fecha_eliminacion`.
 SOFT_DELETE_TABLAS = (
@@ -412,11 +435,19 @@ def aplicar_esquema(connection, log=None):
     log = log or (lambda msg: None)
     informe = {
         'agregadas': [], 'omitidas': [], 'rellenos': [], 'endurecidas': [],
-        'relajadas': [], 'indices': [], 'pendientes': [],
+        'relajadas': [], 'indices': [], 'tablas': [], 'pendientes': [],
     }
 
     with connection.cursor() as cursor:
         existentes = tablas_de(cursor)
+
+        for tabla, ddl_por_vendor in TABLAS_NUEVAS.items():
+            if tabla in existentes:
+                continue
+            cursor.execute(ddl_por_vendor[_vendor(cursor)])
+            existentes.add(tabla)
+            informe['tablas'].append(tabla)
+            log(f'+ tabla {tabla}')
 
         for tabla, columna, ddl, relleno, nota in COLUMNAS:
             if tabla not in existentes:
@@ -551,6 +582,10 @@ def verificar_esquema(connection):
     with connection.cursor() as cursor:
         existentes = tablas_de(cursor)
 
+        for tabla in TABLAS_NUEVAS:
+            if tabla not in existentes:
+                faltantes.append((tabla, '', 'tabla inexistente'))
+
         for tabla, columna, ddl, relleno, nota in COLUMNAS:
             if tabla not in existentes:
                 faltantes.append((tabla, columna, 'tabla inexistente'))
@@ -597,6 +632,15 @@ def _dentro_de_literal(valor):
     """
     return valor.replace('\\', '\\\\').replace("'", "''")
 
+
+_PLANTILLA_TABLA_NUEVA = """\
+SET @existe := (SELECT COUNT(*) FROM information_schema.TABLES
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{tabla}');
+SET @ddl := IF(@existe = 0, '{ddl}', 'DO 0');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+"""
 
 _PLANTILLA_AGREGAR = """\
 -- {tabla}.{columna} — {nota}
@@ -718,6 +762,13 @@ def sql_esquema():
         '-- ' + '-' * 69,
         '',
     ]
+
+    for tabla, spec in TABLAS_NUEVAS.items():
+        out.append(_PLANTILLA_TABLA_NUEVA.format(
+            tabla=tabla,
+            ddl=_dentro_de_literal(spec['mysql']),
+        ))
+        out.append('')
 
     for tabla, columna, ddl, relleno, nota in COLUMNAS:
         out.append(_PLANTILLA_AGREGAR.format(

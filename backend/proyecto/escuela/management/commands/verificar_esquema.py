@@ -55,8 +55,8 @@ class Command(BaseCommand):
                 connection, log=lambda msg: self.stdout.write('  ' + msg),
             )
             self.stdout.write('')
-            for clave in ('agregadas', 'endurecidas', 'relajadas', 'indices',
-                          'rellenos'):
+            for clave in ('tablas', 'agregadas', 'endurecidas', 'relajadas',
+                          'indices', 'rellenos'):
                 for item in informe.get(clave, []):
                     self.stdout.write(f'  {clave}: {item}')
             if informe['pendientes']:

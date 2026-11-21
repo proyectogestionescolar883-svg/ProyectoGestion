@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import EmptyFiltros from './EmptyFiltros';
 import { estudiantesPorAnioYCurso, ritePorEstudiante, filtrosCompletos } from './preceptorUtils';
@@ -104,8 +104,11 @@ function RiteEstudiante({ estudiante, curso, anioLectivo, expandido, onToggle, i
 }
 
 function Notas({ anioLectivo, curso, onAnioChange, onCursoChange }) {
-  const { inscripciones, estudiantes, asistenciasAdmin } = useData();
+  const { inscripciones, estudiantes, asistenciasAdmin, ensureData } = useData();
   const [expandidoId, setExpandidoId] = useState(null);
+  useEffect(() => {
+    ensureData('inscripciones');
+  }, [ensureData]);
 
   const lista = estudiantesPorAnioYCurso(anioLectivo, curso, inscripciones, estudiantes);
 

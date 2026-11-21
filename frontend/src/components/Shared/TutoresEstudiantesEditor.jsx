@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import FiltrosAnioCurso from '../Shared/FiltrosAnioCurso';
 import { estudiantesPorAnioYCurso } from '../Preceptores/preceptorUtils';
@@ -11,7 +12,10 @@ function TutoresEstudiantesEditor({
   setEstudiantesIds,
   idPrefix = 'tut-estudiante',
 }) {
-  const { inscripciones, estudiantes, aniosLectivos, cursosObj } = useData();
+  const { inscripciones, estudiantes, aniosLectivos, cursosObj, ensureData } = useData();
+  useEffect(() => {
+    ensureData('inscripciones');
+  }, [ensureData]);
 
   const listaEstudiantes = estudiantesPorAnioYCurso(
     anioEstudiante,

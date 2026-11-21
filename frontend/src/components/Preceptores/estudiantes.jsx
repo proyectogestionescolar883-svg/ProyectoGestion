@@ -1,4 +1,4 @@
-import { useState, Fragment, useMemo } from 'react';
+import { useState, Fragment, useMemo, useEffect } from 'react';
 import { formatDNI, cleanDNI } from '../../utils/dni';
 import { useData } from '../../context/DataContext';
 import { createEstudiante, updateEstudiante, deleteEstudiante } from '../../services/api';
@@ -68,7 +68,10 @@ function mensajeError(err) {
 }
 
 function Estudiantes({ readOnly = false, preceptorCursos = [], anioLectivo: anioGlobal, curso: cursoGlobal, cursos: cursosGlobal, onAnioChange, onCursoChange }) {
-  const { aniosLectivos, inscripciones, cursos, estudiantes, nombreCompleto, cursosObj, refreshData } = useData();
+  const { aniosLectivos, inscripciones, cursos, estudiantes, nombreCompleto, cursosObj, refreshData, ensureData } = useData();
+  useEffect(() => {
+    ensureData('inscripciones');
+  }, [ensureData]);
   // 5.6 - `cursoGlobal` puede llegar como string (preceptor, un curso) o como
   // array (Admin/Jefe, multiselección). `cursosGlobal` es el array del header y
   // tiene prioridad; `curso` es siempre el array efectivo, y el título del modal

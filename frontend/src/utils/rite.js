@@ -3,6 +3,15 @@ import { cursoConOrientacion } from './orientacion';
 import { formatDNI } from './dni';
 import { NOTA_APROBACION } from './previasRendicion';
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const PERIODO_LABELS = {
   MARZO: 'Marzo',
   JULIO: 'Julio',
@@ -36,16 +45,16 @@ function filasMaterias(materias, intensificaciones_1c = {}, bloqueos_por_materia
       const tieneIntensif = intensif !== undefined && intensif !== null;
       return `
         <tr${claseFila}>
-          <td class="mat">${m.materia}${badgeBloq}</td>
-          <td>${m.prenota1 || '—'}</td>
-          <td>${m.nota1 ?? '—'}</td>
-          <td>${m.prenota2 || '—'}</td>
-          <td>${m.nota2 ?? '—'}</td>
-          <td>${tieneIntensif ? intensif : ''}</td>
-          <td>${posterioresPorMateria[m.materia]?.diciembre ?? ''}</td>
-          <td>${posterioresPorMateria[m.materia]?.febrero ?? ''}</td>
-          <td class="prom">${prom ?? '—'}</td>
-          <td class="cell-obs">${m.diagnostico || '—'}</td>
+          <td class="mat">${escapeHtml(m.materia)}${badgeBloq}</td>
+          <td>${escapeHtml(m.prenota1 || '—')}</td>
+          <td>${escapeHtml(m.nota1 ?? '—')}</td>
+          <td>${escapeHtml(m.prenota2 || '—')}</td>
+          <td>${escapeHtml(m.nota2 ?? '—')}</td>
+          <td>${escapeHtml(tieneIntensif ? intensif : '')}</td>
+          <td>${escapeHtml(posterioresPorMateria[m.materia]?.diciembre ?? '')}</td>
+          <td>${escapeHtml(posterioresPorMateria[m.materia]?.febrero ?? '')}</td>
+          <td class="prom">${escapeHtml(prom ?? '—')}</td>
+          <td class="cell-obs">${escapeHtml(m.diagnostico || '—')}</td>
         </tr>`;
     })
     .join('');
@@ -61,17 +70,17 @@ function filaRecursada(r) {
   const prom = promedioMateria(r);
   return `
         <tr>
-          <td>${r.anio || '—'}</td>
-          <td class="mat">${r.materia || '—'}</td>
-          <td>${r.prenota1 || '—'}</td>
-          <td>${r.nota1 ?? '—'}</td>
-          <td>${r.prenota2 || '—'}</td>
-          <td>${r.nota2 ?? '—'}</td>
-          <td>${r.intensificacion_1c ?? ''}</td>
-          <td>${r.diciembre ?? ''}</td>
-          <td>${r.febrero ?? ''}</td>
-          <td class="prom">${prom ?? '—'}</td>
-          <td class="cell-obs">${r.observaciones || r.estado || 'A recursar'}</td>
+          <td>${escapeHtml(r.anio || '—')}</td>
+          <td class="mat">${escapeHtml(r.materia || '—')}</td>
+          <td>${escapeHtml(r.prenota1 || '—')}</td>
+          <td>${escapeHtml(r.nota1 ?? '—')}</td>
+          <td>${escapeHtml(r.prenota2 || '—')}</td>
+          <td>${escapeHtml(r.nota2 ?? '—')}</td>
+          <td>${escapeHtml(r.intensificacion_1c ?? '')}</td>
+          <td>${escapeHtml(r.diciembre ?? '')}</td>
+          <td>${escapeHtml(r.febrero ?? '')}</td>
+          <td class="prom">${escapeHtml(prom ?? '—')}</td>
+          <td class="cell-obs">${escapeHtml(r.observaciones || r.estado || 'A recursar')}</td>
         </tr>`;
 }
 
@@ -136,12 +145,12 @@ function seccionPrevias(items) {
                     : '';
                 const clase =
                   nota !== '' && Number(nota) >= NOTA_APROBACION ? ' class="celda-aprobada"' : '';
-                return `<td${clase}>${nota}</td>`;
+                return `<td${clase}>${escapeHtml(nota)}</td>`;
               })
               .join('');
             const califFinal =
               p.calificacion_final !== null && p.calificacion_final !== undefined ? p.calificacion_final : '—';
-            return `<tr><td>${p.materia || '—'}</td><td>${p.anio || '—'}</td>${celdas}<td>${califFinal}</td></tr>`;
+            return `<tr><td>${escapeHtml(p.materia || '—')}</td><td>${escapeHtml(p.anio || '—')}</td>${celdas}<td>${escapeHtml(califFinal)}</td></tr>`;
           })
           .join('')
       : `<tr><td></td><td></td>${periodos.map(() => '<td></td>').join('')}<td></td></tr>`;
@@ -185,11 +194,11 @@ export function riteHTML({
           <div class="escuela">Escuela Secundaria N° 7</div>
           <div class="titulo">RITE de Calificaciones</div>
           <div class="datos">
-            <div><span>Estudiante:</span> ${estudianteNombre}</div>
-            ${dni ? `<div><span>DNI:</span> ${formatDNI(dni)}</div>` : ''}
-            <div><span>Curso:</span> ${cursoLabel}</div>
-            <div><span>Ciclo lectivo:</span> ${anioLectivo}</div>
-            <div><span>Fecha de emisión:</span> ${fechaEmision}</div>
+            <div><span>Estudiante:</span> ${escapeHtml(estudianteNombre)}</div>
+            ${dni ? `<div><span>DNI:</span> ${escapeHtml(formatDNI(dni))}</div>` : ''}
+            <div><span>Curso:</span> ${escapeHtml(cursoLabel)}</div>
+            <div><span>Ciclo lectivo:</span> ${escapeHtml(anioLectivo)}</div>
+            <div><span>Fecha de emisión:</span> ${escapeHtml(fechaEmision)}</div>
           </div>
         </div>
         <table>
@@ -327,7 +336,7 @@ export function exportarRitePDF(ritees, titulo) {
   if (!win) return;
   const cuerpo = Array.isArray(ritees) ? ritees.join('') : ritees;
   win.document.write(`
-    <html><head><title>${titulo}</title><style>${RITE_CSS}</style></head>
+    <html><head><title>${escapeHtml(titulo)}</title><style>${RITE_CSS}</style></head>
     <body>${cuerpo}<script>window.onload = function(){ window.print(); };<\/script></body></html>
   `);
   win.document.close();

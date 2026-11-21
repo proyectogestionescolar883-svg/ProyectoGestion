@@ -217,8 +217,12 @@ function Actas({ anioLectivo, curso, onAnioChange, onCursoChange, onlyCursos = f
     estudiantes,
     cursosObj,
     refreshData,
+    ensureData,
   } = useData();
   const { user } = useAuth();
+  useEffect(() => {
+    ensureData('inscripciones');
+  }, [ensureData]);
   const toast = useToast();
 
   /* Los permisos se resuelven con el MISMO criterio que el backend
