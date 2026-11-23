@@ -280,7 +280,15 @@ setSeleccionCursos,
 
       <main className="main-content">
 
-        <Header user={user} nombreCompleto={nombreCompletoJefe} {...filtrosProps} />
+        <Header
+          user={user}
+          nombreCompleto={nombreCompletoJefe}
+          anioLectivo={anioLectivo}
+          curso={curso}
+          onAnioChange={handleAnioChange}
+          onCursoChange={setCurso}
+          onCursosChange={handleCursosChange}
+        />
 
         <div className="dashboard-content">
           {renderView()}
