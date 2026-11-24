@@ -50,6 +50,9 @@ const MAPA_POR_ROL = {
     comunicados: 'comunicados',
     actas: 'actas',
     eventos: 'calendario',
+    perfil: 'docente',
+    planificaciones: 'planif',
+    ddjj: 'docente',
     materias_adeudadas: 'actividades',
     // Las suplencias asignadas se consultan en el panel del docente
     // (PanelDocente lista sus suplencias). Los adelantos no tienen apartado

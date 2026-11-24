@@ -1175,6 +1175,9 @@ def _notificar_comunicado_publicado(comunicado):
     for u in _usuarios_con_rol('jefe_preceptores'):
         _notificar_usuario(u)
 
+    for u in _usuarios_directivos():
+        _notificar_usuario(u)
+
 
 def _notificar_calificacion(calificacion, accion='cargada'):
     """E1/E6 — Calificación cargada / actualizada.
@@ -3484,9 +3487,14 @@ class CalificacionViewSet(HistorialMixin, viewsets.ModelViewSet):
                     cal_id = int(cal_id)
                 except (TypeError, ValueError):
                     raise ValidationError({'id_calificacion': 'El id de la calificación es inválido.'})
-            instancia = get_object_or_404(Calificacion, pk=cal_id) if cal_id else None
+            instancia = get_object_or_404(self.get_queryset(), pk=cal_id) if cal_id else None
             serializer = CalificacionSerializer(instancia, data=item)
             serializer.is_valid(raise_exception=True)
+            if instancia is not None:
+                for campo in ('id_alumno', 'id_curso_materia', 'id_docente', 'id_periodo'):
+                    valor = serializer.validated_data.get(campo)
+                    if valor is not None and str(getattr(instancia, f'{campo}_id')) != str(getattr(valor, 'pk', valor)):
+                        raise PermissionDenied('No se puede cambiar la identidad de la calificación.')
             cm = serializer.validated_data.get('id_curso_materia') or (
                 instancia.id_curso_materia if instancia is not None else None
             )
@@ -3985,6 +3993,7 @@ class AsistenciaViewSet(viewsets.ModelViewSet):
                 if al.id_alumno not in ids_encontrados:
                     result.append({
                         'id': None,
+                        'fecha': fecha_str,
                         'id_alumno': al.id_alumno,
                         'alumno_nombre': f'{al.apellido}, {al.nombre}',
                         'horario': '-',
@@ -5535,6 +5544,7 @@ class PlanificacionViewSet(viewsets.ModelViewSet):
         from django.conf import settings
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
+        ruta_anterior = instance.ruta_archivo
 
         mutable = request.data.copy()
         mutable['fecha_subida'] = timezone.now()
@@ -5557,9 +5567,8 @@ class PlanificacionViewSet(viewsets.ModelViewSet):
         if 'docente' in roles:
             _notificar_planificacion_para_revision(planificacion, accion='actualizada')
 
-        # Remove old PDF file if it exists
-        if planificacion.ruta_archivo:
-            default_storage.delete(normalizar_ruta(planificacion.ruta_archivo))
+        if ruta_anterior:
+            default_storage.delete(normalizar_ruta(ruta_anterior))
 
         pdf_url = self._generar_pdf(
             planificacion,
@@ -5923,6 +5932,18 @@ class DiagnosticoGrupalViewSet(HistorialMixin, viewsets.ModelViewSet):
         except PermissionDenied as exc:
             return Response({'error': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, *args, **kwargs)
+
+    def perform_update(self, serializer):
+        username = self.request.user.username if self.request.user.is_authenticated else None
+        roles = get_roles_for_usuario(username) if username else []
+        if 'docente' in roles and 'admin' not in roles and 'director' not in roles:
+            instance = serializer.instance
+            if instance and instance.id_curso_id:
+                _verificar_docente_activo_curso(self.request, instance.id_curso_id)
+            id_curso = self.request.data.get('id_curso')
+            if id_curso and (instance is None or str(id_curso) != str(instance.id_curso_id)):
+                _verificar_docente_activo_curso(self.request, id_curso)
+        serializer.save()
 
     def perform_create(self, serializer):
         username = self.request.user.username if self.request.user.is_authenticated else None
@@ -6573,8 +6594,24 @@ def upload_file(request):
     if not archivo:
         return Response({'error': 'No se envió ningún archivo.'}, status=400)
 
-    carpeta = PurePath(request.data.get('carpeta') or 'general').name or 'general'
+    tipos_permitidos = {
+        'pdf': 'application/pdf',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'webp': 'image/webp',
+    }
     nombre = PurePath(archivo.name).name
+    extension = PurePath(nombre).suffix.lower().lstrip('.')
+    if extension not in tipos_permitidos:
+        return Response({'error': 'Tipo de archivo no permitido.'}, status=400)
+    if archivo.size > 20 * 1024 * 1024:
+        return Response({'error': 'El archivo supera el tamaño máximo de 20 MB.'}, status=400)
+
+    archivo.content_type = tipos_permitidos[extension]
+    carpeta = PurePath(request.data.get('carpeta') or 'general').name or 'general'
     ruta = default_storage.save(f'{carpeta}/{nombre}', archivo)
     return Response({'url': media_url(ruta, 3600), 'nombre': PurePath(ruta).name})
 
@@ -6824,7 +6861,9 @@ class IntensificacionAcademicaViewSet(viewsets.ModelViewSet):
                 historial_directo.id_alumno_id,
                 historial_directo.id_curso_materia_id,
             )
+            _verificar_docente_activo_materia(request, historial_directo.id_curso_materia_id)
         if not data.get('id_historial') and data.get('id_alumno') and data.get('id_curso_materia'):
+            _verificar_docente_activo_materia(request, data['id_curso_materia'])
             historial = _resolver_o_crear_historial(
                 data['id_alumno'],
                 data['id_curso_materia'],
@@ -6853,6 +6892,23 @@ class IntensificacionAcademicaViewSet(viewsets.ModelViewSet):
         nota mínima central y aplica el paso a previa cuando corresponde."""
         parcial = kwargs.pop('partial', request.method == 'PATCH')
         instance = self.get_object()
+        if instance.id_historial_id:
+            _verificar_docente_activo_materia(request, instance.id_historial.id_curso_materia_id)
+        id_historial_nuevo = request.data.get('id_historial')
+        if id_historial_nuevo and str(id_historial_nuevo) != str(instance.id_historial_id):
+            try:
+                historial_nuevo = HistorialAcademico.objects.filter(
+                    pk=int(id_historial_nuevo),
+                ).select_related('id_alumno', 'id_curso_materia').first()
+            except (TypeError, ValueError):
+                historial_nuevo = None
+            if historial_nuevo is None:
+                raise ValidationError({'id_historial': 'El historial indicado no existe.'})
+            _validar_alumno_en_curso_materia(
+                historial_nuevo.id_alumno_id,
+                historial_nuevo.id_curso_materia_id,
+            )
+            _verificar_docente_activo_materia(request, historial_nuevo.id_curso_materia_id)
         serializer = self.get_serializer(instance, data=request.data, partial=parcial)
         serializer.is_valid(raise_exception=True)
 
@@ -6897,6 +6953,32 @@ class MateriaAdeudadaViewSet(viewsets.ModelViewSet):
         if estado:
             qs = qs.filter(estado=estado)
         return qs
+
+    def _validar_escritura(self, serializer):
+        doc = docente_del_usuario(self.request)
+        if not doc:
+            return
+        alumno = serializer.validated_data.get('id_alumno') or getattr(serializer.instance, 'id_alumno', None)
+        materia = serializer.validated_data.get('id_materia') or getattr(serializer.instance, 'id_materia', None)
+        permitidos = alumnos_permitidos(self.request)
+        if permitidos is not None and alumno is not None and not permitidos.filter(pk=alumno.pk).exists():
+            raise PermissionDenied('No tiene permiso sobre el estudiante de la deuda.')
+        if materia is not None:
+            materias_docente = CursoMateria.objects.filter(
+                id_curso_materia__in=_materias_docente_ids(doc),
+                activo=True,
+                estado=True,
+            ).values_list('id_materia', flat=True)
+            if materia.pk not in materias_docente:
+                raise PermissionDenied('No tiene permiso sobre la materia de la deuda.')
+
+    def perform_create(self, serializer):
+        self._validar_escritura(serializer)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._validar_escritura(serializer)
+        serializer.save()
 
     @action(detail=True, methods=['post'], url_path='rendir')
     def rendir(self, request, pk=None):
@@ -6967,13 +7049,19 @@ class MateriaAdeudadaViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied('No hay un perfil de docente asociado al usuario.')
         elif str(id_docente) != str(docente_autenticado.pk):
             raise PermissionDenied('El docente de la rendición debe ser el usuario autenticado.')
+        try:
+            docente_rendicion = Docente.objects.filter(pk=int(id_docente)).first()
+        except (TypeError, ValueError):
+            docente_rendicion = None
+        if docente_rendicion is None:
+            raise ValidationError({'id_docente': 'El docente indicado no existe.'})
 
         resultado = 'APROBADA' if nota_num >= NOTA_APROBACION else 'DESAPROBADA'
 
         rendicion = RendicionMateriaAdeudada.objects.create(
             id_materia_adeudada=ma,
             id_alumno=ma.id_alumno,
-            id_docente_id=id_docente,
+            id_docente=docente_rendicion,
             anio_rendicion=anio,
             periodo=periodo,
             nota=nota_num,
@@ -7201,8 +7289,25 @@ class RendicionMateriaAdeudadaViewSet(viewsets.ModelViewSet):
                     activo=True,
                     estado=True,
                 ).values_list('id_materia', flat=True)
-                qs = qs.filter(id_materia__in=materias_docente)
+                qs = qs.filter(id_materia_adeudada__id_materia__in=materias_docente)
         return qs
+
+    def perform_create(self, serializer):
+        doc = docente_del_usuario(self.request)
+        if doc:
+            ma = serializer.validated_data.get('id_materia_adeudada')
+            permitidos = alumnos_permitidos(self.request)
+            if permitidos is not None and ma is not None and not permitidos.filter(pk=ma.id_alumno_id).exists():
+                raise PermissionDenied('No tiene permiso sobre el estudiante de la rendición.')
+            if ma is not None:
+                materias_docente = CursoMateria.objects.filter(
+                    id_curso_materia__in=_materias_docente_ids(doc),
+                    activo=True,
+                    estado=True,
+                ).values_list('id_materia', flat=True)
+                if ma.id_materia_id not in materias_docente:
+                    raise PermissionDenied('No tiene permiso sobre la materia de la rendición.')
+        serializer.save()
 
 
 class HistorialCursoAlumnoViewSet(viewsets.ModelViewSet):
@@ -7385,27 +7490,17 @@ def _notificar_carga_usuario(*, etiqueta, nombre_completo, curso_ids=None,
 
     receptores = set()
     if solo_directores:
-        receptores.update(_usuarios_con_rol('director'))
+        receptores.update((u, SEGMENTO_DIRECTIVO) for u in _usuarios_con_rol('director'))
     else:
-        receptores.update(_usuarios_directivos())
-        receptores.update(_usuarios_con_rol('jefe_preceptores'))
+        receptores.update((u, SEGMENTO_DIRECTIVO) for u in _usuarios_directivos())
+        receptores.update((u, SEGMENTO_JEFE_PRECEPTORES) for u in _usuarios_con_rol('jefe_preceptores'))
         for preceptor in _preceptores_para_cursos(curso_ids or []):
             if preceptor.id_usuario_id:
-                receptores.add(preceptor.id_usuario)
+                receptores.add((preceptor.id_usuario, SEGMENTO_PRECEPTOR))
     if actor is not None:
-        receptores.discard(actor)
+        receptores = {(u, segmento) for u, segmento in receptores if u != actor}
 
-    directivos = set(_usuarios_directivos())
-    jefes = set(_usuarios_con_rol('jefe_preceptores'))
-    for u in receptores:
-        if solo_directores:
-            segmento = SEGMENTO_DIRECTIVO
-        elif u in directivos:
-            segmento = SEGMENTO_DIRECTIVO
-        elif u in jefes:
-            segmento = SEGMENTO_JEFE_PRECEPTORES
-        else:
-            segmento = SEGMENTO_PRECEPTOR
+    for u, segmento in receptores:
         notificar(id_usuario=u, id_alumno=None, titulo=titulo, mensaje=mensaje, nav=None, rol=segmento)
 
 
@@ -7423,7 +7518,7 @@ def _notificar_carga_notas(cm, periodo_nombre=None, accion='cargada', calificaci
     materia = cm.id_materia.nombre_materia if cm.id_materia_id else 'la materia'
     curso = cm.id_curso.nombre_curso if cm.id_curso_id else 'el curso'
     actualizada = accion == 'actualizada'
-    titulo = 'Nota actualizada' if actualizada else 'Nota cargada'
+    titulo = 'Notas actualizadas' if actualizada else 'Notas cargadas'
     for calificacion in (calificaciones or []):
         alumno = calificacion.id_alumno
         if alumno is None:
@@ -8197,8 +8292,6 @@ def _notificar_cambio_horario(horario, accion='creado'):
         if preceptor.id_usuario_id:
             notificar(id_usuario=preceptor.id_usuario, id_alumno=None,
                       titulo=titulo, mensaje=mensaje, nav=nav, rol=SEGMENTO_PRECEPTOR)
-    for u in _usuarios_con_rol('jefe_preceptores'):
-        notificar(id_usuario=u, id_alumno=None, titulo=titulo, mensaje=mensaje, nav=nav, rol=SEGMENTO_JEFE_PRECEPTORES)
     for u in _usuarios_directivos():
         notificar(id_usuario=u, id_alumno=None,
                   titulo=titulo, mensaje=mensaje, nav=nav, rol=SEGMENTO_DIRECTIVO)

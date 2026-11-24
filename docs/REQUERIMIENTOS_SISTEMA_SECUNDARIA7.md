@@ -137,8 +137,8 @@
 
 | ID | Requerimiento | Implementación | Rol |
 |----|---------------|----------------|-----|
-| RF-CALIF-01 | Carga de calificaciones por Curso-Materia-Período (pre-nota, nota, diagnóstico) | `Profesores/PanelActividades.jsx` (actividades), `Preceptores/notas.jsx` (vista RITE), `api.js:218-236` | Docente, Preceptor |
-| RF-CALIF-02 | Guardado en batch (múltiples estudiantes una sola request) | `api.js:233-236` `guardarCalificacionesBatch` | Docente, Preceptor |
+| RF-CALIF-01 | Carga de calificaciones por Curso-Materia-Período (pre-nota, nota, diagnóstico) | `Profesores/PanelEstudiantes.jsx`, `Preceptores/notas.jsx` (vista RITE), `api.js:218-236` | Docente, Admin, Director |
+| RF-CALIF-02 | Guardado en batch (múltiples estudiantes una sola request) | `api.js:233-236` `guardarCalificacionesBatch` | Docente, Admin, Director |
 | RF-CALIF-03 | Períodos: 1 (1er cuatri), 2 (2do cuatri) → prenota1/nota1, prenota2/nota2 | `DataContext.jsx:433-469`, `utils/rite.js:17-22` | Todos |
 | RF-CALIF-04 | Diagnóstico grupal por materia/curso | `DataContext.jsx:622-634`, `api.js:480-488` | Docente, Preceptor |
 | RF-CALIF-05 | RITE consolidado por estudiante: tabla principal + previas + recursadas + intensificaciones (1er cuatri, dic, feb) | `utils/rite.js:161-240`, `components/RiteTablaPrincipal.jsx`, `RiteExtras.jsx` | Preceptor, Familia, Estudiante |
@@ -157,7 +157,7 @@
 | RF-ACTA-03 | Edición/eliminación con permisos (creador o admin/director) | `Preceptores/actas.jsx:195-204, 323-397` | Creador, Admin, Director |
 | RF-ACTA-04 | Descarga/visualización archivo acta | `Preceptores/actas.jsx:508-512, 574-578, 638-642` | Todos (según visibilidad) |
 | RF-ACTA-05 | Filtros año/curso, agrupación por estudiante/docente/curso, colapsables | `Preceptores/actas.jsx:470-665` | Preceptor, Jefe, Admin |
-| RF-ACTA-06 | Vista solo lectura para Familia/Estudiante (actas del estudiante) | `Familia/Actas.jsx`, `EstudianteDashboard.jsx` (no hay vista actas en estudiante) | Familia |
+| RF-ACTA-06 | Vista solo lectura para Familia (actas del estudiante) | `Familia/Actas.jsx` | Familia |
 
 ### 4.7 Comunicados (RF-COM)
 
@@ -166,7 +166,7 @@
 | RF-COM-01 | CRUD comunicados con título, cuerpo, alcances (curso, división, materia, ciclo), archivos adjuntos | `Administracion/comunicados.jsx`, `api.js:612-629` | Admin, Director, Jefe |
 | RF-COM-02 | Filtrado por alcance para Familia/Estudiante (parsea curso → año/división, matchea alcances) | `Familia/Comunicados.jsx:4-18`, `utils/orientacion.js` | Familia, Estudiante |
 | RF-COM-03 | Vista compartida `ComunicadosView` reutilizable por rol | `Shared/ComunicadosView.jsx` | Preceptor, Jefe, Docente, Familia, Estudiante |
-| RF-COM-04 | Notificación automática al crear comunicado (endpoint `/notificaciones/enviar-carga-unica/`) | `api.js:455-458` | Admin |
+| RF-COM-04 | Notificación automática al crear comunicado (hook `perform_create` → `_notificar_comunicado_publicado`) | `views.py`, `notifications.py` | Admin, Director, Jefe |
 
 ### 4.8 Notificaciones (RF-NOTIF)
 
@@ -200,7 +200,7 @@
 | RF-SUPL-02 | Resolución docente activo por nivel (mayor nivel gana) y fecha | `utils/suplencias.js:26-35`, `DataContext.jsx:650-660` | Todos (via `mapSuplencias`) |
 | RF-SUPL-03 | Indicador en UI: docente suplente activo, materias solo lectura para titular | `Profesores/PanelProfesores.jsx:162-181`, `Profesores/PanelAsistencia.jsx:307-322`, `Profesores/PanelActividades.jsx:464-479`, `Profesores/PanelPlanif.jsx:206-221` | Docente, Preceptor |
 | RF-SUPL-04 | Finalizar suplencia (vuelve titular) | `Administracion/suplencias.jsx:287-308`, `api.js:718-721` | Admin |
-| RF-SUPL-05 | Adelantos de horas: CRUD, lista | `Administracion/AdelantosHoras.jsx`, `Shared/AdelantosHoras.jsx`, `api.js:723-740` | Preceptor, Jefe, Admin |
+| RF-SUPL-05 | Adelantos de horas: CRUD, lista | `Administracion/AdelantosHoras.jsx`, `Shared/AdelantosHoras.jsx`, `api.js:723-740` | Preceptor, Jefe, Admin, Director |
 
 ### 4.11 Horarios y Vista Pública (RF-HOR)
 

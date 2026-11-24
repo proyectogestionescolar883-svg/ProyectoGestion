@@ -828,9 +828,10 @@ export function DataProvider({ children }) {
       hasLoadedRef.current = true;
       // Línea base de ids de notificaciones ya conocidas en la carga inicial:
       // son las que el usuario YA veía, por lo que nunca deben disparar toast.
-      if (idsInicialesRef.current === null) {
-        idsInicialesRef.current = new Set(notificaciones.map((n) => n.id));
-      }
+      idsInicialesRef.current = new Set([
+        ...(idsInicialesRef.current ?? []),
+        ...notificaciones.map((n) => n.id),
+      ]);
       const datos = {
         estudiantes,
         docentes,

@@ -378,7 +378,7 @@ Se relevó el inventario completo de endpoints y sus permisos de escritura (\`vi
 
 \- **\*\*Lecturas / GET\*\***: nunca notifican.
 
-\- **\*\*Escrituras administrativas de catálogo\*\*** (cursos, materias, módulos, horarios, preceptores, directivos, roles, ciclos, tipos-de-acta, estados-de-asistencia): cambios de configuración, sin destinatario natural salvo auditoría.
+\- **\*\*Escrituras administrativas de catálogo\*\*** (cursos, materias, módulos, preceptores, directivos, roles, ciclos, tipos-de-acta, estados-de-asistencia): cambios de configuración, sin destinatario natural salvo auditoría. Los horarios sí notifican "Cambio de horario" a estudiantes, familias, docente de la materia, preceptores del curso y directivos.
 
 \- **\*\*Historial de cambios / \`HistorialCambio\`\*\***: ese es el log de auditoría (tipo de acción), no debe duplicarse como notificación push.
 

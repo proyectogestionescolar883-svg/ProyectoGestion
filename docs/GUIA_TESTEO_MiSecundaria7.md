@@ -198,7 +198,7 @@ El usuario **Familia002 José** es tutor de **Alumno001 y Alumno002** (ambos de 
 | 14 | **Presentar Declaración Jurada (DDJJ)** | Que se registre | **→ Admin y Director**: "Declaración Jurada presentada". |
 | 15 | **Marcarse ausente (falta de docente)** en la asistencia de docentes | Que quede registrada su falta | **→ Estudiantes de sus cursos + familias + Jefe de Preceptores**: "Falta de docente". |
 | 16 | **Carga única de notas / asistencias** (ventana de carga masiva) | Que se carguen en bloque para su curso/materia | **→ Admin/Director + Preceptores del curso**: "Notas cargadas" / "Notas actualizadas" / "Asistencias cargadas". |
-| 17 | **Cambiar/crear un horario** de su materia (si tiene permiso) | Que el horario se actualice | **→ Estudiantes del curso + familias + docente de la materia + preceptores + directivos**: "Horario modificado". |
+| 17 | **Cambiar/crear un horario** de su materia (si tiene permiso) | Que el horario se actualice | **→ Estudiantes del curso + familias + docente de la materia + preceptores + directivos**: "Cambio de horario". |
 
 ### 3.3. Notas específicas
 
@@ -211,7 +211,7 @@ Como **Docente02 Ana** deberías recibir:
 
 - [ ] **E17 — Suplencia asignada**: cuando el admin te designa docente suplente → "Suplencia asignada" que navega a tu **perfil docente** (donde se listan tus suplencias).
 - [ ] **E15 — Adelanto de horas aprobado** en alguna de tus materias/cursos asignados (título "Adelanto de horas").
-- [ ] **Cambio de horario** de las materias que dictás (ej. Matemática 1°1) → "Horario modificado".
+- [ ] **Cambio de horario** de las materias que dictás (ej. Matemática 1°1) → "Cambio de horario".
 - [ ] **Comunicado alcance General**.
 - [ ] **Comunicado alcance curso** de un curso donde dictás (ej. 1°1).
 - [ ] **Comunicado alcance materia** de una materia que dictás (ej. Matemática).
@@ -259,7 +259,7 @@ Como **Gómez Federico (preceptor de 1°1, 1°2, 1°3)** deberías recibir:
 - [ ] **E15 — Adelanto de horas** aprobado en cualquiera de tus cursos → "Adelanto de horas" (llega a docente titular + preceptores + directivos + jefe + estudiantes + familias).
 - [ ] **E17 — Suplencia asignada** en un curso que está a tu cargo → preceptores del curso + docente suplente + directivos + estudiantes + familias. (El preceptor gestiona la parte de sus cursos, no la suplencia.)
 - [ ] **Notas cargadas / actualizadas y Asistencias cargadas**: cuando un docente carga notas o asistencias de alguno de tus cursos (cada carga genera el aviso a directivos + preceptores del curso; título exacto "Notas cargadas", "Notas actualizadas" o "Asistencias cargadas", navega a notas/asistencias del curso-materia).
-- [ ] **Cambio de horario** de tus cursos → "Horario modificado" (estudiantes + familias + docente + preceptores + directivos).
+- [ ] **Cambio de horario** de tus cursos → "Cambio de horario" (estudiantes + familias + docente + preceptores + directivos).
 - [ ] **Comunicado alcance General**.
 - [ ] **Comunicado alcance curso** de 1°1, 1°2 o 1°3.
 - [ ] **Comunicado alcance materia** de una materia de tus cursos.
@@ -344,7 +344,7 @@ Como **Benítez Carolina (Jefa de Preceptores)** deberías recibir:
 
 | # | Acción a realizar | Qué revisar | Notificación |
 |---|---|---|---|
-| 10 | **Horarios** | Crear/editar/eliminar un horario para un curso. | **→ Estudiantes del curso + familias + docente de la materia + preceptores + directivos**: "Horario modificado". |
+| 10 | **Horarios** | Crear/editar/eliminar un horario para un curso. | **→ Estudiantes del curso + familias + docente de la materia + preceptores + directivos**: "Cambio de horario". |
 | 11 | **Adelantos de Horas** | Crear un adelanto. | **→ Docente titular + preceptores + directivos + jefe + estudiantes del curso + familias**: "Adelanto de horas". |
 | 12 | **Asistencias** | Cargar asistencia en bloque / por curso; marcar ausencias. | **Inasistencias** → estudiante y familia. **Carga masiva** → directivos + preceptores del curso. |
 | 13 | **Notas (RITE)** | Cargar/editar notas. Revisar que el RITE se calcule y actualice. | **Calificación** → estudiante + familia. **RITE consolidado/promoción** → estudiante + familia (E13). |

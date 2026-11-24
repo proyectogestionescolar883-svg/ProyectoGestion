@@ -91,6 +91,7 @@ def _purgar_notificaciones_antiguas():
 
 
 import json
+import re
 
 def _formatear_nav(nav):
     """Formatea metadatos de navegación como bloque al final del mensaje."""
@@ -271,7 +272,9 @@ def notificar_alumno(*, alumno, titulo='', mensaje='', dedupe=True, strategy='CO
             if existente:
                 # Actualizar mensaje si cambió el contenido
                 if mensaje not in (existente.mensaje or ''):
-                    existente.mensaje = f'{mensaje}\n{ref_marker}'
+                    nav_match = re.search(r'\s*\[nav:\{.*?\}\s*\]', existente.mensaje or '')
+                    nav_sufijo = nav_match.group(0) if nav_match else ''
+                    existente.mensaje = f'{mensaje}\n{ref_marker}{nav_sufijo}'
                     existente.save()
                 creadas.append(existente)
                 continue

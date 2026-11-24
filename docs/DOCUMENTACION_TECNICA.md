@@ -193,7 +193,7 @@ REST_FRAMEWORK = {
 | Modelo | Tabla | Propósito |
 |--------|-------|-----------|
 | `Usuario` | `usuarios` | Usuario del sistema con contraseña hasheada. No tiene email. |
-| `Rol` | `roles` | Roles disponibles: `admin`, `director`, `docente`, `preceptor`, `alumno`, `familia` |
+| `Rol` | `roles` | Roles disponibles: `admin`, `director`, `docente`, `preceptor`, `jefe_preceptores`, `alumno`, `familia` |
 | `UsuarioRol` | `usuario_roles` | Many-to-many entre usuarios y roles |
 
 #### Personas (cada una vinculada a un Usuario via OneToOneField)
@@ -440,21 +440,21 @@ frontend/src/
 ### 4.2 App.jsx — Enrutamiento por roles
 
 ```jsx
-function Dashboard({ user, logout }) {
-  const role = user.role || user.roles?.[0] || '';
-  switch (role) {
-    case 'preceptor':  return <PreceptorDashboard user={user} onLogout={logout} />;
+function Dashboard({ user, rolActivo, logout }) {
+  switch (rolActivo) {
+    case 'preceptor':        return <PreceptorDashboard user={user} onLogout={logout} />;
+    case 'jefe_preceptores': return <JefePreceptorDashboard user={user} onLogout={logout} />;
     case 'admin':
-    case 'director':   return <AdminDashboard user={user} onLogout={logout} />;
-    case 'docente':    return <PanelProfesores user={user} onLogout={logout} />;
-    case 'familia':    return <FamiliaDashboard user={user} onLogout={logout} />;
-    case 'alumno':     return <EstudianteDashboard user={user} onLogout={logout} />;
-    default:           return <div>Usuario sin panel asignado</div>;
+    case 'director':         return <AdminDashboard user={user} onLogout={logout} />;
+    case 'docente':          return <PanelProfesores user={user} onLogout={logout} />;
+    case 'familia':          return <FamiliaDashboard user={user} onLogout={logout} />;
+    case 'alumno':           return <EstudianteDashboard user={user} onLogout={logout} />;
+    default:                 return <div>Usuario sin panel asignado</div>;
   }
 }
 ```
 
-El primer rol de la lista `user.roles` determina qué dashboard se renderiza. El `DataProvider` envuelve a `Dashboard` para que todos los paneles tengan acceso a los datos globales.
+El rol activo elegido en `SeleccionRol` (`rolActivo`) determina qué dashboard se renderiza, no el primer rol de `user.roles`. El `DataProvider` envuelve a `Dashboard` para que todos los paneles tengan acceso a los datos globales.
 
 ### 4.3 main.jsx — Entrypoint
 

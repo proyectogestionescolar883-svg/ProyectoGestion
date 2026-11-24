@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildMediaUrl } from '../../utils/medios';
 import { useToast } from '../../context/ToastContext';
 import FormModal from '../../components/Shared/FormModal';
@@ -42,6 +42,7 @@ function Comunicados({ anioLectivo: anioGlobal = '', curso: cursoGlobal = '', cu
     materiasObj,
     materiasPorCurso,
     refreshData,
+    navIntent,
   } = useData();
   const { user } = useAuth();
   const toast = useToast();
@@ -57,6 +58,16 @@ function Comunicados({ anioLectivo: anioGlobal = '', curso: cursoGlobal = '', cu
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [archivos, setArchivos] = useState([]);
+  const [comunicadoResaltado, setComunicadoResaltado] = useState(null);
+  const navComunicadoAplicado = useRef(null);
+
+  useEffect(() => {
+    const marca = navIntent?.timestamp;
+    const comunicadoId = navIntent?.params?.comunicadoId ?? navIntent?.params?.id_comunicado;
+    if (!marca || !comunicadoId || navComunicadoAplicado.current === marca) return;
+    navComunicadoAplicado.current = marca;
+    setComunicadoResaltado(comunicadoId);
+  }, [navIntent]);
 
   const ciclosMap = useMemo(() => {
     const map = new Map();
@@ -448,7 +459,13 @@ function Comunicados({ anioLectivo: anioGlobal = '', curso: cursoGlobal = '', cu
         ) : (
           <div className="comunicados-admin-list">
             {listaFiltrada.map((c) => (
-              <article key={c.id || c.id_comunicado} className="comunicado-card">
+              <article
+                key={c.id || c.id_comunicado}
+                className="comunicado-card"
+                style={String(comunicadoResaltado) === String(c.id ?? c.id_comunicado)
+                  ? { background: '#eef2ff', outline: '2px solid #4f46e5' }
+                  : undefined}
+              >
                 <div className="comunicado-card-icon">
                   <i className="fas fa-bullhorn" aria-hidden="true" />
                 </div>

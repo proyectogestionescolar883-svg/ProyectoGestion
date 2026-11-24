@@ -7,6 +7,7 @@ function Notas({ navContext }) {
   const {
     cursosObj,
     cursoMateria,
+    docentes,
     getMateriasByCurso,
     selectedCursoId,
   } = useData();
@@ -66,13 +67,15 @@ function Notas({ navContext }) {
       ) || null,
     [cursoMateria, curso, materia],
   );
+  const docenteId = cursoMateriaEntry?.id_docente ?? docentes?.find((d) => d.activo !== false)?.id ?? null;
+  const puedeEditarReal = puedeEditar && Boolean(docenteId);
 
   return (
     <div>
       <div className="card">
         <div className="card-header-flex">
           <h3><i className="fas fa-graduation-cap" aria-hidden="true" /> Calificaciones — {curso || '…'} › {materia || '…'}</h3>
-          {!puedeEditar && <span className="badge role-badge-display">Solo lectura</span>}
+          {!puedeEditarReal && <span className="badge role-badge-display">Solo lectura</span>}
         </div>
 
         <div className="filter-row">
@@ -97,7 +100,7 @@ function Notas({ navContext }) {
 
       {cursoObj && cursoMateriaEntry ? (
         <>
-          {!puedeEditar && (
+          {!puedeEditarReal && (
             <div
               style={{
                 background: '#eef2ff',
@@ -119,8 +122,8 @@ function Notas({ navContext }) {
             cursoId={Number(cursoId)}
             cursoNombre={curso}
             materiaNombre={materia}
-            docenteId={null}
-            puedeEditar={puedeEditar}
+            docenteId={docenteId}
+            puedeEditar={puedeEditarReal}
             mostrarBannerSuplencia={false}
             alumnoId={navContext?.alumnoId ?? navContext?.id_alumno ?? navContext?.alumno_id}
           />

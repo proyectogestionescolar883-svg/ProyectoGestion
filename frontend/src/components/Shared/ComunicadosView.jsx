@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildMediaUrl } from '../../utils/medios';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
@@ -88,10 +88,21 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
     preceptores,
     administradores,
     ciclosLectivos,
+    navIntent,
   } = useData();
   const { user } = useAuth();
 
   const [selectedComunicado, setSelectedComunicado] = useState(null);
+  const [comunicadoResaltado, setComunicadoResaltado] = useState(null);
+  const navComunicadoAplicado = useRef(null);
+
+  useEffect(() => {
+    const marca = navIntent?.timestamp;
+    const comunicadoId = navIntent?.params?.comunicadoId ?? navIntent?.params?.id_comunicado;
+    if (!marca || !comunicadoId || navComunicadoAplicado.current === marca) return;
+    navComunicadoAplicado.current = marca;
+    setComunicadoResaltado(comunicadoId);
+  }, [navIntent]);
 
   const comunicadosFiltrados = useMemo(() => {
     if (!user || !comunicados) return [];
@@ -347,7 +358,12 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
             </thead>
             <tbody>
               {comunicadosOrdenados.map((c) => (
-                <tr key={c.id || c.id_comunicado}>
+                <tr
+                  key={c.id || c.id_comunicado}
+                  style={String(comunicadoResaltado) === String(c.id ?? c.id_comunicado)
+                    ? { background: '#eef2ff', outline: '2px solid #4f46e5' }
+                    : undefined}
+                >
                   <td className="table-cell-strong">{c.titulo}</td>
                   <td>{c.fecha ? c.fecha.split('T')[0] : '—'}</td>
                   <td>{c.creador_nombre || getNombreAutor(c.id_usuario_creador)}</td>

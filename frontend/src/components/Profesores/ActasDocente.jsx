@@ -169,8 +169,8 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
   const { user } = useAuth();
   const toast = useToast();
 
-  const esAdminODirector = Array.isArray(user?.roles) &&
-    (user.roles.includes('admin') || user.roles.includes('director'));
+  const rolesActivos = user?.role ? [user.role] : (Array.isArray(user?.roles) ? user.roles : []);
+  const esAdminODirector = rolesActivos.includes('admin') || rolesActivos.includes('director');
 
   const canEditActa = (acta) => {
     if (esAdminODirector) return true;
