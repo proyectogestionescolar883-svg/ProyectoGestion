@@ -132,9 +132,9 @@ function PanelEstudiante({ miEstudiante, user, recursadas = [] }) {
                 <tr key={r.id_curso || r.id || r.curso}>
                   <td className="text-left font-bold">
                     <i className="fas fa-users icon-muted" aria-hidden="true" />
-                    {r.curso || r.curso_nombre || 'Curso en recursada'}
+                    {r.anio || r.curso || r.curso_nombre || r.curso_origen || 'Curso en recursada'}
                   </td>
-                  <td className="text-muted">{r.ciclo_anio || r.anio || '—'}</td>
+                  <td className="text-muted">{r.ciclo_anio || '—'}</td>
                 </tr>
               ))}
             </tbody>

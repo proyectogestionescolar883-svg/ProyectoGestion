@@ -19,7 +19,7 @@ function getAlcances(comunicado) {
   return [];
 }
 
-function comunicadoMatchesAlcance(cursoObj, alcance) {
+function comunicadoMatchesAlcance(cursoObj, alcance, idMateria) {
   if (!cursoObj || !alcance) return false;
 
   const hasCiclo = alcance.id_ciclo !== null && alcance.id_ciclo !== undefined;
@@ -33,34 +33,51 @@ function comunicadoMatchesAlcance(cursoObj, alcance) {
   const parts = parseCurso(cursoObj.nombre_curso || '');
   if (hasCurso && parts.anio !== Number(alcance.curso)) return false;
   if (hasDivision && parts.division !== Number(alcance.division)) return false;
+  if (hasMateria) {
+    if (idMateria === undefined) return true;
+    if (idMateria === null) return false;
+    return Number(alcance.id_materia) === Number(idMateria);
+  }
 
   return true;
 }
 
-function comunicadoMatchesCurso(comunicado, cursoObj) {
+function comunicadoMatchesCurso(comunicado, cursoObj, idMateria) {
   if (!comunicado || !cursoObj) return false;
   const alcances = getAlcances(comunicado);
-  if (!alcances.length) return true;
-  return alcances.some((alcance) => comunicadoMatchesAlcance(cursoObj, alcance));
+  const coincideAlcance = alcances.length
+    ? alcances.some((alcance) => comunicadoMatchesAlcance(cursoObj, alcance, idMateria))
+    : true;
+  if (!coincideAlcance) return false;
+  if (
+    idMateria !== undefined &&
+    comunicado.id_materia !== null &&
+    comunicado.id_materia !== undefined
+  ) {
+    if (idMateria === null) return false;
+    return Number(comunicado.id_materia) === Number(idMateria);
+  }
+  return true;
 }
 
-function comunicadoEstaVigente(comunicado, aniosLectivos) {
+function comunicadoEstaVigente(comunicado, ciclosLectivos) {
+  if (comunicado?.estado === false) return false;
   const alcances = getAlcances(comunicado);
-  if (!alcances.length) return true; // Sin alcance = general, siempre vigente
+  if (!alcances.length) return true;
 
-  const anioActual = aniosLectivos.length > 0 ? Math.max(...aniosLectivos) : new Date().getFullYear();
+  const cicloActual = ciclosLectivos
+    .filter((c) => c && c.estado !== false && !c.fecha_eliminacion)
+    .sort((a, b) => Number(b.anio) - Number(a.anio))[0];
+  if (!cicloActual) return false;
 
   return alcances.some((alcance) => {
     const cicloId = alcance.id_ciclo;
-    if (!cicloId) return true; // Sin ciclo específico = vigente
-
-    const ciclo = aniosLectivos.find((c) => Number(c.id_ciclo) === Number(cicloId));
-    if (!ciclo) return true; // Ciclo no encontrado = asumir vigente
-    return Number(ciclo.anio) >= anioActual;
+    if (!cicloId) return true;
+    return Number(cicloId) === Number(cicloActual.id_ciclo);
   });
 }
 
-function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSeleccionada }) {
+function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSeleccionada, misAsignaciones }) {
   const {
     comunicados,
     estudiantes,
@@ -70,7 +87,7 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
     padresTutores,
     preceptores,
     administradores,
-    aniosLectivos,
+    ciclosLectivos,
   } = useData();
   const { user } = useAuth();
 
@@ -87,7 +104,7 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
         const miCurso = miEstudiante ? cursosObj.find((c) => c.id_curso === miEstudiante.id_curso) : null;
         if (!miCurso) return [];
         return comunicados
-          .filter((c) => comunicadoEstaVigente(c, aniosLectivos))
+          .filter((c) => comunicadoEstaVigente(c, ciclosLectivos))
           .filter((c) => comunicadoMatchesCurso(c, miCurso));
       }
 
@@ -97,7 +114,7 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
           const cursoObj = estudiante ? cursosObj.find((c) => c.id_curso === estudiante.id_curso) : null;
           if (!cursoObj) return [];
           return comunicados
-            .filter((c) => comunicadoEstaVigente(c, aniosLectivos))
+            .filter((c) => comunicadoEstaVigente(c, ciclosLectivos))
             .filter((c) => comunicadoMatchesCurso(c, cursoObj));
         }
 
@@ -108,36 +125,32 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
           .map((h) => cursosObj.find((c) => c.id_curso === h.id_curso))
           .filter(Boolean);
         return comunicados
-          .filter((c) => comunicadoEstaVigente(c, aniosLectivos))
+          .filter((c) => comunicadoEstaVigente(c, ciclosLectivos))
           .filter((c) => cursosHijos.some((cursoObj) => comunicadoMatchesCurso(c, cursoObj)));
       }
 
       case 'docente': {
-        const miDocente = docentes.find((d) => d.id_usuario === userId);
-        if (!miDocente) return [];
-        const misAsignaciones = cursoMateria.filter((cm) => cm.id_docente === miDocente.id);
+        const asignaciones = Array.isArray(misAsignaciones) ? misAsignaciones : [];
+        const cursosDocente = new Set(asignaciones.map((cm) => String(cm.id_curso)));
+        if (cursosDocente.size === 0) return [];
 
-        // Sin curso seleccionado no se muestran comunicados (requiere selección)
         if (!cursoSeleccionado) return [];
 
-        const cursoSeleccionadoObj = cursosObj.find((c) => c.id_curso === Number(cursoSeleccionado));
+        const cursoSeleccionadoObj = cursosObj.find((c) => String(c.id_curso) === String(cursoSeleccionado));
         if (!cursoSeleccionadoObj) return [];
+        if (!cursosDocente.has(String(cursoSeleccionadoObj.id_curso))) return [];
 
-        // Resolver id_materia seleccionada (puede venir como nombre)
         const idMateriaSeleccionada = materiaSeleccionada
-          ? (cursoMateria.find(
+          ? (asignaciones.find(
               (cm) => cm.materia_nombre === materiaSeleccionada && String(cm.id_curso) === String(cursoSeleccionado)
             )?.id_materia || null)
           : null;
 
         return comunicados
-          .filter((c) => comunicadoEstaVigente(c, aniosLectivos))
+          .filter((c) => comunicadoEstaVigente(c, ciclosLectivos))
           .filter((c) => {
-            if (!misAsignaciones.length) return false;
             const alcances = getAlcances(c);
-            // Debe coincidir con el curso seleccionado
             if (!alcances.some((alcance) => comunicadoMatchesAlcance(cursoSeleccionadoObj, alcance))) return false;
-            // Si hay materia seleccionada, filtrar por ella (comunicados de materia específica O generales del curso)
             if (idMateriaSeleccionada !== null) {
               const materiasDelComunicado = new Set();
               alcances.forEach((alcance) => {
@@ -148,7 +161,6 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
               if (c.id_materia !== null && c.id_materia !== undefined) {
                 materiasDelComunicado.add(Number(c.id_materia));
               }
-              // Sin materia en ningún nivel = comunicado general del curso
               if (materiasDelComunicado.size === 0) return true;
               return materiasDelComunicado.has(Number(idMateriaSeleccionada));
             }
@@ -159,29 +171,38 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
       case 'preceptor': {
         const miPreceptor = preceptores.find((p) => p.id_usuario === userId);
         if (!miPreceptor) return [];
-        const misCursos = cursosObj.filter((c) => Number(c.id_preceptor) === Number(miPreceptor.id));
+        let misCursos = cursosObj.filter((c) => Number(c.id_preceptor) === Number(miPreceptor.id));
+        if (cursoSeleccionado) {
+          misCursos = misCursos.filter(
+            (c) => String(c.id_curso) === String(cursoSeleccionado),
+          );
+          if (misCursos.length === 0) return [];
+        }
+        let idMateriaSeleccionada = null;
+        if (cursoSeleccionado && materiaSeleccionada) {
+          const asignacion = cursoMateria.find(
+            (cm) => String(cm.id_curso) === String(cursoSeleccionado) &&
+              cm.materia_nombre === materiaSeleccionada,
+          );
+          if (asignacion) idMateriaSeleccionada = asignacion.id_materia;
+        }
         return comunicados
-          .filter((c) => comunicadoEstaVigente(c, aniosLectivos))
-          .filter((c) => misCursos.some((cursoObj) => comunicadoMatchesCurso(c, cursoObj)));
+          .filter((c) => comunicadoEstaVigente(c, ciclosLectivos))
+          .filter((c) => misCursos.some(
+            (cursoObj) => comunicadoMatchesCurso(c, cursoObj, idMateriaSeleccionada),
+          ));
       }
 
-      case 'jefe_preceptores': {
-        const miPreceptor = preceptores.find((p) => p.id_usuario === userId);
-        if (!miPreceptor) return comunicados.filter((c) => comunicadoEstaVigente(c, aniosLectivos));
-        const misCursos = cursosObj.filter((c) => Number(c.id_preceptor) === Number(miPreceptor.id));
-        if (misCursos.length === 0) return comunicados.filter((c) => comunicadoEstaVigente(c, aniosLectivos));
-        return comunicados
-          .filter((c) => comunicadoEstaVigente(c, aniosLectivos))
-          .filter((c) => misCursos.some((cursoObj) => comunicadoMatchesCurso(c, cursoObj)));
-      }
+      case 'jefe_preceptores':
+        return comunicados.filter((c) => comunicadoEstaVigente(c, ciclosLectivos));
 
       case 'admin':
-        return comunicados.filter((c) => comunicadoEstaVigente(c, aniosLectivos));
+        return comunicados.filter((c) => comunicadoEstaVigente(c, ciclosLectivos));
 
       default:
         return [];
     }
-  }, [comunicados, user, userRole, estudiantes, cursoMateria, cursosObj, docentes, padresTutores, preceptores, selectedChild, cursoSeleccionado, materiaSeleccionada, aniosLectivos]);
+  }, [comunicados, user, userRole, estudiantes, cursoMateria, cursosObj, docentes, padresTutores, preceptores, selectedChild, cursoSeleccionado, materiaSeleccionada, ciclosLectivos, misAsignaciones]);
 
   const comunicadosOrdenados = useMemo(() => {
     return [...comunicadosFiltrados].sort((a, b) => {
@@ -326,7 +347,7 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
             </thead>
             <tbody>
               {comunicadosOrdenados.map((c) => (
-                <tr key={c.id_comunicado}>
+                <tr key={c.id || c.id_comunicado}>
                   <td className="table-cell-strong">{c.titulo}</td>
                   <td>{c.fecha ? c.fecha.split('T')[0] : '—'}</td>
                   <td>{c.creador_nombre || getNombreAutor(c.id_usuario_creador)}</td>

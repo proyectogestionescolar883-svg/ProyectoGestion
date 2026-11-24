@@ -22,8 +22,8 @@
 
 | Rol | Label | Icono | Dashboards / Vistas Principales |
 |-----|-------|-------|--------------------------------|
-| `admin` | Administrador | fa-user-shield | Gestión completa: usuarios, roles, cursos, materias, horarios, suplencias, calendario, historial, actas, comunicados, notas, asistencias, preceptores, administradores, adelantos horas |
-| `director` | Director | fa-user-tie | Igual que admin (mapeado en `ROL_EQUIV`) |
+| `admin` | Administrador | fa-user-shield | Gestión de usuarios no directivos, cursos, materias, horarios, suplencias, calendario, historial, actas existentes, comunicados, notas, asistencias, preceptores, adelantos horas. No gestiona administradores ni directivos. |
+| `director` | Director | fa-user-tie | Igual que admin, más gestión exclusiva de administradores/directivos (mapeado en `ROL_EQUIV`) |
 | `jefe_preceptores` | Jefe de Preceptores | fa-users-cog | Supervisión preceptores, estadísticas, asignación cursos, admin preceptores, comunicados jefe, actas, notas, asistencias, estudiantes, docentes, tutores, adelantos horas, calendario, historial |
 | `preceptor` | Preceptor | fa-clipboard-user | Gestión diaria: estudiantes, tutores, docentes, asistencias (día/materia/docentes), notas/RITE, actas, libro temas, proyectos, actividades, adelantos horas, horarios, comunicados, notificaciones, calendario |
 | `docente` | Docente | fa-chalkboard-teacher | Panel docente, planificaciones, libro temas, info, asistencia, actividades, actas docente, estudiantes, comunicados, notificaciones, diagnóstico, calendario, materias adeudadas |
@@ -43,7 +43,7 @@
 | **Estudiante** | `id_alumno`, `dni`, `nombre`, `apellido`, `curso`, `id_curso`, `id_tutor`, `id_usuario`, `fecha_nacimiento`, `direccion`, `telefono`, `procedencia`, `usuario`, `usuario_estado` | `/alumnos/` | Todos |
 | **Docente** | `id_docente`, `id_usuario`, `dni`, `nombre`, `apellido`, `correo`, `telefono`, `materia`, `asignaciones[]`, `ddjj_*`, `usuario_estado` | `/docentes/`, `/ddjj-docente/` | Admin, Preceptor, Jefe, Docente |
 | **Preceptor** | `id_preceptor`, `id_usuario`, `dni`, `nombre`, `apellido`, `correo`, `telefono`, `cursos[]`, `usuario_estado` | `/preceptores/` | Admin, Jefe |
-| **Directivo/Administrador** | `id_directivo`, `id_usuario`, `dni`, `nombre`, `apellido`, `correo`, `telefono`, `cargo`, `usuario_estado` | `/directivos/` | Admin |
+| **Directivo/Administrador** | `id_directivo`, `id_usuario`, `dni`, `nombre`, `apellido`, `correo`, `telefono`, `cargo`, `usuario_estado` | `/directivos/` | Director |
 | **Curso** | `id_curso`, `nombre_curso` (ej: "4°1"), `orientacion`, `id_preceptor`, `id_ciclo`, `activo`, `ciclo_anio` | `/cursos/` | Admin, Preceptor, Docente, Familia, Estudiante |
 | **Materia** | `id_materia`, `nombre_materia`, `activo` | `/materias/` | Admin, Docente, Preceptor |
 | **Curso-Materia** | `id_curso_materia`, `id_curso`, `id_materia`, `id_docente`, `curso_nombre`, `materia_nombre`, `docente_nombre` | `/curso-materia/` | **Entidad pivote central** |
@@ -102,7 +102,7 @@
 | RF-USR-02 | Asignación/quitar roles a usuarios | `api.js:538-558` (`quitarRolUsuario`, `getUsuariosConRol`, `getUsuariosSinRol`) |
 | RF-USR-03 | Alta de docente con usuario, contraseña, DDJJ, estado, fechas programadas | `Administracion/docentes.jsx:296-308`, `api.js:574-586` |
 | RF-USR-04 | Alta de preceptor con asignación de cursos | `Administracion/preceptores.jsx`, `api.js:163-181` |
-| RF-USR-05 | Alta de administrador/directivo con cargo | `Administracion/administradores.jsx`, `api.js:158-161` |
+| RF-USR-05 | Alta de administrador/directivo con cargo (solo director) | `Administracion/administradores.jsx`, `api.js:158-161` |
 | RF-USR-06 | DDJJ Docente: subida, verificación, vista previa, eliminación | `Administracion/docentes.jsx:36-131`, `api.js:109-114, 146-149, 140-144` |
 | RF-USR-07 | Verificación de planificaciones docentes | `Administracion/docentes.jsx:194-206`, `api.js:655-658` |
 
@@ -125,11 +125,11 @@
 |----|---------------|----------------|-----|
 | RF-ASIST-01 | Asistencia por día (curso): lista estudiantes, estados (Presente/Ausente/Tarde/Retirado), guardar batch | `Preceptores/asistencias.jsx:290-340`, `api.js:269-272` | Preceptor |
 | RF-ASIST-02 | Asistencia por materia (visualización): filtros materia/fecha/estudiante, justificación | `Preceptores/asistencias.jsx:410-556`, `api.js:252-257, 259-262` | Preceptor |
-| RF-ASIST-03 | Asistencia docente: registro por preceptor (Presente/Ausente/Tarde), faltas anticipadas | `Preceptores/asistencias.jsx:560-704`, `api.js:298-324` | Preceptor, Jefe, Admin |
+| RF-ASIST-03 | Asistencia docente: registro por preceptor (Presente/Ausente/Tarde), faltas anticipadas | `Preceptores/asistencias.jsx:560-704`, `api.js:298-324` | Preceptor, Admin, Director |
 | RF-ASIST-04 | Planilla docente por materia: carga con validación de horario (servidor), ventana 20min "carga única" | `Profesores/PanelAsistencia.jsx`, `api.js:238-250, 269-272, 465-468` | Docente |
 | RF-ASIST-05 | Bloqueo si docente ausente (marcado por preceptor) o evento institucional activo | `Profesores/PanelAsistencia.jsx:226-279` | Docente |
 | RF-ASIST-06 | Justificación de inasistencias (checkbox, patch) | `Preceptores/asistencias.jsx:519-540`, `api.js:259-262` | Preceptor |
-| RF-ASIST-07 | Historial / Registro diario por curso/estudiante/fecha | `Preceptores/asistencias.jsx:339-406`, `api.js:291-296` | Preceptor, Admin |
+| RF-ASIST-07 | Historial / Registro diario por curso/estudiante/fecha | `Preceptores/asistencias.jsx:339-406`, `api.js:291-296` | Preceptor, Admin, Director |
 | RF-ASIST-08 | Vista unificada estudiante/familia: resumen 7 días, por materia, detalle con combinación de estados (Ausente+Ausente=Ausente, Presente+Presente=Presente, Ausente+Presente=Tarde, Presente+Ausente=Retirado) | `Shared/AsistenciasUnificada.jsx:41-60, 83-145` | Estudiante, Familia, Preceptor (readOnly) |
 | RF-ASIST-09 | Estados de asistencia configurables | `api.js:274-277` | Admin |
 
@@ -152,7 +152,7 @@
 
 | ID | Requerimiento | Implementación | Rol |
 |----|---------------|----------------|-----|
-| RF-ACTA-01 | Tipos de acta: Estudiante, Docente, Curso (resuelve tipo "Evaluación" por defecto) | `Preceptores/actas.jsx:31-43`, `api.js:331-334` | Preceptor, Docente, Jefe, Admin |
+| RF-ACTA-01 | Tipos de acta: Estudiante, Docente, Curso (resuelve tipo "Evaluación" por defecto) | `Preceptores/actas.jsx:31-43`, `api.js:331-334` | Preceptor, Docente, Jefe, Admin (solo lectura/gestión) |
 | RF-ACTA-02 | Crear acta con título, fecha, descripción, archivo (PDF/DOC/JPG), destinatario según tipo | `Preceptores/actas.jsx:47-167`, `api.js:336-339, 346-353, 356-359, 602-610` | Preceptor, Docente, Jefe |
 | RF-ACTA-03 | Edición/eliminación con permisos (creador o admin/director) | `Preceptores/actas.jsx:195-204, 323-397` | Creador, Admin, Director |
 | RF-ACTA-04 | Descarga/visualización archivo acta | `Preceptores/actas.jsx:508-512, 574-578, 638-642` | Todos (según visibilidad) |
@@ -163,7 +163,7 @@
 
 | ID | Requerimiento | Implementación | Rol |
 |----|---------------|----------------|-----|
-| RF-COM-01 | CRUD comunicados con título, cuerpo, alcances (curso, división, materia, ciclo), archivos adjuntos | `Administracion/comunicados.jsx`, `api.js:612-629` | Admin, Preceptor, Jefe, Docente |
+| RF-COM-01 | CRUD comunicados con título, cuerpo, alcances (curso, división, materia, ciclo), archivos adjuntos | `Administracion/comunicados.jsx`, `api.js:612-629` | Admin, Director, Jefe |
 | RF-COM-02 | Filtrado por alcance para Familia/Estudiante (parsea curso → año/división, matchea alcances) | `Familia/Comunicados.jsx:4-18`, `utils/orientacion.js` | Familia, Estudiante |
 | RF-COM-03 | Vista compartida `ComunicadosView` reutilizable por rol | `Shared/ComunicadosView.jsx` | Preceptor, Jefe, Docente, Familia, Estudiante |
 | RF-COM-04 | Notificación automática al crear comunicado (endpoint `/notificaciones/enviar-carga-unica/`) | `api.js:455-458` | Admin |
@@ -188,7 +188,7 @@
 |----|---------------|----------------|-----|
 | RF-PLAN-01 | Planificación por Curso-Materia: contenido, objetivos, salidas, fundamentación (JSON en campo `descripcion`) | `Profesores/PanelPlanif.jsx:104-116`, `api.js:470-488` | Docente |
 | RF-PLAN-02 | Adjunto PDF opcional, estado Borrador/Verificado | `Profesores/PanelPlanif.jsx:254-263`, `api.js:655-658` | Docente |
-| RF-PLAN-03 | Verificación por Preceptor/Jefe/Admin (cambia estado a "Verificado", notifica) | `Administracion/docentes.jsx:194-206` | Preceptor, Jefe, Admin |
+| RF-PLAN-03 | Verificación por Admin/Director (cambia estado a "Verificado", notifica) | `Administracion/docentes.jsx:194-206` | Admin, Director |
 | RF-PLAN-04 | Libro de Temas: CRUD entradas por Curso-Materia (fecha, tema, contenido, observaciones) | `Preceptores/LibroTemasPreceptor.jsx`, `Profesores/PanelLibroTemas.jsx`, `api.js:742-759` | Docente, Preceptor |
 | RF-PLAN-05 | Vista de diagnóstico grupal por curso | `Shared/DiagnosticosView.jsx`, `api.js:480-488` | Docente, Preceptor, Jefe, Admin, Familia, Estudiante |
 
@@ -206,9 +206,9 @@
 
 | ID | Requerimiento | Implementación | Rol |
 |----|---------------|----------------|-----|
-| RF-HOR-01 | Horarios por Curso-Materia con módulos, aula, día | `Administracion/horarios.jsx`, `api.js:392-409` | Admin |
-| RF-HOR-02 | Horarios especiales (excepciones) | `api.js:411-428` | Admin |
-| RF-HOR-03 | Vista horarios por curso (solo lectura) para Familia/Estudiante/Preceptor | `Administracion/VistaHorarios.jsx`, `FamiliaDashboard.jsx:104-115`, `EstudianteDashboard.jsx:215-220` | Familia, Estudiante, Preceptor |
+| RF-HOR-01 | Horarios por Curso-Materia con módulos, aula, día | `Administracion/horarios.jsx`, `api.js:392-409` | Admin, Director, Preceptor (escritura); Jefe (lectura) |
+| RF-HOR-02 | Horarios especiales (excepciones) | `api.js:411-428` | Admin, Director, Preceptor (escritura); Jefe (lectura) |
+| RF-HOR-03 | Vista horarios por curso (solo lectura) para Familia/Estudiante/Preceptor/Jefe | `Administracion/VistaHorarios.jsx`, `FamiliaDashboard.jsx:104-115`, `EstudianteDashboard.jsx:215-220`, `JefePreceptorDashboard.jsx`, `JefePreceptores/sidebarMenu.js` | Familia, Estudiante, Preceptor, Jefe |
 | RF-HOR-04 | Horarios de hoy en panel docente (desde `serverInfo.horarios_hoy`) | `Profesores/PanelAsistencia.jsx:408-418` | Docente |
 
 ### 4.12 Historial y Auditoría (RF-HIST)
@@ -361,7 +361,7 @@
 | `DiagnosticosView` | `userRole`, `cursoSeleccionado`, `cursosEditables`, `selectedChild` | Todos |
 | `ActividadesView` | `userRole`, `cursoId`, `cursoNombre`, `selectedChild` | Preceptor, Familia, Estudiante |
 | `RiteTablaPrincipal` / `RiteExtras` | `materias`, `intensificaciones_1c`, `bloqueos_por_materia`, `intensificaciones_posteriores`, `recursadas`, `previas`, `loading` | Preceptor, Familia, Estudiante |
-| `VistaHorarios` | `cursosOptions`, `cursoForzado`, `mostrarTitulo` | Familia, Estudiante, Preceptor |
+| `VistaHorarios` | `cursosOptions`, `cursoForzado`, `mostrarTitulo` | Familia, Estudiante, Preceptor, Jefe |
 | `FiltrosAnioCurso` | `cursosObj`, `anioLectivo`, `curso`, `onAnioChange`, `onCursoChange` | Preceptor, Jefe, Admin |
 | `FilePicker` | `accept`, `value`, `onChange` | Subida archivos (actas, comunicados, actividades, planificaciones, DDJJ) |
 | `LoadingSpinner` | `text`, `size`, `inline` | Estados de carga |
@@ -428,7 +428,7 @@
 - [ ] Proyectos: CRUD
 - [ ] Actividades: CRUD con archivos
 - [ ] Adelantos Horas: CRUD
-- [ ] Comunicados: crea con alcances, ve los del curso
+- [ ] Comunicados: ve los del curso (solo lectura; publican Admin y Jefe)
 - [ ] Notificaciones: ve, marca leída, navega por "Ver"
 
 ### 12.3 Docente
@@ -447,10 +447,10 @@
 - [ ] Estadísticas: dashboard métricas
 - [ ] Admin Preceptores / Asignación Cursos: CRUD
 - [ ] Comunicados Jefe: propios
-- [ ] Hereda vistas preceptor (estudiantes, docentes, tutores, asistencias, actas, notas) en readOnly
+- [ ] Hereda vistas preceptor (estudiantes, docentes, tutores, asistencias, notas) en readOnly; actas son escribibles por diseño
 
 ### 12.5 Admin / Director
-- [ ] Usuarios: CRUD docentes, preceptores, administradores, estudiantes
+- [ ] Usuarios: CRUD docentes, preceptores, estudiantes, tutores; administradores/directivos solo director
 - [ ] Roles: asignar/quitar, ver con/sin rol
 - [ ] Cursos: CRUD, activar/desactivar, preceptor, orientación auto
 - [ ] Materias: CRUD
@@ -460,7 +460,8 @@
 - [ ] Calendario/Eventos: CRUD
 - [ ] Historial: filtros, tipos acción
 - [ ] Adelantos Horas: CRUD
-- [ ] Comunicados/Actas/Notas/Asistencias: vistas admin (filtros globales)
+- [ ] Comunicados/Notas/Asistencias: vistas admin (filtros globales, con carga habilitada en RITE/asistencias)
+- [ ] Actas: ver/gestionar existentes; alta solo para preceptor/docente/jefe
 
 ### 12.6 Familia
 - [ ] Selector de hijo (si múltiples)

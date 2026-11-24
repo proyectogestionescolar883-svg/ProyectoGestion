@@ -334,7 +334,7 @@ Como **Benítez Carolina (Jefa de Preceptores)** deberías recibir:
 | 2 | **Estudiantes** | Crear, editar, buscar, eliminar/desactivar un estudiante. Probar adjuntarle tutor y usuario. | **Crear usuario estudiante** → preceptores + jefe + directivos (E20), excluyendo al actor. |
 | 3 | **Docentes** | Crear/editar docente y asignarle materias/cursos. | Ídem anterior (E20) si crea el usuario. |
 | 4 | **Preceptores** | Crear/editar preceptor y asignarle cursos. | Ídem (E20). |
-| 5 | **Administradores** | Editar administradores existentes. **Debe estar deshabilitado el botón de crear/editar admins para el rol admin** (solo director tiene permiso). |
+| 5 | **Administradores** | El rol admin no ve ni gestiona administradores/directivos. Crear/editar admins es exclusivo del director. |
 | 6 | **Cursos** | Crear/modificar/eliminar un curso. | **→ Directivos (excepto actor)**: "Cambio de estructura" (curso creado/modificado/eliminado). |
 | 7 | **Materias** | Crear/modificar/eliminar una materia. | **→ Directivos (excepto actor)**: "Cambio de estructura". |
 | 8 | **Suplencias Docentes** | Crear una suplencia para un docente. | **→ Docente suplente + preceptores del curso + directivos + estudiantes del curso + familias**: "Suplencia asignada". |
@@ -348,7 +348,7 @@ Como **Benítez Carolina (Jefa de Preceptores)** deberías recibir:
 | 11 | **Adelantos de Horas** | Crear un adelanto. | **→ Docente titular + preceptores + directivos + jefe + estudiantes del curso + familias**: "Adelanto de horas". |
 | 12 | **Asistencias** | Cargar asistencia en bloque / por curso; marcar ausencias. | **Inasistencias** → estudiante y familia. **Carga masiva** → directivos + preceptores del curso. |
 | 13 | **Notas (RITE)** | Cargar/editar notas. Revisar que el RITE se calcule y actualice. | **Calificación** → estudiante + familia. **RITE consolidado/promoción** → estudiante + familia (E13). |
-| 14 | **Actas** | Crear actas de curso/estudiante. | **Acta de curso** → preceptores + jefe. |
+| 14 | **Actas** | Ver/gestionar actas existentes. La creación de actas es de preceptor/docente/jefe; admin/director no crea actas. | **Acta de curso** → preceptores + jefe. |
 | 15 | **Carga única** | Probar el flujo de carga única / intensificaciones si está disponible. | Según módulo (cargas de notas → directivos + preceptores; carga en ventana a docentes activos). |
 
 ### 6.3. Comunicación
@@ -404,7 +404,7 @@ Como **Directivo Prueba Admin (admin_prueba)** deberías recibir:
 | 1 | **Administradores** | **Crear y editar administradores** (permiso EXCLUSIVO del director). Verificar que con rol admin esa opción esté bloqueada. |
 | 2 | Todas las acciones de la sección **Administrador (6.1 a 6.4)** | Mismas revisiones, más verificar que recibe las notificaciones de gestión (planificaciones para revisión, DDJJ, cambios de estructura) como el admin. |
 | 3 | **Cambio de rol** | Probar que con el mismo usuario pueda operar como directivo. |
-| 4 | **Campana** | Verificar notificaciones de: planificación para revisión, DDJJ presentada, actas, suplencias, eventos, comunicados, estructura, bloqueo de horario (levantarlo le llega como de todos). |
+| 4 | **Campana** | Verificar notificaciones de: planificación para revisión, DDJJ presentada, suplencias, eventos, comunicados, estructura, bloqueo de horario (levantarlo le llega como de todos). No llegan E4/E21 de actas. |
 
 ### Checklist de notificaciones a recibir (marcar en la campana)
 
@@ -491,7 +491,7 @@ Completar solo cuando todo lo anterior esté probado:
 - [ ] Admin/Director: creó evento institucional → **todos** recibieron.
 - [ ] Admin: creó usuario → **preceptores + jefe + directivos** (sin el actor).
 - [ ] Admin: deshabilitó un usuario → **ese usuario** recibió aviso.
-- [ ] Jefe: recibió falta de docente, actas, suplencias, adelantos y comunicados.
+- [ ] Jefe: recibió falta de docente, actas, adelantos y comunicados (suplencias sólo si también es preceptor del curso).
 - [ ] Estudiante y Familia: recibieron y pudieron navegar desde cada notificación al módulo correcto.
 - [ ] Director: pudo crear administradores (y admin NO pudo).
 - [ ] Limitadores diarios/horarios: **desactivados** (aviso al cliente para que lo recuerde).
@@ -509,7 +509,7 @@ Resultados de los bugs reportados en el ciclo de testeo masivo (ciclo 2026-09):
 | 3 | Preceptor no podía guardar horarios (error al guardar) | ✔ Corregido | `HorarioViewSet` y `HorarioEspecialViewSet` usaban `IsAdminOrDirectorForWrite`, que bloquea escrituras del preceptor. Nueva `PuedeGestionarHorarios` (lecturas: autenticado; escritura: admin/director/preceptor). Nota: el **jefe de preceptores NO** escribe horarios (alineado con `_check_preceptor_curso_access`). |
 | 4 | Botones "Nuevo Tutor" / "Nuevo Docente" cuelgan la página | ✔ Corregido | `renderFormTutor()` se invocaba sin estar definido → ReferenceError durante el render. Ídem `<AsignacionesEditor />` en docentes. Se crearon `renderFormTutor`, `TutoresEstudiantesEditor.jsx` y `AsignacionesEditor.jsx`. `npm run build` OK. |
 | 5 | Crear preceptor/jefe: "id_usuario_existente: Introduzca un número entero válido" | ✔ Corregido | El payload envía `''` y DRF `IntegerField` lo rechaza incluso con `allow_null=True`. Se creó `EnteroOpcionalField` (convierte `''`/`None` → `None`) y se usó en los 5 serializers. Verificado: `ERRORES: {}`, `VALIDO: True`; `manage.py check` OK. |
-| 6 | RITE "no permite cambiar materia" | ⚠ No reproducible | El RITE (Estudiante/Familia/Preceptor/PDF) es **consolidado por diseño**: muestra todas las materias del curso en una tabla, sin selector de materia. Único selector de materia relacionado está en `Administracion/notas.jsx` (vista de solo lectura) y funciona. Si el reporte era esa vista, revisar con qué curso/materia se probó. |
+| 6 | RITE "no permite cambiar materia" | ⚠ No reproducible | El RITE (Estudiante/Familia/Preceptor/PDF) es **consolidado por diseño**: muestra todas las materias del curso en una tabla, sin selector de materia. El selector de materia relacionado está en `Administracion/notas.jsx` y funciona; Admin/Director pueden editar el RITE desde esa vista. Si el reporte era esa vista, revisar con qué curso/materia se probó. |
 | 7 | Director al quitar rol admin: la persona sigue en la lista | ✔ Verificado OK | Repro extraído contra el servidor real (login `director_prueba` → `POST /api/usuarios/quitar-rol/` → `GET /api/usuarios/`): al quitar el rol, la persona **desaparece** del listado. La regla de negocio conserva al menos un rol (rechaza quitar el único rol). Roles de prueba usados en la verificación fueron restaurados en la DB. |
 
 **Notas para próximos ciclos:**

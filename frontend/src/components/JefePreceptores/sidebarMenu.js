@@ -7,6 +7,7 @@ export const menuItems = [
     icon: 'fa-cogs',
     children: [
       { id: 'admin-preceptores', label: 'Administración de Preceptores', icon: 'fa-user-cog' },
+      { id: 'supervision', label: 'Supervisión de Preceptores', icon: 'fa-clipboard-check' },
       { id: 'estadisticas', label: 'Estadísticas', icon: 'fa-chart-bar' },
     ],
   },
@@ -21,6 +22,7 @@ export const menuItems = [
       { id: 'notas', label: 'RITE', icon: 'fa-file-alt' },
       { id: 'actas', label: 'Actas', icon: 'fa-file-signature' },
       { id: 'adelantos-horas', label: 'Adelantos de Horas', icon: 'fa-forward' },
+      { id: 'horarios', label: 'Horarios', icon: 'fa-clock' },
     ],
   },
 

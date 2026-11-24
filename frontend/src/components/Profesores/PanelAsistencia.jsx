@@ -86,61 +86,59 @@ function PanelAsistencia({ cursoMateriaId, cursoId, cursoNombre, puedeEditar = t
     }
   }, [serverInfo?.fecha, fechaSeleccionada]);
 
-  useEffect(() => {
+  const cargarAsistencias = useCallback(async (senal = { cancelado: false }) => {
     if (estudiantesCurso.length === 0 || !cursoMateriaId || !fechaSeleccionada) {
       setFilas([]);
       return;
     }
 
-    let cancelado = false;
+    const filasBase = estudiantesCurso.map((a) => ({
+      id: a.id,
+      nombre: `${a.apellido}, ${a.nombre}`,
+      estado: '',
+    }));
 
-    const cargarAsistencias = async () => {
-      const filasBase = estudiantesCurso.map((a) => ({
-        id: a.id,
-        nombre: `${a.apellido}, ${a.nombre}`,
-        estado: '',
-      }));
+    try {
+      const data = await getAsistencias({
+        curso_materia: cursoMateriaId,
+        fecha: fechaSeleccionada,
+      });
 
-      try {
-        const data = await getAsistencias({
-          curso_materia: cursoMateriaId,
-          fecha: fechaSeleccionada,
+      if (senal.cancelado) return;
+
+      const asistenciaMap = {};
+      if (Array.isArray(data)) {
+        data.forEach((a) => {
+          const alumnoId = typeof a.id_alumno === 'object' ? a.id_alumno?.id_alumno : a.id_alumno;
+          const estadoNombre = a.estado_nombre
+            || a.id_estado_asistencia?.nombre_estado
+            || (typeof a.id_estado_asistencia === 'object' ? a.id_estado_asistencia?.nombre_estado : null);
+          if (alumnoId && estadoNombre) {
+            asistenciaMap[alumnoId] = estadoNombre;
+          }
         });
-
-        if (cancelado) return;
-
-        const asistenciaMap = {};
-        if (Array.isArray(data)) {
-          data.forEach((a) => {
-            const alumnoId = typeof a.id_alumno === 'object' ? a.id_alumno?.id_alumno : a.id_alumno;
-            const estadoNombre = a.estado_nombre
-              || a.id_estado_asistencia?.nombre_estado
-              || (typeof a.id_estado_asistencia === 'object' ? a.id_estado_asistencia?.nombre_estado : null);
-            if (alumnoId && estadoNombre) {
-              asistenciaMap[alumnoId] = estadoNombre;
-            }
-          });
-        }
-
-        setFilas(
-          filasBase.map((fila) => ({
-            ...fila,
-            estado: asistenciaMap[fila.id] || '',
-          })),
-        );
-      } catch {
-        if (!cancelado) {
-          setFilas(filasBase);
-        }
       }
-    };
 
-    cargarAsistencias();
-
-    return () => {
-      cancelado = true;
-    };
+      setFilas(
+        filasBase.map((fila) => ({
+          ...fila,
+          estado: asistenciaMap[fila.id] || '',
+        })),
+      );
+    } catch {
+      if (!senal.cancelado) {
+        setFilas(filasBase);
+      }
+    }
   }, [estudiantesCurso, cursoMateriaId, fechaSeleccionada]);
+
+  useEffect(() => {
+    const senal = { cancelado: false };
+    cargarAsistencias(senal);
+    return () => {
+      senal.cancelado = true;
+    };
+  }, [cargarAsistencias]);
 
   // Carga única de 20 minutos otorgada por el preceptor: la ventana activa
   // autoriza cargar aunque no se esté en horario; al cargar (o vencer) el

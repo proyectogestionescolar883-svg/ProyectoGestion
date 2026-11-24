@@ -1,7 +1,8 @@
+from django.utils import timezone
 from rest_framework import permissions
 
 from escuela.auth_backend import get_roles_for_usuario
-from escuela.models import Usuario, Alumno, Docente, PadreTutor, CursoMateria, TutorAlumno
+from escuela.models import Usuario, Alumno, Docente, PadreTutor, CursoMateria, SuplenciaDocente, TutorAlumno
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +99,31 @@ def docente_del_usuario(request):
     return Docente.objects.filter(id_usuario=u).first()
 
 
+def materias_docente_ids_para(docente, fecha=None):
+    if docente is None:
+        return set()
+    if fecha is None:
+        fecha = timezone.localdate()
+    cm_ids = set(
+        CursoMateria.objects.filter(id_docente=docente).values_list(
+            'id_curso_materia', flat=True,
+        )
+    )
+    ganadoras = {}
+    suplencias = SuplenciaDocente.objects.filter(
+        estado=True,
+        fecha_inicio__lte=fecha,
+        fecha_fin__gte=fecha,
+    )
+    for suplencia in suplencias:
+        actual = ganadoras.get(suplencia.id_curso_materia_id)
+        if actual is None or suplencia.nivel > actual.nivel:
+            ganadoras[suplencia.id_curso_materia_id] = suplencia
+    for suplencia in ganadoras.values():
+        cm_ids.add(suplencia.id_curso_materia_id)
+    return cm_ids
+
+
 def alumnos_permitidos(request):
     """Queryset de Alumno que el usuario puede consultar.
 
@@ -116,8 +142,9 @@ def alumnos_permitidos(request):
         return Alumno.objects.filter(id_alumno__in=ids)
     doc = docente_del_usuario(request)
     if doc:
+        cm_ids = materias_docente_ids_para(doc)
         cursos = CursoMateria.objects.filter(
-            id_docente=doc, activo=True, estado=True
+            id_curso_materia__in=cm_ids, activo=True, estado=True
         ).values_list('id_curso', flat=True)
         return Alumno.objects.filter(id_curso__in=cursos)
     return Alumno.objects.none()
@@ -130,6 +157,15 @@ class IsAdminOrDirectorForWrite(permissions.BasePermission):
         username = request.user.username if request.user.is_authenticated else None
         roles = get_roles_for_usuario(username) if username else []
         return 'admin' in roles or 'director' in roles
+
+
+class SoloDirectorEscribeDirectivos(permissions.BasePermission):
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return request.user.is_authenticated
+        username = request.user.username if request.user.is_authenticated else None
+        roles = get_roles_for_usuario(username) if username else []
+        return 'director' in roles
 
 
 class PuedeGestionarCurso(permissions.BasePermission):
@@ -148,12 +184,13 @@ class PuedeGestionarCurso(permissions.BasePermission):
 
 
 class PuedeGestionarHorarios(permissions.BasePermission):
-    """Escritura de horarios para admin, director, jefe de preceptores y
-    preceptor (RF-4.1/4.2).
+    """Escritura de horarios para admin, director y preceptor (RF-4.1/4.2).
 
-    El preceptor solo puede escribir sobre los cursos a su cargo: el alcance
-    fino se verifica en `_check_horario_write_access()` del viewset. Los roles
-    de gestión no tienen esa restricción.
+    El jefe de preceptores puede consultar horarios pero no escribirlos, según
+    la política vigente de la guía de testeo. El preceptor solo puede escribir
+    sobre los cursos a su cargo: el alcance fino se verifica en
+    `_check_horario_write_access()` del viewset. Admin y director no tienen
+    esa restricción.
     """
 
     def has_permission(self, request, view):
@@ -161,10 +198,7 @@ class PuedeGestionarHorarios(permissions.BasePermission):
             return request.user.is_authenticated
         username = request.user.username if request.user.is_authenticated else None
         roles = get_roles_for_usuario(username) if username else []
-        return any(
-            rol in roles
-            for rol in ('admin', 'director', 'jefe_preceptores', 'preceptor')
-        )
+        return any(rol in roles for rol in ('admin', 'director', 'preceptor'))
 
 
 class PuedeVerHistorial(permissions.BasePermission):

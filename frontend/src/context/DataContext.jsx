@@ -473,6 +473,7 @@ export function DataProvider({ children }) {
         id_usuario: p.id_usuario || null,
         usuario: p.usuario || '',
         estado: p.usuario_estado ?? null,
+        usuario_fecha_ultimo_acceso: p.usuario_fecha_ultimo_acceso || null,
         fecha_deshabilitacion_programada: p.usuario_fecha_deshabilitacion_programada || null,
         fecha_habilitacion_programada: p.usuario_fecha_habilitacion_programada || null,
         dni: p.dni,
@@ -488,6 +489,7 @@ export function DataProvider({ children }) {
         id_usuario: a.id_usuario || null,
         usuario: a.usuario || '',
         usuario_estado: a.usuario_estado ?? null,
+        usuario_fecha_ultimo_acceso: a.usuario_fecha_ultimo_acceso || null,
         usuario_fecha_deshabilitacion_programada: a.usuario_fecha_deshabilitacion_programada || null,
         usuario_fecha_habilitacion_programada: a.usuario_fecha_habilitacion_programada || null,
         dni: a.dni,
@@ -512,7 +514,7 @@ export function DataProvider({ children }) {
         return {
           ...a,
           curso: a.curso_nombre_api || cObj?.nombre_curso || '',
-          ciclo_anio: cObj?.ciclo_anio || null,
+          ciclo_anio: a.ciclo_anio || cObj?.ciclo_anio || null,
         };
       });
 

@@ -27,7 +27,7 @@ import {
 import { mensajeErrorAmigable } from '../../utils/errores';
 import AvisoDatosMaestros from '../Shared/AvisoDatosMaestros';
 
-function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre, docenteId, puedeEditar = true, mostrarBannerSuplencia = true }) {
+function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre, docenteId, puedeEditar = true, mostrarBannerSuplencia = true, alumnoId = null }) {
   const { estudiantes, calificacionesCompletas, periodos, refreshData } = useData();
   const toast = useToast();
   const [filas, setFilas] = useState([]);
@@ -490,7 +490,12 @@ return (
               </tr>
             ) : (
               filas.map((fila) => (
-                <tr key={fila.id}>
+                <tr
+                  key={fila.id}
+                  style={alumnoId != null && String(fila.id) === String(alumnoId)
+                    ? { background: '#eef2ff', outline: '2px solid #4f46e5' }
+                    : undefined}
+                >
                   <td className="table-cell-strong">{fila.nombre}</td>
                   <td>
                     {puedeEditar ? (

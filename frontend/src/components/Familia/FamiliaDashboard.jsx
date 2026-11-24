@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 
 import Sidebar from './sidebar/sidebar';
 import Header from './header/header';
@@ -21,6 +21,7 @@ import { viewDesdeDestino } from '../../utils/navDestinos';
 function FamiliaDashboard({ user, onLogout }) {
   const { getEstudianteById, getHijoLabel, hijosFamilia, padresTutores, nombreCompleto, cursosObj, navIntent, navegarDesdeNotificacion, notificaciones = [] } = useData();
   const [view, setView] = useState('perfil');
+  const navAplicadoRef = useRef(null);
 
   const miTutor = useMemo(
     () => padresTutores.find((pt) => pt.id_usuario === user?.id) || null,
@@ -54,15 +55,16 @@ function FamiliaDashboard({ user, onLogout }) {
   // correspondiente para que la vista muestre la información correcta.
   // Se declara tras `hijos` porque depende de esa constante.
   useEffect(() => {
-    if (navIntent && navIntent.destino) {
-      const vista = viewDesdeDestino(navIntent.destino, 'familia');
-      if (!vista) return;
-      setView(vista);
-      const alumnoId = navIntent.params?.alumnoId;
-      if (alumnoId != null) {
-        const hijo = hijos.find((h) => Number(h.alumnoId) === Number(alumnoId));
-        if (hijo) setHijoId(String(hijo.id));
-      }
+    if (!navIntent || !navIntent.destino) return;
+    if (navAplicadoRef.current === navIntent.timestamp) return;
+    const vista = viewDesdeDestino(navIntent.destino, 'familia');
+    if (!vista) return;
+    navAplicadoRef.current = navIntent.timestamp;
+    setView(vista);
+    const alumnoId = navIntent.params?.alumnoId;
+    if (alumnoId != null) {
+      const hijo = hijos.find((h) => Number(h.alumnoId) === Number(alumnoId));
+      if (hijo) setHijoId(String(hijo.id));
     }
   }, [navIntent, hijos]);
 

@@ -531,11 +531,15 @@ function EducacionFisica({ cursoIdExterno = '', soloLectura = false }) {
   );
 }
 
-function Horarios({ cursoGlobal = '', curso = '', soloLectura = false }) {
+function Horarios({ cursoGlobal = '', curso = '', soloLectura = false, navContext }) {
   const { cursosObj, selectedCursoId } = useData();
   const [modo, setModo] = useState('semanal');
   const [guardando, setGuardando] = useState(false);
   const saveFnRef = useRef(null);
+
+  useEffect(() => {
+    if (navContext?.destino === 'horarios') setModo('ver');
+  }, [navContext]);
 
   const registerSaveFn = useCallback((fn) => {
     saveFnRef.current = fn;

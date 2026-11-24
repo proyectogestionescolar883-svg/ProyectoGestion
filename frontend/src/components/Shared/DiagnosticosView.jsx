@@ -7,12 +7,11 @@ import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import { hoy } from '../../utils/fechas';
 import FormModal from './FormModal';
 
-function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEditables }) {
+function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEditables, misAsignaciones }) {
   const {
     diagnosticos,
     estudiantes,
     cursosObj,
-    cursoMateria,
     docentes,
     padresTutores,
     refreshData,
@@ -20,7 +19,16 @@ function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEd
   const { user } = useAuth();
   const toast = useToast();
 
-  const miDocente = useMemo(() => docentes.find((d) => d.id_usuario === (user?.id || user?.id_usuario)), [docentes, user]);
+  const asignacionesDocente = useMemo(
+    () => (Array.isArray(misAsignaciones) ? misAsignaciones : []),
+    [misAsignaciones],
+  );
+  const cursosDocenteIds = useMemo(
+    () => new Set(asignacionesDocente.map((cm) => String(cm.id_curso))),
+    [asignacionesDocente],
+  );
+
+  const miDocente = useMemo(() => docentes.find((d) => String(d.id_usuario) === String(user?.id || user?.id_usuario)), [docentes, user]);
 
   const [selectedDiagnostico, setSelectedDiagnostico] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -66,19 +74,15 @@ function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEd
       }
 
       case 'docente': {
-        const miDocente = docentes.find((d) => d.id_usuario === userId);
-        if (!miDocente) return [];
-        const misAsignaciones = cursoMateria.filter((cm) => cm.id_docente === miDocente.id);
-        const misCursos = new Set(misAsignaciones.map((cm) => cm.id_curso));
-
-        // Filtrar por permiso: mostrar diagnósticos de cursos donde el docente tiene asignaciones
-        const filteredByPermission = diagnosticos.filter((d) => misCursos.has(d.id_curso));
-
-        // Aplicar filtro de curso si está seleccionado
+        if (cursosDocenteIds.size === 0) return [];
+        const filteredByPermission = diagnosticos.filter((d) =>
+          cursosDocenteIds.has(String(d.id_curso)),
+        );
         if (cursoSeleccionado) {
-          return filteredByPermission.filter((d) => d.id_curso === Number(cursoSeleccionado));
+          return filteredByPermission.filter(
+            (d) => String(d.id_curso) === String(cursoSeleccionado),
+          );
         }
-
         return filteredByPermission;
       }
 
@@ -89,7 +93,7 @@ function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEd
       default:
         return [];
     }
-  }, [diagnosticos, user, userRole, estudiantes, cursoMateria, docentes, padresTutores, selectedChild, cursoSeleccionado]);
+  }, [diagnosticos, user, userRole, estudiantes, docentes, padresTutores, selectedChild, cursoSeleccionado, cursosDocenteIds]);
 
   const diagnosticosOrdenados = useMemo(() => {
     return [...diagnosticosFiltrados].sort((a, b) => {
@@ -105,23 +109,20 @@ function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEd
   };
 
   const misCursos = useMemo(() => {
-    if (userRole !== 'docente' || !user) return [];
-    const miDocente = docentes.find((d) => d.id_usuario === (user.id || user.id_usuario));
-    if (!miDocente) return [];
-    const misAsignaciones = cursoMateria.filter((cm) => cm.id_docente === miDocente.id);
-    const cursosSet = new Set(misAsignaciones.map((cm) => cm.id_curso));
-    return cursosObj.filter((c) => cursosSet.has(c.id_curso));
-  }, [userRole, user, docentes, cursoMateria, cursosObj]);
+    if (userRole !== 'docente') return [];
+    return cursosObj.filter((c) => cursosDocenteIds.has(String(c.id_curso)));
+  }, [userRole, cursosDocenteIds, cursosObj]);
 
   const puedeCrear = useMemo(() => {
     if (userRole !== 'docente') return false;
-    if (!cursosEditables || cursosEditables.size === 0) return true;
-    return misCursos.some((c) => cursosEditables.has(c.id_curso));
+    if (!cursosEditables) return true;
+    if (cursosEditables.size === 0) return false;
+    return misCursos.some((c) => cursosEditables.has(Number(c.id_curso)));
   }, [userRole, cursosEditables, misCursos]);
 
   const cursoEsEditable = (cursoId) => {
-    if (!cursosEditables || cursosEditables.size === 0) return true;
-    return cursosEditables.has(cursoId);
+    if (!cursosEditables) return true;
+    return cursosEditables.has(Number(cursoId));
   };
 
   const handleDelete = async (d) => {
@@ -330,7 +331,7 @@ function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEd
                     >
                       <i className="fas fa-eye" aria-hidden="true" /> Ver
                     </button>
-                    {userRole === 'docente' && miDocente && miDocente.id === d.id_docente && cursoEsEditable(d.id_curso) && (
+                    {userRole === 'docente' && miDocente && String(miDocente.id) === String(d.id_docente) && cursoEsEditable(d.id_curso) && (
                       <button
                         type="button"
                         className="btn btn-sm btn-danger"

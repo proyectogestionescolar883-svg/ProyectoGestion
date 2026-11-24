@@ -48,6 +48,14 @@ const ROLE_CONFIG = {
     assignmentKey: null,
     minSelection: 0,
   },
+  director: {
+    label: 'Director',
+    stepLabel: '',
+    needAssignment: false,
+    assignmentType: null,
+    assignmentKey: null,
+    minSelection: 0,
+  },
 };
 
 const ASSIGNMENT_LABELS = {
@@ -84,7 +92,7 @@ function AgregarRolModal({
   const [errorAsignacion, setErrorAsignacion] = useState('');
   const [busquedaAsignacion, setBusquedaAsignacion] = useState('');
 
-  const roleConfig = ROLE_CONFIG[rol] || { needAssignment: false, minSelection: 0 };
+  const roleConfig = ROLE_CONFIG[rol] || { label: 'Rol', needAssignment: false, minSelection: 0 };
 
   useEffect(() => {
     setBusqueda('');

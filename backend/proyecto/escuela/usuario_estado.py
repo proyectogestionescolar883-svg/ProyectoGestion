@@ -2,6 +2,7 @@ from django.db import models, transaction
 from django.utils import timezone
 
 from escuela.models import Usuario
+from escuela.notifications import notificar_estado_cuenta
 
 
 def aplicar_programaciones_usuario(now=None):
@@ -37,5 +38,6 @@ def aplicar_programaciones_usuario(now=None):
                 update_fields.extend(['estado', 'fecha_habilitacion_programada'])
 
             if update_fields:
-                usuario.save(update_fields=update_fields)
+                usuario.save(update_fields=list(dict.fromkeys(update_fields)))
+                notificar_estado_cuenta(usuario)
 

@@ -206,7 +206,7 @@ function FormActa({ formData, setFormData, editing, guardando, onSubmit, onCance
 // este componente ya no renderiza filtros propios: siempre es controlado por las
 // props del dashboard. Se eliminó el prop `showFiltros`, que quedó muerto tras la
 // remoción de los selectores locales.
-function Actas({ anioLectivo, curso, onAnioChange, onCursoChange, onlyCursos = false }) {
+function Actas({ anioLectivo, curso, onAnioChange, onCursoChange, onlyCursos = false, navContext }) {
   const {
     actas: actasCurso,
     actasEstudiante,
@@ -270,6 +270,7 @@ function Actas({ anioLectivo, curso, onAnioChange, onCursoChange, onlyCursos = f
   const [showEstudiantes, setShowEstudiantes] = useState(true);
   const [showDocentes, setShowDocentes] = useState(true);
   const [showCurso, setShowCurso] = useState(true);
+  const navActasProcesado = useRef(null);
 
   /* ¿Hay tipos de acta cargados? `null` mientras se consulta, para no
      mostrar el aviso antes de saber. El alta de un acta siempre resuelve un
@@ -434,6 +435,22 @@ function Actas({ anioLectivo, curso, onAnioChange, onCursoChange, onlyCursos = f
     setRemoveArchivo(false);
     setMensaje('');
   };
+
+  useEffect(() => {
+    const marca = navContext?.timestamp;
+    const actaId = navContext?.actaId;
+    if (!marca || !actaId || navActasProcesado.current === marca) return;
+    const coincide = (a) => String(a.actaId) === String(actaId);
+    const acta = actasCurso.find(coincide);
+    const tipo = acta ? 'curso' : null;
+    const encontrada = acta || actasEstudiante.find(coincide) || actasDocente.find(coincide);
+    if (!encontrada) return;
+    navActasProcesado.current = marca;
+    setShowEstudiantes(true);
+    setShowDocentes(true);
+    setShowCurso(true);
+    startEdit(encontrada, tipo || (actasEstudiante.some(coincide) ? 'alumno' : 'docente'));
+  }, [navContext, actasCurso, actasEstudiante, actasDocente, startEdit]);
 
   const cancelEdit = () => {
     limpiar();

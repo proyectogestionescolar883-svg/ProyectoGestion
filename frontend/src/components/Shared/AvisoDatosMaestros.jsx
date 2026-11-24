@@ -1,5 +1,5 @@
 import { useData } from '../../context/DataContext';
-import { useAuth } from '../../context/AuthContext';
+import { useAuthOpcional } from '../../context/AuthContext';
 import { viewDesdeDestino } from '../../utils/navDestinos';
 
 /**
@@ -27,13 +27,7 @@ import { viewDesdeDestino } from '../../utils/navDestinos';
  */
 export default function AvisoDatosMaestros({ mensaje, detalle, accion, destino }) {
   const { navegarDesdeNotificacion } = useData();
-  let rol = null;
-  try {
-    rol = useAuth()?.user?.role ?? null;
-  } catch {
-    // Fuera del AuthProvider (tests) el aviso funciona igual, sin botón.
-    rol = null;
-  }
+  const rol = useAuthOpcional()?.user?.role ?? null;
 
   if (!mensaje) return null;
 

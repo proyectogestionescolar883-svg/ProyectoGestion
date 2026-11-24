@@ -6,6 +6,7 @@ import {
   getActividadesMateriasAdeudadas,
   getIntensificacionesAcademicas,
 } from '../../services/api';
+import { buildMediaUrl } from '../../utils/medios';
 
 /**
  * Punto 5.19 (Alumno) / 5.20 (Familia).
@@ -126,6 +127,48 @@ function PanelMateriasAdeudadas({
     return mapa;
   }, [intensificaciones]);
 
+  const rendicionesPorMateria = useMemo(() => {
+    const mapa = {};
+    rendiciones.forEach((r) => {
+      const key = r.materia_nombre || `Materia #${r.id_materia}`;
+      if (!mapa[key]) mapa[key] = [];
+      mapa[key].push(r);
+    });
+    return mapa;
+  }, [rendiciones]);
+
+  const materiasDerivadas = useMemo(() => {
+    const mapa = new Map();
+    const asegurar = (nombre) => {
+      const key = nombre || 'Sin materia';
+      if (!mapa.has(key)) {
+        mapa.set(key, {
+          id_materia_adeudada: `derivada-${mapa.size}`,
+          id_materia: null,
+          materia_nombre: key,
+          estado: 'INTENSIFICANDO',
+          tipo_deuda: 'INTENSIFICACION',
+          observaciones: '',
+        });
+      }
+      return mapa.get(key);
+    };
+    intensificaciones.forEach((i) => {
+      const fila = asegurar(i.materia_nombre);
+      if (i.estado === 'APROBADA') fila.estado = 'APROBADA';
+    });
+    actividades.forEach((a) => {
+      const fila = asegurar(a.materia_nombre);
+      if (a.tipo === 'PREVIA') fila.tipo_deuda = 'PREVIA';
+    });
+    rendiciones.forEach((r) => {
+      const fila = asegurar(r.materia_nombre || `Materia #${r.id_materia}`);
+      fila.tipo_deuda = 'PREVIA';
+      if (r.estado === 'APROBADA') fila.estado = 'APROBADA';
+    });
+    return Array.from(mapa.values());
+  }, [actividades, intensificaciones, rendiciones]);
+
   if (loading) {
     return (
       <div className="card">
@@ -135,7 +178,8 @@ function PanelMateriasAdeudadas({
     );
   }
 
-  if (deudas.length === 0) {
+  const sinDatos = deudas.length === 0 && rendiciones.length === 0 && actividades.length === 0 && intensificaciones.length === 0;
+  if (sinDatos) {
     return (
       <div className="card">
         <div className="card-header"><h2 className="m-0">{titulo}</h2></div>
@@ -146,6 +190,8 @@ function PanelMateriasAdeudadas({
     );
   }
 
+  const deudasParaMostrar = deudas.length > 0 ? deudas : materiasDerivadas;
+
   return (
     <div className="card">
       <div className="card-header"><h2 className="m-0">{titulo}</h2></div>
@@ -155,8 +201,8 @@ function PanelMateriasAdeudadas({
         </p>
 
         <div style={{ display: 'grid', gap: '16px', marginTop: '16px' }}>
-          {deudas.map((d) => {
-            const rends = rendicionesPorDeuda[Number(d.id_materia_adeudada)] || [];
+          {deudasParaMostrar.map((d) => {
+            const rends = rendicionesPorDeuda[Number(d.id_materia_adeudada)] || rendicionesPorMateria[d.materia_nombre] || [];
             const actApo = actividadesPorMateria[d.materia_nombre] || [];
             const intens = intensificacionesPorMateria[d.materia_nombre] || [];
             const actividadesIntensificacion = actApo.filter((a) => a.tipo === 'INTENSIFICACION');
@@ -230,7 +276,7 @@ function PanelMateriasAdeudadas({
                             {act.descripcion && <span> — {act.descripcion}</span>}
                             {act.archivo_pdf && (
                               <div style={{ marginTop: '4px' }}>
-                                <a href={act.archivo_pdf} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary">
+                                <a href={buildMediaUrl(act.archivo_pdf)} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary">
                                   <i className="fas fa-file-pdf" /> Descargar PDF
                                 </a>
                               </div>
@@ -286,7 +332,7 @@ function PanelMateriasAdeudadas({
                                   {act.descripcion && <span> — {act.descripcion}</span>}
                                   {act.archivo_pdf && (
                                     <div style={{ marginTop: '4px' }}>
-                                      <a href={act.archivo_pdf} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary">
+                                      <a href={buildMediaUrl(act.archivo_pdf)} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-secondary">
                                         <i className="fas fa-file-pdf" /> Descargar PDF
                                       </a>
                                     </div>

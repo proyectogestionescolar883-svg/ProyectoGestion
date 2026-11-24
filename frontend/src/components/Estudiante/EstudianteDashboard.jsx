@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useData } from '../../context/DataContext';
 import Notificaciones from '../Notificaciones';
 import ComunicadosView from '../Shared/ComunicadosView';
@@ -30,6 +30,7 @@ function EstudianteDashboard({ user, onLogout }) {
     navIntent,
   } = useData();
   const [view, setView] = useState('perfil');
+  const navAplicadoRef = useRef(null);
 
   // Al cambiar de vista (incluido llegar desde una notificación con "Ver"),
   // se sube al inicio de la sección en lugar de quedar en la posición previa.
@@ -40,10 +41,11 @@ function EstudianteDashboard({ user, onLogout }) {
   // Parte 8: manejar navegación desde notificaciones.
   // Traduce el destino semántico a una vista válida del dashboard de Estudiante.
   useEffect(() => {
-    if (navIntent && navIntent.destino) {
-      const vista = viewDesdeDestino(navIntent.destino, 'alumno');
-      if (vista) setView(vista);
-    }
+    if (!navIntent || !navIntent.destino) return;
+    if (navAplicadoRef.current === navIntent.timestamp) return;
+    navAplicadoRef.current = navIntent.timestamp;
+    const vista = viewDesdeDestino(navIntent.destino, 'alumno');
+    if (vista) setView(vista);
   }, [navIntent]);
   const miEstudiante = useMemo(
     () => estudiantes.find((a) => a.id_usuario === user?.id) || null,
@@ -133,11 +135,12 @@ function EstudianteDashboard({ user, onLogout }) {
 
   const handleDescargarRite = () => {
     if (!miEstudiante) return;
+    const cursoEstudiante = cursosObj.find((c) => String(c.id_curso) === String(miEstudiante.id_curso));
     const html = riteHTML({
       estudianteNombre: `${miEstudiante.apellido}, ${miEstudiante.nombre}`,
       dni: miEstudiante.dni,
       cursoNombre: miEstudiante.curso,
-      anioLectivo: new Date().getFullYear(),
+      anioLectivo: miEstudiante.ciclo_anio || cursoEstudiante?.ciclo_anio || new Date().getFullYear(),
       materias: calsPorMateria,
       inasistenciasPorMateria,
       intensificaciones_1c,
@@ -205,7 +208,7 @@ function EstudianteDashboard({ user, onLogout }) {
         ) : view === 'horarios' ? (
           <div className="view-section active">
             <div className="card mt-16">
-              <VistaHorarios cursosOptions={cursosObj} cursoForzado={miEstudiante?.id_curso} mostrarTitulo />
+              <VistaHorarios cursosOptions={cursosObj} cursoForzado={miEstudiante?.id_curso} mostrarTitulo cargarAdelantos={false} />
             </div>
           </div>
         ) : view === 'comunicados' ? (

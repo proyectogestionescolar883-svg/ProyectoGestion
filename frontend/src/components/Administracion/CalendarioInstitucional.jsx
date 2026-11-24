@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '../../context/ToastContext';
 import FormModal from '../Shared/FormModal';
 import {
@@ -62,7 +62,7 @@ function coloresUnicos(eventos) {
   return result;
 }
 
-function CalendarioInstitucional({ readOnly = false }) {
+function CalendarioInstitucional({ readOnly = false, navContext }) {
   const hoyActual = new Date();
   const toast = useToast();
   const [anio, setAnio] = useState(hoyActual.getFullYear());
@@ -76,6 +76,7 @@ function CalendarioInstitucional({ readOnly = false }) {
   const [form, setForm] = useState(FORM_DEFAULT);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState('');
+  const navEventoProcesado = useRef(null);
 
   const cargarEventos = useCallback(async () => {
     setCargando(true);
@@ -90,6 +91,22 @@ function CalendarioInstitucional({ readOnly = false }) {
   }, []);
 
   useEffect(() => { cargarEventos(); }, [cargarEventos]);
+
+  useEffect(() => {
+    const marca = navContext?.timestamp;
+    const eventoId = navContext?.eventoId ?? navContext?.id_evento;
+    if (!marca || !eventoId || navEventoProcesado.current === marca || cargando) return;
+    const evento = eventos.find((ev) => String(ev.id_evento) === String(eventoId));
+    if (!evento) return;
+    navEventoProcesado.current = marca;
+    const fecha = new Date(`${evento.fecha}T00:00:00`);
+    if (!Number.isNaN(fecha.getTime())) {
+      setAnio(fecha.getFullYear());
+      setMes(fecha.getMonth());
+      setDiaSeleccionado(fecha.getDate());
+    }
+    setEventoVer(evento);
+  }, [navContext, eventos, cargando]);
 
   const diasEnMes = new Date(anio, mes + 1, 0).getDate();
   const primerDiaMes = new Date(anio, mes, 1);

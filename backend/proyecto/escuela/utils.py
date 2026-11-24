@@ -4,7 +4,7 @@ from django.db import models
 from django.db.utils import OperationalError, ProgrammingError
 from django.utils import timezone
 
-from escuela.models import HistorialCambio, TipoAccion
+from escuela.models import Alumno, CursoMateria, HistorialCambio, TipoAccion
 
 
 HORA_CORTE_TURNO = 13
@@ -350,6 +350,20 @@ class ResultadoDocenteActivo:
         self.es_suplencia = es_suplencia
         self.suplencia = suplencia
         self.titular = titular
+
+
+def alumno_pertenece_a_curso_materia(id_alumno, id_curso_materia):
+    try:
+        alumno_id = int(id_alumno)
+        curso_materia_id = int(id_curso_materia)
+    except (TypeError, ValueError):
+        return False
+    curso_id = CursoMateria.objects.filter(
+        pk=curso_materia_id,
+    ).values_list('id_curso_id', flat=True).first()
+    if curso_id is None:
+        return False
+    return Alumno.objects.filter(pk=alumno_id, id_curso_id=curso_id).exists()
 
 
 def obtener_docente_activo(id_curso_materia, fecha=None):

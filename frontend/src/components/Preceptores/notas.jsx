@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useData } from '../../context/DataContext';
+import { getAsistenciasPreceptorMateria } from '../../services/api';
 import EmptyFiltros from './EmptyFiltros';
 import { estudiantesPorAnioYCurso, ritePorEstudiante, filtrosCompletos } from './preceptorUtils';
 import { riteHTML, exportarRitePDF } from '../../utils/rite';
@@ -103,12 +104,54 @@ function RiteEstudiante({ estudiante, curso, anioLectivo, expandido, onToggle, i
   );
 }
 
-function Notas({ anioLectivo, curso, onAnioChange, onCursoChange }) {
-  const { inscripciones, estudiantes, asistenciasAdmin, ensureData } = useData();
+function Notas({ anioLectivo, curso, onAnioChange, onCursoChange, navContext }) {
+  const { inscripciones, estudiantes, cursosObj, cursoMateria, ensureData } = useData();
   const [expandidoId, setExpandidoId] = useState(null);
+  const [asistenciasRite, setAsistenciasRite] = useState([]);
+  const navNotasProcesado = useRef(null);
   useEffect(() => {
     ensureData('inscripciones');
   }, [ensureData]);
+
+  useEffect(() => {
+    const marca = navContext?.timestamp;
+    const alumnoId = navContext?.alumnoId ?? navContext?.id_alumno;
+    if (!marca || !alumnoId || navNotasProcesado.current === marca) return;
+    navNotasProcesado.current = marca;
+    setExpandidoId(Number(alumnoId) || String(alumnoId));
+  }, [navContext]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (!anioLectivo || !curso) {
+      setAsistenciasRite([]);
+      return () => { vigente = false; };
+    }
+    const cursoObj = (cursosObj || []).find(
+      (c) => c.nombre_curso === curso && (!c.ciclo_anio || Number(c.ciclo_anio) === Number(anioLectivo)),
+    );
+    const cms = cursoObj
+      ? (cursoMateria || []).filter((cm) => Number(cm.id_curso) === Number(cursoObj.id_curso))
+      : [];
+    if (cms.length === 0) {
+      setAsistenciasRite([]);
+      return () => { vigente = false; };
+    }
+    Promise.all(cms.map(async (cm) => {
+      const filas = await getAsistenciasPreceptorMateria(cm.id).catch(() => []);
+      return (Array.isArray(filas) ? filas : [])
+        .filter((r) => r.id !== null && r.id !== undefined)
+        .map((r) => ({
+          alumnoId: r.id_alumno,
+          materia: cm.materia_nombre || 'General',
+          estado: r.estado_nombre,
+          fecha: r.fecha,
+        }));
+    })).then((grupos) => {
+      if (vigente) setAsistenciasRite(grupos.flat());
+    });
+    return () => { vigente = false; };
+  }, [anioLectivo, curso, cursosObj, cursoMateria]);
 
   const lista = estudiantesPorAnioYCurso(anioLectivo, curso, inscripciones, estudiantes);
 
@@ -116,8 +159,8 @@ function Notas({ anioLectivo, curso, onAnioChange, onCursoChange }) {
     const map = {};
     lista.forEach((a) => {
       const porMateria = {};
-      asistenciasAdmin
-        .filter((r) => r.alumnoId === a.id && (r.estado === 'Ausente' || r.estado === 'Tarde'))
+      asistenciasRite
+        .filter((r) => String(r.alumnoId) === String(a.id) && (r.estado === 'Ausente' || r.estado === 'Tarde'))
         .forEach((r) => {
           const mat = r.materia || 'General';
           if (!porMateria[mat]) porMateria[mat] = { ausencias: 0, tardanzas: 0 };
@@ -127,7 +170,7 @@ function Notas({ anioLectivo, curso, onAnioChange, onCursoChange }) {
       map[a.id] = porMateria;
     });
     return map;
-  }, [lista, asistenciasAdmin]);
+  }, [lista, asistenciasRite]);
 
   if (!filtrosCompletos(anioLectivo, curso)) {
     return (

@@ -4,7 +4,7 @@ import { getCursoMateria, getHorarios, getHorariosEspeciales, getSuplencias, get
 import { suplenciasActivasLista } from '../../utils/suplencias';
 import LoadingSpinner from '../Shared/LoadingSpinner';
 
-const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
 function timeStr(value) {
   if (!value) return '';
@@ -329,7 +329,7 @@ function ScheduleTable({ timeKeys, daySlots, rowspans, nombreCursoDisplay, turno
   );
 }
 
-function VistaHorarios({ cursosOptions, cursoForzado, mostrarTitulo }) {
+function VistaHorarios({ cursosOptions, cursoForzado, mostrarTitulo, cargarAdelantos = true }) {
   const { modulos } = useData();
   const [cursoSeleccionado, setCursoSeleccionado] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -371,19 +371,22 @@ function VistaHorarios({ cursosOptions, cursoForzado, mostrarTitulo }) {
     const orientacion = cursoObj?.orientacion;
     setNombreCursoDisplay(orientacion ? `${cursoObj?.nombre_curso} - ${orientacion}` : (cursoObj?.nombre_curso || ''));
     setPreceptorNombre(obtenerPreceptorNombre(cursoObj));
-    Promise.all([
+    const peticiones = [
       getCursoMateria({ curso: cursoSeleccionado }),
       getHorarios({ curso: cursoSeleccionado }),
       getHorariosEspeciales({ curso: cursoSeleccionado }),
       getSuplencias({ curso: cursoSeleccionado }).catch(() => []),
-      getAdelantosHoras({ curso: cursoSeleccionado, estado: 1 }).catch(() => []),
-    ])
+    ];
+    if (cargarAdelantos) {
+      peticiones.push(getAdelantosHoras({ curso: cursoSeleccionado, estado: 1 }).catch(() => []));
+    }
+    Promise.all(peticiones)
       .then(([cmData, horData, heData, spData, adData]) => {
         const cmList = Array.isArray(cmData) ? cmData : cmData.results || [];
         const horList = Array.isArray(horData) ? horData : horData.results || [];
         const heList = Array.isArray(heData) ? heData : heData.results || [];
         const spList = Array.isArray(spData) ? spData : spData.results || [];
-        const adList = Array.isArray(adData) ? adData : adData.results || [];
+        const adList = Array.isArray(adData) ? adData : adData?.results || [];
         setAdelantos(adList);
 
         const materiasLookup = {};
@@ -413,7 +416,7 @@ function VistaHorarios({ cursosOptions, cursoForzado, mostrarTitulo }) {
       })
       .catch(() => {})
       .finally(() => setCargando(false));
-  }, [cursoSeleccionado, modulosSorted, cursosOptions]);
+  }, [cursoSeleccionado, modulosSorted, cursosOptions, cargarAdelantos]);
 
   const descargarPDF = useCallback(() => {
     const { theadHtml, tbodyHtml } = buildRowsHtml(daySlots, timeKeys, rowspans, nombreCursoDisplay, turno, preceptorNombre);

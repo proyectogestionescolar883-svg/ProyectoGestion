@@ -27,7 +27,8 @@ export const menuItems = [
     label: 'Seguimiento de Estudiantes',
     icon: 'fa-users',
     children: [
-      { id: 'info', label: 'Diagnósticos grupales', icon: 'fa-info-circle' },
+      { id: 'diagnosticos', label: 'Diagnósticos grupales', icon: 'fa-info-circle' },
+      { id: 'diagnosticos-historial', label: 'Historial de diagnósticos', icon: 'fa-clipboard-list' },
       { id: 'actas', label: 'Actas', icon: 'fa-file-signature' },
     ],
   },

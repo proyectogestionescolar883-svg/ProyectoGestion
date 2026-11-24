@@ -25,6 +25,15 @@ function estadoLabel(estado) {
   return estado ? 'Habilitado' : 'Deshabilitado';
 }
 
+const ROLES_DIRECTIVOS = [
+  { value: 'admin', label: 'Administrador', cargo: 'Administrador' },
+  { value: 'director', label: 'Director', cargo: 'Director' },
+];
+
+function cargoPorRol(rol) {
+  return ROLES_DIRECTIVOS.find((opcion) => opcion.value === rol)?.cargo || 'Administrador';
+}
+
 function getNextAction(usuario) {
   if (usuario.estado === null || usuario.estado === undefined) return 'Sin usuario';
   if (usuario.estado && usuario.fecha_deshabilitacion_programada) {
@@ -50,6 +59,7 @@ const formVacio = {
   dni: '',
   telefono: '',
   cargo: 'Administrador',
+  rol: 'admin',
   estado: true,
   fecha_deshabilitacion_programada: '',
   fecha_habilitacion_programada: '',
@@ -71,6 +81,7 @@ function Administradores() {
     dni: '',
     telefono: '',
     cargo: 'Administrador',
+    rol: 'admin',
     estado: true,
     fecha_deshabilitacion_programada: '',
     fecha_habilitacion_programada: '',
@@ -80,6 +91,7 @@ function Administradores() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [mostrarAgregarRol, setMostrarAgregarRol] = useState(false);
+  const [rolParaAgregar, setRolParaAgregar] = useState('admin');
   const [guardandoAgregarRol, setGuardandoAgregarRol] = useState(false);
   const [mostrarQuitarRol, setMostrarQuitarRol] = useState(false);
   const [quitandoRol, setQuitandoRol] = useState(false);
@@ -149,10 +161,10 @@ function Administradores() {
   const [personasParaAgregarRol, setPersonasParaAgregarRol] = useState([]);
   const [cargandoPersonasSinRol, setCargandoPersonasSinRol] = useState(false);
 
-  const cargarPersonasSinRol = async () => {
+  const cargarPersonasSinRol = async (rol = rolParaAgregar) => {
     setCargandoPersonasSinRol(true);
     try {
-      const data = await getUsuariosSinRol('admin');
+      const data = await getUsuariosSinRol(rol);
       setPersonasParaAgregarRol(Array.isArray(data) ? data : []);
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al cargar administradores');
@@ -163,7 +175,7 @@ function Administradores() {
 
   useEffect(() => {
     cargarPersonasSinRol();
-  }, []);
+  }, [rolParaAgregar]);
 
   const { refreshData } = useData() || {};
 
@@ -175,6 +187,7 @@ function Administradores() {
     dni: '',
     telefono: '',
     cargo: 'Administrador',
+    rol: 'admin',
     estado: true,
     fecha_deshabilitacion_programada: '',
     fecha_habilitacion_programada: '',
@@ -186,7 +199,7 @@ function Administradores() {
     try {
       const data = await getUsuarios(true); // incluir deshabilitados
       const adminUsers = (Array.isArray(data) ? data : []).filter(
-        (u) => u.roles && u.roles.includes('admin'),
+        (u) => u.roles && u.roles.some((rol) => rol === 'admin' || rol === 'director'),
       );
       setUsuarios(adminUsers);
     } catch (err) {
@@ -238,6 +251,7 @@ function Administradores() {
       dni: usuario.directivo_dni || '',
       telefono: usuario.directivo_telefono || '',
       cargo: usuario.directivo_cargo || 'Administrador',
+      rol: usuario.roles?.includes('director') ? 'director' : 'admin',
       estado: usuario.estado !== false,
       fecha_deshabilitacion_programada: toInputDateTime(usuario.fecha_deshabilitacion_programada),
       fecha_habilitacion_programada: toInputDateTime(usuario.fecha_habilitacion_programada),
@@ -295,15 +309,15 @@ function Administradores() {
         fecha_habilitacion_programada: formData.fecha_habilitacion_programada || null,
       };
 
-      const payload = {
-        ...normalisedPayload,
-        roles: ['admin'],
-      };
+      const payload = { ...normalisedPayload };
 
-      // Clean up fields not needed for API
       delete payload.modo_creacion;
       delete payload.id_usuario;
-      delete payload.usuario; // read_only en serializer, usar usuario_nombre
+      delete payload.usuario;
+      delete payload.rol;
+      if (!editingUsuario) {
+        payload.roles = [formData.rol];
+      }
 
       if (editingUsuario) {
         if (!formData.contrasena) {
@@ -335,14 +349,14 @@ function Administradores() {
     try {
       await createUsuario({
         id_usuario_existente: Number(persona.id_usuario ?? persona.id),
-        roles: ['admin'],
+        roles: [rolParaAgregar],
         nombre: persona.nombre || '',
         apellido: persona.apellido || '',
         dni: persona.dni || '',
         telefono: persona.telefono || '',
-        cargo: 'Administrador',
       });
-      toast.success('Rol "Administrador" asignado correctamente.');
+      const etiquetaRol = ROLES_DIRECTIVOS.find((opcion) => opcion.value === rolParaAgregar)?.label || 'Administrador';
+      toast.success(`Rol "${etiquetaRol}" asignado correctamente.`);
       setMostrarAgregarRol(false);
       await refrescar();
     } catch (err) {
@@ -510,6 +524,24 @@ function Administradores() {
             <h4>Datos administrativos</h4>
             <div className="preceptor-form-row preceptor-form-row--two">
               <div className="form-group-filter">
+                <label htmlFor="rol">Rol</label>
+                <select
+                  id="rol"
+                  value={formData.rol}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    rol: e.target.value,
+                    cargo: cargoPorRol(e.target.value),
+                  })}
+                  disabled={!!editingUsuario || guardandoUsuario}
+                >
+                  {ROLES_DIRECTIVOS.map((opcion) => (
+                    <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group-filter">
                 <label htmlFor="cargo">Cargo</label>
                 <input
                   type="text"
@@ -534,8 +566,19 @@ function Administradores() {
   return (
     <div className="card">
       <div className="card-header-flex">
-        <h3><i className="fas fa-user-shield" aria-hidden="true" /> Administradores</h3>
+        <h3><i className="fas fa-user-shield" aria-hidden="true" /> Directivos</h3>
         <div className="header-actions">
+          <select
+            aria-label="Rol a asignar"
+            value={rolParaAgregar}
+            onChange={(e) => setRolParaAgregar(e.target.value)}
+            disabled={guardandoAgregarRol}
+            style={{ minWidth: 150 }}
+          >
+            {ROLES_DIRECTIVOS.map((opcion) => (
+              <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
+            ))}
+          </select>
           <button
             type="button"
             className="btn btn-outline-primary"
@@ -558,12 +601,12 @@ function Administradores() {
           </button>
           <span className="header-actions-sep" aria-hidden="true" />
           <button type="button" className="btn btn-primary" onClick={handleCreate}>
-            <i className="fas fa-plus" aria-hidden="true" /> Nuevo Administrador
+            <i className="fas fa-plus" aria-hidden="true" /> Nuevo {ROLES_DIRECTIVOS.find((opcion) => opcion.value === formData.rol)?.label || 'Administrador'}
           </button>
         </div>
       </div>
 
-      <AccionesLeyenda acciones={['editar', 'habilitar', 'deshabilitar', 'eliminar']} />
+      <AccionesLeyenda acciones={['editar', 'habilitar', 'deshabilitar']} />
 
       {success && <div className="alert alert-success">{success}</div>}
 
@@ -586,7 +629,7 @@ function Administradores() {
             {usuarios.length === 0 ? (
               <tr>
                 <td colSpan="9" className="empty-state-message">
-                  No hay administradores registrados.
+                  No hay directivos registrados.
                 </td>
               </tr>
             ) : (
@@ -626,12 +669,13 @@ function Administradores() {
 
       {mostrarAgregarRol && (
         <AgregarRolModal
-          titulo="Agregar rol: administrador"
+          titulo={`Agregar rol: ${ROLES_DIRECTIVOS.find((opcion) => opcion.value === rolParaAgregar)?.label || 'Administrador'}`}
           subtitulo="Seleccioná una persona existente para asignarle el rol. Se reutilizará su mismo usuario: no se crean usuarios y no se sobrescriben roles."
           personas={personasParaAgregarRol}
           onClose={() => setMostrarAgregarRol(false)}
           onAgregar={handleAgregarRol}
           guardando={guardandoAgregarRol}
+          rol={rolParaAgregar}
         />
       )}
 

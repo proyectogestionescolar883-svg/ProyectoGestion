@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { getSuplencias, createSuplencia, updateSuplencia, deleteSuplencia, finalizarSuplencia } from '../../services/api';
@@ -188,7 +188,7 @@ function FormSuplencia({ formData, setFormData, editing, guardando, onSubmit, on
 
 const filtrosHistorialVacio = { docente: '', curso: '', materia: '' };
 
-function GestionSuplencias() {
+function GestionSuplencias({ navContext }) {
   const { cursoMateria, refreshData } = useData();
   const toast = useToast();
   const [suplencias, setSuplencias] = useState([]);
@@ -199,6 +199,8 @@ function GestionSuplencias() {
   const [guardando, setGuardando] = useState(false);
   // Historial
   const [filtrosHistorial, setFiltrosHistorial] = useState(filtrosHistorialVacio);
+  const [suplenciaResaltada, setSuplenciaResaltada] = useState(null);
+  const navSuplenciasAplicado = useRef(null);
 
   const cargar = async () => {
     setCargando(true);
@@ -216,6 +218,23 @@ function GestionSuplencias() {
     cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const marca = navContext?.timestamp;
+    const suplenciaId = navContext?.suplenciaId ?? navContext?.id_suplencia;
+    if (!marca || !suplenciaId || navSuplenciasAplicado.current === marca) return;
+    const suplencia = (suplencias || []).find(
+      (s) => String(s.id_suplencia) === String(suplenciaId),
+    );
+    if (!suplencia) return;
+    navSuplenciasAplicado.current = marca;
+    setSuplenciaResaltada(suplencia.id_suplencia);
+    setFiltrosHistorial({
+      docente: suplencia.suplente_nombre || '',
+      curso: suplencia.curso_nombre || '',
+      materia: suplencia.materia_nombre || '',
+    });
+  }, [navContext, suplencias]);
 
   const esFinalizada = (s) => {
     if (!s.estado) return true;
@@ -433,7 +452,11 @@ function GestionSuplencias() {
                 ) : (
                   suplenciasActivas.map((s) => (
                     <Fragment key={s.id_suplencia}>
-                      <tr>
+                      <tr
+                        style={String(suplenciaResaltada) === String(s.id_suplencia)
+                          ? { background: '#eef2ff', outline: '2px solid #4f46e5' }
+                          : undefined}
+                      >
                         <td>{s.curso_nombre || '—'}</td>
                         <td>{s.materia_nombre || '—'}</td>
                         <td>{s.titular_nombre || '—'}</td>
@@ -516,7 +539,12 @@ function GestionSuplencias() {
                 </thead>
                 <tbody>
                   {historialFiltrado.map((s) => (
-                    <tr key={s.id_suplencia}>
+                    <tr
+                      key={s.id_suplencia}
+                      style={String(suplenciaResaltada) === String(s.id_suplencia)
+                        ? { background: '#eef2ff', outline: '2px solid #4f46e5' }
+                        : undefined}
+                    >
                       <td>{s.curso_nombre || '—'}</td>
                       <td>{s.materia_nombre || '—'}</td>
                       <td>{s.titular_nombre || '—'}</td>

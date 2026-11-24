@@ -24,7 +24,7 @@ import { viewDesdeDestino } from '../../utils/navDestinos';
 
 function PreceptorDashboard({ user, onLogout }) {
 
-  const { preceptores, navIntent, cursosObj } = useData();
+  const { preceptores, navIntent, cursosObj, cursoMateria } = useData();
 
   const userId = user?.id_usuario ?? user?.id ?? null;
   const miPreceptor = useMemo(
@@ -42,7 +42,9 @@ function PreceptorDashboard({ user, onLogout }) {
   // por id; si llega por id se resuelve contra `cursosObj` (una vez, por
   // timestamp, para no pisar la elección manual del header).
   const navAplicadoRef = useRef(null);
+  const navCmAplicadoRef = useRef(null);
   const [cursoPendienteNav, setCursoPendienteNav] = useState('');
+  const [navContext, setNavContext] = useState(null);
 
   useEffect(() => {
     if (!navIntent || !navIntent.destino) return;
@@ -53,6 +55,7 @@ function PreceptorDashboard({ user, onLogout }) {
     if (vista) setView(vista);
 
     const p = navIntent.params || {};
+    setNavContext({ ...p, destino: navIntent.destino, timestamp: navIntent.timestamp });
     const anio = p.anio ?? p.anioLectivo ?? null;
     if (anio) setAnioLectivo(String(anio));
 
@@ -81,6 +84,39 @@ function PreceptorDashboard({ user, onLogout }) {
       setCursoPendienteNav('');
     }
   }, [cursoPendienteNav, cursosObj]);
+
+  useEffect(() => {
+    const marca = navContext?.timestamp;
+    const cmId = navContext?.cursoMateriaId ?? navContext?.curso_materia_id;
+    if (!marca || !cmId || navCmAplicadoRef.current === marca) return;
+    const asignacion = (cursoMateria || []).find(
+      (cm) => String(cm.id) === String(cmId),
+    );
+    if (!asignacion) return;
+    const cursoDelCm = (cursosObj || []).find(
+      (c) => String(c.id_curso) === String(asignacion.id_curso),
+    );
+    if (!cursoDelCm) return;
+    navCmAplicadoRef.current = marca;
+    setCurso(String(cursoDelCm.nombre_curso));
+    setCursoPendienteNav('');
+  }, [navContext, cursoMateria, cursosObj]);
+
+  const materiaNav = useMemo(() => {
+    const p = navContext || {};
+    if (p.materia_nombre || p.materiaNombre) return String(p.materia_nombre || p.materiaNombre);
+    const idMateria = p.materiaId ?? p.materia_id;
+    if (idMateria) {
+      return (cursoMateria || []).find(
+        (cm) => String(cm.id_materia) === String(idMateria),
+      )?.materia_nombre || '';
+    }
+    const cmId = p.cursoMateriaId ?? p.curso_materia_id;
+    if (cmId) {
+      return (cursoMateria || []).find((cm) => String(cm.id) === String(cmId))?.materia_nombre || '';
+    }
+    return '';
+  }, [navContext, cursoMateria]);
 
   const handleAnioChange = (nuevoAnio) => {
     setAnioLectivo(nuevoAnio);
@@ -186,21 +222,21 @@ function PreceptorDashboard({ user, onLogout }) {
       case 'asistencias':
         return (
           <div className="view-section active">
-            <Asistencias {...filtrosProps} />
+            <Asistencias {...filtrosProps} navContext={navContext} />
           </div>
         );
 
       case 'notas':
         return (
           <div className="view-section active">
-            <Notas {...filtrosProps} />
+            <Notas {...filtrosProps} navContext={navContext} />
           </div>
         );
 
       case 'actas':
         return (
           <div className="view-section active">
-            <Actas {...filtrosProps} />
+            <Actas {...filtrosProps} navContext={navContext} />
           </div>
         );
 
@@ -214,14 +250,18 @@ function PreceptorDashboard({ user, onLogout }) {
       case 'comunicados':
         return (
           <div className="view-section active">
-            <ComunicadosView userRole="preceptor" />
+            <ComunicadosView
+              userRole="preceptor"
+              cursoSeleccionado={cursoId}
+              materiaSeleccionada={materiaNav || undefined}
+            />
           </div>
         );
 
       case 'calendario':
         return (
           <div className="view-section active">
-            <CalendarioInstitucional readOnly />
+            <CalendarioInstitucional readOnly navContext={navContext} />
           </div>
         );
 

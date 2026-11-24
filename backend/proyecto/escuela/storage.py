@@ -36,11 +36,13 @@ def _firma(ruta, exp):
     return hmac.new(settings.SECRET_KEY.encode('utf-8'), mensaje, hashlib.sha256).hexdigest()
 
 
-def media_url(valor, expires_in=300):
+def media_url(valor, expires_in=None):
     ruta = normalizar_ruta(valor)
     if not ruta:
         return ''
-    exp = int(time.time()) + expires_in
+    if expires_in is None:
+        expires_in = getattr(settings, 'MEDIA_URL_EXPIRES_IN', 3600)
+    exp = int(time.time()) + int(expires_in)
     return f'{RUTA_API_MEDIA}{quote(ruta, safe="/")}?exp={exp}&sig={_firma(ruta, exp)}'
 
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment, useMemo } from 'react';
+import { useState, useEffect, Fragment, useMemo, useRef } from 'react';
 import { buildMediaUrl } from '../../utils/medios';
 import { hoy, esFinDeSemana, proximaLaborable } from '../../utils/fechas';
 import { useData } from '../../context/DataContext';
@@ -156,7 +156,7 @@ function FormActa({ formData, setFormData, guardando, onSubmit, onCancel, listaE
   );
 }
 
-function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones }) {
+function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones, navIntent }) {
   const {
     actas: actasCurso,
     actasEstudiante,
@@ -186,6 +186,8 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
   const [mensaje, setMensaje] = useState('');
   const [showEstudiantes, setShowEstudiantes] = useState(true);
   const [showCurso, setShowCurso] = useState(true);
+  const [actaResaltada, setActaResaltada] = useState(null);
+  const navProcesado = useRef(null);
 
   /* ¿Hay tipos de acta cargados? `null` mientras se consulta, para no mostrar
      el aviso antes de saber. Toda alta de acta resuelve un tipo
@@ -344,6 +346,26 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
     limpiar();
   };
 
+  useEffect(() => {
+    const actaId = navIntent?.params?.actaId;
+    const marca = navIntent?.timestamp;
+    if (!actaId || !marca || navProcesado.current === marca) return;
+    const coinciden = (acta) => String(acta.actaId) === String(actaId);
+    const actaEstudiante = misActasEstudiante.find(coinciden);
+    const actaCurso = misActasCurso.find(coinciden);
+    const actaDocente = misActasDeDocente.find(coinciden);
+    if (!actaEstudiante && !actaCurso && !actaDocente) return;
+    navProcesado.current = marca;
+    setActaResaltada(String(actaId));
+    setShowEstudiantes(true);
+    setShowCurso(true);
+    if (actaEstudiante) {
+      startEdit(actaEstudiante, 'alumno');
+    } else if (actaCurso) {
+      startEdit(actaCurso, 'curso');
+    }
+  }, [navIntent, misActasEstudiante, misActasCurso, misActasDeDocente, startEdit]);
+
   const handleUpdate = async (e) => {
     e.preventDefault();
     if (!formData.titulo || !formData.fecha) {
@@ -475,7 +497,10 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
             </thead>
             <tbody>
               {misActasDeDocente.map((acta) => (
-                <tr key={acta.id}>
+                <tr
+                  key={acta.id}
+                  style={{ backgroundColor: String(acta.actaId) === actaResaltada ? '#fff3cd' : undefined }}
+                >
                   <td className="table-cell-strong">{acta.titulo}</td>
                   <td>{acta.autor || '—'}</td>
                   <td>{(acta.fecha || '').slice(0, 10)}</td>
@@ -533,7 +558,7 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
                   return actas.map((acta, idx) => {
                     return (
                       <Fragment key={acta.id}>
-                        <tr>
+                        <tr style={{ backgroundColor: String(acta.actaId) === actaResaltada ? '#fff3cd' : undefined }}>
                           <td className="table-cell-strong">{idx === 0 && estudiante ? nombreCorto(estudiante) : ''}</td>
                           <td>{acta.titulo}</td>
                           <td>{(acta.fecha || '').slice(0, 10)}</td>
@@ -595,7 +620,7 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
                 actasDelCurso.map((acta) => {
                   return (
                     <Fragment key={acta.id}>
-                      <tr>
+                      <tr style={{ backgroundColor: String(acta.actaId) === actaResaltada ? '#fff3cd' : undefined }}>
                         <td className="table-cell-strong">{acta.titulo}</td>
                         <td>{(acta.fecha || '').slice(0, 10)}</td>
                         <td>{acta.descripcion}</td>

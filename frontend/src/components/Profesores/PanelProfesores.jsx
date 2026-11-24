@@ -163,7 +163,7 @@ function PanelProfesores({ user, onLogout }) {
           onLogout={onLogout}
         />
 
-        {seccionActiva !== 'docente' && seccionActiva !== 'notificaciones' && seccionActiva !== 'comunicados' && seccionActiva !== 'calendario' && seccionActiva !== 'actas' && (
+        {seccionActiva !== 'docente' && seccionActiva !== 'notificaciones' && seccionActiva !== 'comunicados' && seccionActiva !== 'calendario' && seccionActiva !== 'actas' && seccionActiva !== 'diagnosticos-historial' && (
           <div>
             {cursoMateriaActivo && cursoMateriaActivo.suplenciaActiva && !cursoMateriaActivo.esSuplente && (
               <div
@@ -192,14 +192,20 @@ function PanelProfesores({ user, onLogout }) {
           </div>
         ) : seccionActiva === 'comunicados' ? (
           <div className="view-section active">
-            <ComunicadosView userRole="docente" cursoSeleccionado={cursoId} materiaSeleccionada={materiaSeleccionada} />
+            <ComunicadosView
+              userRole="docente"
+              cursoSeleccionado={cursoId}
+              materiaSeleccionada={materiaSeleccionada}
+              misAsignaciones={misAsignaciones}
+            />
           </div>
-        ) : seccionActiva === 'info' ? (
+        ) : seccionActiva === 'diagnosticos-historial' ? (
           <div className="view-section active">
-            <DiagnosticosView 
-              userRole="docente" 
+            <DiagnosticosView
+              userRole="docente"
               cursoSeleccionado={cursoId}
               cursosEditables={cursosEditables}
+              misAsignaciones={misAsignaciones}
             />
           </div>
         ) : seccionActiva === 'calendario' ? (
@@ -217,6 +223,7 @@ function PanelProfesores({ user, onLogout }) {
               cursoId={cursoId ? Number(cursoId) : null}
               materiaSeleccionada={materiaSeleccionada}
               misAsignaciones={misAsignaciones}
+              navIntent={navIntent}
             />
           </div>
         ) : cursoId && materiaSeleccionada && cursoMateriaActivo ? (
@@ -233,8 +240,8 @@ function PanelProfesores({ user, onLogout }) {
                 />
               )}
             </div>
-            <div className={`view-section ${seccionActiva === 'info' ? 'active' : ''}`}>
-              {seccionActiva === 'info' && (
+            <div className={`view-section ${seccionActiva === 'diagnosticos' ? 'active' : ''}`}>
+              {seccionActiva === 'diagnosticos' && (
                 <PanelInfo
                   cursoId={Number(cursoId)}
                   docenteId={miDocente?.id}

@@ -28,9 +28,10 @@ import { resolverCursosSeleccionados, firmaSeleccion } from '../../utils/selecci
 
 function AdminDashboard({ user, onLogout }) {
 const {
-navIntent,
-cursosObj,
-selectedCursos,
+  navIntent,
+  cursosObj,
+  cursoMateria,
+  selectedCursos,
 selectedCursoIds,
 setSeleccionCursoMateria,
 setSeleccionCursos,
@@ -50,7 +51,9 @@ setSeleccionCursos,
   // Se aplica UNA vez por navegación (guarda por timestamp) para que un refresco
   // de `cursosObj` no vuelva a pisar la elección manual del header.
   const navAplicadoRef = useRef(null);
+  const navCmAplicadoRef = useRef(null);
   const [cursoPendienteNav, setCursoPendienteNav] = useState('');
+  const [navContext, setNavContext] = useState(null);
 
   useEffect(() => {
     if (!navIntent || !navIntent.destino) return;
@@ -61,6 +64,7 @@ setSeleccionCursos,
     if (vista) setView(vista);
 
     const p = navIntent.params || {};
+    setNavContext({ ...p, destino: navIntent.destino, timestamp: navIntent.timestamp });
     const anio = p.anio ?? p.anioLectivo ?? null;
     if (anio) setAnioLectivo(String(anio));
 
@@ -96,6 +100,24 @@ setSeleccionCursos,
       setCursoPendienteNav('');
     }
   }, [cursoPendienteNav, cursosObj]);
+
+  useEffect(() => {
+    const marca = navContext?.timestamp;
+    const cmId = navContext?.cursoMateriaId ?? navContext?.curso_materia_id;
+    if (!marca || !cmId || navCmAplicadoRef.current === marca) return;
+    const asignacion = (cursoMateria || []).find(
+      (cm) => String(cm.id) === String(cmId) || String(cm.id_curso_materia) === String(cmId),
+    );
+    if (!asignacion) return;
+    const cursoDelCm = (cursosObj || []).find(
+      (c) => String(c.id_curso) === String(asignacion.id_curso),
+    );
+    if (!cursoDelCm) return;
+    navCmAplicadoRef.current = marca;
+    setCursos([String(cursoDelCm.nombre_curso)]);
+    setCurso(String(cursoDelCm.nombre_curso));
+    setCursoPendienteNav('');
+  }, [navContext, cursoMateria, cursosObj]);
 
   const handleAnioChange = (nuevoAnio) => {
     setAnioLectivo(nuevoAnio);
@@ -150,6 +172,7 @@ setSeleccionCursos,
     onCursoChange: setCurso,
     onCursosChange: handleCursosChange,
   };
+  const navProps = { navContext };
 
   useEffect(() => {
     getDirectivos()
@@ -165,43 +188,43 @@ setSeleccionCursos,
       case 'perfil':
         return <PanelAdmin miDirectivo={miDirectivo} user={user} />;
       case 'alumnos':
-        return <Estudiantes {...filtrosProps} />;
+        return <Estudiantes {...filtrosProps} {...navProps} />;
       case 'docentes':
-        return <Docentes {...filtrosProps} />;
+        return <Docentes {...filtrosProps} {...navProps} />;
       case 'preceptores':
-        return <Preceptores {...filtrosProps} />;
+        return <Preceptores {...filtrosProps} {...navProps} />;
       case 'jefes-preceptores':
-        return <Preceptores rol="jefe_preceptores" {...filtrosProps} />;
+        return <Preceptores rol="jefe_preceptores" {...filtrosProps} {...navProps} />;
       case 'horarios':
-        return <Horarios {...filtrosProps} />;
+        return <Horarios {...filtrosProps} {...navProps} />;
       case 'adelantos-horas':
-        return <AdelantosHoras {...filtrosProps} />;
+        return <AdelantosHoras {...filtrosProps} {...navProps} />;
       case 'asistencias':
-        return <Asistencias {...filtrosProps} />;
+        return <Asistencias {...filtrosProps} {...navProps} />;
       case 'calendario':
-        return <CalendarioInstitucional {...filtrosProps} />;
+        return <CalendarioInstitucional {...filtrosProps} {...navProps} />;
       case 'notas':
-        return <Notas {...filtrosProps} />;
+        return <Notas {...filtrosProps} {...navProps} />;
       case 'comunicados':
-        return <Comunicados {...filtrosProps} />;
+        return <Comunicados {...filtrosProps} {...navProps} />;
       case 'cursos':
-        return <Cursos {...filtrosProps} />;
+        return <Cursos {...filtrosProps} {...navProps} />;
       case 'materias':
-        return <Materias {...filtrosProps} />;
+        return <Materias {...filtrosProps} {...navProps} />;
       case 'suplencias':
-        return <Suplencias {...filtrosProps} />;
+        return <Suplencias {...filtrosProps} {...navProps} />;
       case 'historial':
-        return <Historial {...filtrosProps} />;
+        return <Historial {...filtrosProps} {...navProps} />;
       case 'tutores':
-        return <TutoresFamilias {...filtrosProps} />;
+        return <TutoresFamilias {...filtrosProps} {...navProps} />;
       case 'actas':
-        return <Actas {...filtrosProps} />;
+        return <Actas {...filtrosProps} {...navProps} />;
       case 'info':
-        return <DiagnosticosView userRole={user.role === 'director' ? 'director' : 'admin'} {...filtrosProps} />;
+        return <DiagnosticosView userRole={user.role === 'director' ? 'director' : 'admin'} {...filtrosProps} {...navProps} />;
       case 'administradores':
-        return <Administradores {...filtrosProps} />;
+        return <Administradores {...filtrosProps} {...navProps} />;
       case 'notificaciones':
-        return <Notificaciones userRole={user.role} {...filtrosProps} />;
+        return <Notificaciones userRole={user.role} {...filtrosProps} {...navProps} />;
       // Configuración: cada submenú abre su pestaña de catálogo. `view` ES la
       // pestaña, así el submenú lateral, las pestañas internas y la
       // navegación por `navIntent` no pueden desincronizarse.
@@ -212,7 +235,7 @@ setSeleccionCursos,
       case 'tipos-acta':
         return <Configuracion pestana={view} onPestanaChange={setView} />;
       default:
-        return <Estudiantes {...filtrosProps} />;
+        return <Estudiantes {...filtrosProps} {...navProps} />;
     }
   };
 

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
 import LoadingSpinner from '../Shared/LoadingSpinner';
@@ -36,7 +36,7 @@ function estadoInicial() {
   return { estado: 'Presente', justificada: false };
 }
 
-function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly = false }) {
+function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly = false, navContext }) {
   const {
     inscripciones, estudiantes, nombreCorto: nc,
     cursosObj, cursoMateria, estadosAsistencia,
@@ -74,6 +74,25 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
   const [docentesEstados, setDocentesEstados] = useState({});
   const [fechaDocentes, setFechaDocentes] = useState(fechaHoy());
   const [serverInfo, setServerInfo] = useState(null);
+  const navAsistenciasProcesado = useRef(null);
+
+  useEffect(() => {
+    const marca = navContext?.timestamp;
+    const p = navContext || {};
+    if (!marca || navAsistenciasProcesado.current === marca) return;
+    const cmId = p.cursoMateriaId ?? p.curso_materia_id;
+    if (!cmId && !p.fecha && !p.alumnoId) return;
+    navAsistenciasProcesado.current = marca;
+    if (cmId) {
+      setTab('materia');
+      setMateriaCmId(String(cmId));
+      if (p.fecha) setFechaMateria(String(p.fecha));
+      if (p.alumnoId) setEstudianteMateria(String(p.alumnoId));
+    } else {
+      setTab('dia');
+      if (p.fecha) setRegFecha(String(p.fecha));
+    }
+  }, [navContext]);
 
   const listaEstudiantes = estudiantesPorAnioYCurso(anioLectivo, curso, inscripciones, estudiantes);
 
@@ -248,7 +267,7 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
 
   // Punto 2.2: con evento institucional activo el módulo queda en solo lectura.
   // La información ya registrada sigue visible (punto 2.1).
-  const soloLectura = readOnly || bloqueaEscritura;
+  const soloLectura = readOnly || bloqueaEscritura || tab === 'materia';
 
   return (
     <div className="card">
@@ -533,7 +552,7 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
                       }
                       filas.push(
                         (() => {
-                          const puedeJustificar = r.estado_nombre !== 'Presente' && r.estado_nombre !== 'Sin registro' && r.id;
+                          const puedeJustificar = !soloLectura && r.estado_nombre !== 'Presente' && r.estado_nombre !== 'Sin registro' && Boolean(r.id);
                           return (
                             <tr key={r.id ?? `sin-reg-${idx}`}>
                               <td className="table-cell-strong">{r.alumno_nombre}</td>
@@ -557,6 +576,7 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
                                     <input
                                       type="checkbox"
                                       checked={r.justificado}
+                                      disabled={soloLectura}
                                       onChange={async (e) => {
                                         const nuevoValor = e.target.checked;
                                         setDataMateria((prev) =>

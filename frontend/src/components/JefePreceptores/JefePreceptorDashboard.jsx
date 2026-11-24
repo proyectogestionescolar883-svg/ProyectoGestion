@@ -16,6 +16,8 @@ import Notificaciones from '../Notificaciones';
 import AdministracionPreceptores from './AdministracionPreceptores';
 import EstadisticasPreceptoria from './EstadisticasPreceptoria';
 import Historial from '../Administracion/historial';
+import VistaHorarios from '../Administracion/VistaHorarios';
+import SupervisionPreceptores from './SupervisionPreceptores';
 import AdelantosHoras from '../Shared/AdelantosHoras';
 import { useData } from '../../context/DataContext';
 import { useMemo } from 'react';
@@ -186,7 +188,7 @@ setSeleccionCursos,
       case 'tutores':
         return (
           <div className="view-section active">
-            <TutoresFamilias readOnly anioLectivo={anioLectivo} cursos={cursos} curso={curso} />
+            <TutoresFamilias readOnly {...filtrosProps} />
           </div>
         );
 
@@ -201,6 +203,17 @@ setSeleccionCursos,
         return (
           <div className="view-section active">
             <AdelantosHoras />
+          </div>
+        );
+
+      case 'horarios':
+        return (
+          <div className="view-section active">
+            <VistaHorarios
+              cursosOptions={cursosObj}
+              cursoForzado={cursosResueltos.ids[0] || ''}
+              cargarAdelantos={false}
+            />
           </div>
         );
 
@@ -236,6 +249,13 @@ setSeleccionCursos,
         return (
           <div className="view-section active">
             <EstadisticasPreceptoria />
+          </div>
+        );
+
+      case 'supervision':
+        return (
+          <div className="view-section active">
+            <SupervisionPreceptores />
           </div>
         );
 

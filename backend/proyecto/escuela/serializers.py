@@ -11,6 +11,7 @@ from django.db.utils import IntegrityError
 from escuela.storage import media_url
 from escuela.utils import (
     HORA_CORTE_TURNO,
+    alumno_pertenece_a_curso_materia,
     es_estado_asistencia_base,
     franjas_se_solapan,
     normalizar_dni,
@@ -272,6 +273,7 @@ def _build_usuario_account(
             })
     creating_usuario = usuario is None
     reusing_existente = id_usuario_existente is not None and not creating_usuario
+    estado_anterior = None if creating_usuario else usuario.estado
 
     if creating_usuario and not username:
         raise serializers.ValidationError({username_key: 'El usuario es obligatorio.'})
@@ -333,7 +335,9 @@ def _build_usuario_account(
     if role_name:
         _assign_role(usuario, role_name)
 
-    if creating_usuario and usuario.estado:
+    if (creating_usuario and usuario.estado) or (
+        not creating_usuario and estado_anterior != usuario.estado
+    ):
         from escuela.notifications import notificar_estado_cuenta
         notificar_estado_cuenta(usuario)
 
@@ -780,10 +784,10 @@ class UsuarioSerializer(serializers.ModelSerializer):
                     apellido=apellido,
                     dni=dni,
                     telefono=telefono or '',
-                    cargo=cargo or 'Administrador'
+                    cargo=cargo or ('Director' if 'director' in roles else 'Administrador')
                 )
         # Ensure admin users always have a Directivo profile
-        elif 'admin' in roles:
+        elif any(rol in roles for rol in ('admin', 'director')):
             directivo = Directivo.all_objects.filter(id_usuario=usuario).first()
             if directivo is None:
                 # Generate fallback data from username
@@ -801,7 +805,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
                     apellido=fb_apellido,
                     dni=fb_dni,
                     telefono='',
-                    cargo='Administrador'
+                    cargo='Director' if 'director' in roles else 'Administrador'
                 )
             else:
                 # Reutilizar el perfil dado de baja lógica reactivándolo.
@@ -813,7 +817,6 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         contrasena = validated_data.pop('contrasena', None)
-        roles = self.initial_data.get('roles', None)
         nombre = validated_data.pop('nombre', None)
         apellido = validated_data.pop('apellido', None)
         dni = validated_data.pop('dni', None)
@@ -846,15 +849,6 @@ class UsuarioSerializer(serializers.ModelSerializer):
             instance.set_password(contrasena)
 
         instance.save()
-
-        if roles is not None:
-            # Remove existing roles
-            UsuarioRol.objects.filter(id_usuario=instance).delete()
-            # Add new roles
-            for role_name in roles:
-                rol = Rol.objects.filter(nombre_rol=role_name).first()
-                if rol:
-                    UsuarioRol.objects.create(id_usuario=instance, id_rol=rol)
 
         # Update Directivo if exists and fields are provided
         if nombre or apellido or dni or telefono or cargo:
@@ -1125,6 +1119,7 @@ class PreceptorSerializer(serializers.ModelSerializer):
     )
     cursos_asignados = serializers.SerializerMethodField()
     usuario_estado = serializers.SerializerMethodField()
+    usuario_fecha_ultimo_acceso = serializers.SerializerMethodField()
     usuario_fecha_deshabilitacion_programada = serializers.SerializerMethodField()
     usuario_fecha_habilitacion_programada = serializers.SerializerMethodField()
     estado_label = serializers.SerializerMethodField()
@@ -1150,6 +1145,7 @@ class PreceptorSerializer(serializers.ModelSerializer):
             'cursos_ids',
             'cursos_asignados',
             'usuario_estado',
+            'usuario_fecha_ultimo_acceso',
             'usuario_fecha_deshabilitacion_programada',
             'usuario_fecha_habilitacion_programada',
             'estado_label',
@@ -1206,6 +1202,12 @@ class PreceptorSerializer(serializers.ModelSerializer):
     def get_usuario_estado(self, obj):
         return obj.id_usuario.estado if obj.id_usuario else None
 
+    def get_usuario_fecha_ultimo_acceso(self, obj):
+        if not obj.id_usuario:
+            return None
+        value = obj.id_usuario.ultimo_acceso
+        return value.isoformat() if value else None
+
     def get_usuario_fecha_deshabilitacion_programada(self, obj):
         if not obj.id_usuario:
             return None
@@ -1225,6 +1227,19 @@ class PreceptorSerializer(serializers.ModelSerializer):
         if not getattr(instance, 'id_usuario_id', None):
             return self._role_name_from_context()
         return None
+
+    def _role_name_from_instance(self, instance):
+        if not getattr(instance, 'id_usuario_id', None):
+            return self._role_name_from_context()
+        roles = set(
+            UsuarioRol.objects.filter(id_usuario=instance.id_usuario)
+            .values_list('id_rol__nombre_rol', flat=True)
+        )
+        if 'jefe_preceptores' in roles:
+            return 'jefe_preceptores'
+        if 'preceptor' in roles:
+            return 'preceptor'
+        return self._role_name_from_context()
 
     def create(self, validated_data):
         cursos_ids = validated_data.pop('cursos_ids', [])
@@ -1294,7 +1309,7 @@ class PreceptorSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         cursos_ids = validated_data.pop('cursos_ids', None)
-        es_jefe = self._role_name_from_context() == 'jefe_preceptores'
+        es_jefe = self._role_name_from_instance(instance) == 'jefe_preceptores'
         usuario, validated_data = _build_usuario_account(
             instance=instance,
             validated_data=validated_data,
@@ -1886,6 +1901,9 @@ class AlumnoSerializer(serializers.ModelSerializer):
     curso_nombre = serializers.CharField(
         source='id_curso.nombre_curso', read_only=True, default=None,
     )
+    ciclo_anio = serializers.IntegerField(
+        source='id_curso.id_ciclo.anio', read_only=True, default=None,
+    )
     tutor_nombre = serializers.SerializerMethodField()
     usuario_estado = serializers.SerializerMethodField()
     usuario_fecha_deshabilitacion_programada = serializers.SerializerMethodField()
@@ -1915,6 +1933,7 @@ class AlumnoSerializer(serializers.ModelSerializer):
             'telefono',
             'procedencia',
             'curso_nombre',
+            'ciclo_anio',
             'tutor_nombre',
             'usuario_estado',
             'usuario_fecha_deshabilitacion_programada',
@@ -2643,6 +2662,14 @@ class CalificacionSerializer(serializers.ModelSerializer):
         alumno = attrs.get('id_alumno', getattr(self.instance, 'id_alumno', None))
         cm = attrs.get('id_curso_materia', getattr(self.instance, 'id_curso_materia', None))
         periodo = attrs.get('id_periodo', getattr(self.instance, 'id_periodo', None))
+        if alumno is not None and cm is not None:
+            if not alumno_pertenece_a_curso_materia(
+                getattr(alumno, 'pk', alumno),
+                getattr(cm, 'pk', cm),
+            ):
+                raise serializers.ValidationError({
+                    'id_alumno': 'El estudiante no pertenece al curso de esta materia.'
+                })
         if alumno is not None and cm is not None and periodo is not None:
             qs = Calificacion.objects.filter(
                 id_alumno=alumno, id_curso_materia=cm, id_periodo=periodo,
@@ -2684,6 +2711,16 @@ class AsistenciaSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        alumno = attrs.get('id_alumno', getattr(self.instance, 'id_alumno', None))
+        cm = attrs.get('id_curso_materia', getattr(self.instance, 'id_curso_materia', None))
+        if alumno is not None and cm is not None:
+            if not alumno_pertenece_a_curso_materia(
+                getattr(alumno, 'pk', alumno),
+                getattr(cm, 'pk', cm),
+            ):
+                raise serializers.ValidationError({
+                    'id_alumno': 'El estudiante no pertenece al curso de esta materia.'
+                })
         justificado = attrs.get('justificado', getattr(self.instance, 'justificado', False))
         estado = attrs.get('id_estado_asistencia', getattr(self.instance, 'id_estado_asistencia', None))
         nombre = getattr(estado, 'nombre_estado', None)

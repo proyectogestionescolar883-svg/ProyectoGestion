@@ -1,5 +1,7 @@
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useData } from '../../context/DataContext';
+import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import LoadingSpinner from '../Shared/LoadingSpinner';
 import {
   getAsistenciasPreceptorMateria,
@@ -8,9 +10,12 @@ import {
   getServerTime,
   getAsistenciasDocentesHoy,
   getHistorialAsistenciasDocentes,
+  createAsistencia,
+  patchJustificar,
 } from '../../services/api';
 import { hayBloqueoEscritura, getSuspensionInfo } from '../../utils/suspension';
 import { formatearFecha, hoy } from '../../utils/fechas';
+import { mensajeErrorAmigable } from '../../utils/errores';
 
 function badgeClass(estado) {
   if (estado === 'Presente') return 'badge-presente';
@@ -19,18 +24,22 @@ function badgeClass(estado) {
   return 'badge-tarde';
 }
 
-function Asistencias() {
+function Asistencias({ navContext }) {
   const {
     estudiantes,
     cursosObj,
     cursoMateria,
     nombreCorto,
     eventosInstitucionales,
+    estadosAsistencia,
     selectedCursoId,
     selectedCursos,
     selectedCursoIds,
     ensureData,
+    refreshData,
   } = useData();
+  const { user } = useAuth();
+  const toast = useToast();
   useEffect(() => {
     ensureData('eventosInstitucionales');
   }, [ensureData]);
@@ -76,6 +85,9 @@ function Asistencias() {
   const [dataRegistro, setDataRegistro] = useState([]);
   const [cargandoRegistro, setCargandoRegistro] = useState(false);
   const [serverInfo, setServerInfo] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const [asistEstudiantes, setAsistEstudiantes] = useState({});
+  const navAsistenciasProcesado = useRef(null);
   const [tabDocentes, setTabDocentes] = useState('hoy');
   const [docHoy, setDocHoy] = useState([]);
   const [cargandoDocHoy, setCargandoDocHoy] = useState(false);
@@ -90,6 +102,27 @@ function Asistencias() {
     setFechaMateria('');
     setEstudianteMateria('');
   }, [selectedCursoId]);
+
+  useEffect(() => {
+    const marca = navContext?.timestamp;
+    const p = navContext || {};
+    if (!marca || navAsistenciasProcesado.current === marca) return;
+    const cmId = p.cursoMateriaId ?? p.curso_materia_id;
+    if (!cmId && !p.fecha && !p.alumnoId && !p.id_alumno && !p.alumno_id) return;
+    navAsistenciasProcesado.current = marca;
+    if (cmId) {
+      setTab('materia');
+      setMateriaCmId(String(cmId));
+      if (p.fecha) setFechaMateria(String(p.fecha));
+      const alumno = p.alumnoId ?? p.id_alumno ?? p.alumno_id;
+      if (alumno) setEstudianteMateria(String(alumno));
+    } else {
+      setTab('dia');
+      if (p.fecha) setRegFecha(String(p.fecha));
+      const alumno = p.alumnoId ?? p.id_alumno ?? p.alumno_id;
+      if (alumno) setRegEstudiante(String(alumno));
+    }
+  }, [navContext]);
 
   // 5.6: `===` pasa a `includes` sobre la lista de cursos marcados.
   const cmCurso = useMemo(
@@ -173,9 +206,69 @@ function Asistencias() {
       .finally(() => setCargandoDocHistorial(false));
   }, [tab, tabDocentes, curso, fechaHistDoc]);
 
+  const getEstadoSeleccionado = (id) => asistEstudiantes[id] || 'Presente';
+
+  const handleGuardar = async () => {
+    if (bloqueaEscritura) {
+      toast.error('No se pueden registrar asistencias en un día suspendido.');
+      return;
+    }
+    if (!estadosAsistencia?.length) {
+      toast.warning('No hay estados de asistencia configurados.');
+      return;
+    }
+    const cm = (cursoMateria || []).find(
+      (item) => cursosSelIds.includes(String(item.id_curso)),
+    );
+    if (!cm) {
+      toast.warning('No hay materias asignadas al curso seleccionado.');
+      return;
+    }
+    setGuardando(true);
+    try {
+      const estadosPorNombre = Object.fromEntries(
+        estadosAsistencia.map((e) => [e.nombre_estado, e.id_estado_asistencia]),
+      );
+      await Promise.all(listaEstudiantes.map((a) => {
+        const estado = getEstadoSeleccionado(a.id);
+        return createAsistencia({
+          id_alumno: a.id,
+          id_curso_materia: cm.id,
+          fecha: hoy(),
+          numero_modulo: null,
+          id_estado_asistencia: estadosPorNombre[estado] || estadosAsistencia[0].id_estado_asistencia,
+          id_usuario: user?.id || 1,
+        });
+      }));
+      toast.success('Asistencias guardadas correctamente.');
+      await refreshData();
+      await cargarDiaria();
+    } catch (err) {
+      toast.error(mensajeErrorAmigable(err));
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const handleJustificar = async (registro, justificado) => {
+    setDataMateria((prev) => prev.map((x) => (
+      String(x.id) === String(registro.id) ? { ...x, justificado } : x
+    )));
+    try {
+      await patchJustificar(registro.id, justificado);
+    } catch (err) {
+      setDataMateria((prev) => prev.map((x) => (
+        String(x.id) === String(registro.id) ? { ...x, justificado: !justificado } : x
+      )));
+      toast.error(mensajeErrorAmigable(err));
+    }
+  };
+
   const fechaActual = tab === 'dia' ? hoy() : (tab === 'registro' ? regFecha : (tab === 'materia' ? fechaMateria : hoy()));
   const suspensionInfo = fechaActual ? getSuspensionInfo(eventosInstitucionales, fechaActual) : null;
   const bloqueaEscritura = suspensionInfo?.bloqueaEscritura;
+  const puedeEditar = ['admin', 'director'].includes(user?.role);
+  const soloLectura = !puedeEditar || bloqueaEscritura;
 
   return (
     <div className="card">
@@ -194,7 +287,7 @@ function Asistencias() {
 
       <div className="card-header-flex">
         <h3><i className="fas fa-user-check" aria-hidden="true" /> Control de Asistencia</h3>
-        <span className="badge role-badge-display">Solo lectura</span>
+        {soloLectura && <span className="badge role-badge-display">Solo lectura</span>}
       </div>
 
       <div className="asist-tipo-selector">
@@ -225,6 +318,11 @@ function Asistencias() {
         <div>
           <div className="card-header-flex">
             <h3>Asistencias del día</h3>
+            {!soloLectura && (
+              <button type="button" className="btn btn-primary" onClick={handleGuardar} disabled={guardando}>
+                <i className="fas fa-save" aria-hidden="true" /> {guardando ? 'Guardando...' : 'Guardar'}
+              </button>
+            )}
           </div>
 
           <p style={{ color: '#888', margin: '0 0 12px' }}>
@@ -257,6 +355,48 @@ function Asistencias() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {!soloLectura && (
+            <div className="card mt-16">
+              <div className="card-header-flex">
+                <h3>Carga masiva</h3>
+              </div>
+              {listaEstudiantes.length === 0 ? (
+                <p className="empty-state-message">No hay estudiantes en los cursos seleccionados.</p>
+              ) : (
+                <div className="table-responsive">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Estudiante</th>
+                        <th>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {listaEstudiantes.map((a) => (
+                        <tr key={a.id}>
+                          <td className="table-cell-strong">{nombreCorto(a)}{etiquetaCurso(a)}</td>
+                          <td>
+                            <select
+                              value={getEstadoSeleccionado(a.id)}
+                              onChange={(e) => setAsistEstudiantes((prev) => ({ ...prev, [a.id]: e.target.value }))}
+                            >
+                              {(estadosAsistencia.length
+                                ? estadosAsistencia.map((e) => e.nombre_estado)
+                                : ['Presente', 'Ausente', 'Tarde']
+                              ).map((estado) => (
+                                <option key={estado} value={estado}>{estado}</option>
+                              ))}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
@@ -413,7 +553,7 @@ function Asistencias() {
                           </tr>,
                         );
                       }
-                      const puedeJustificar = r.estado_nombre !== 'Presente' && r.estado_nombre !== 'Sin registro' && r.id;
+                      const puedeJustificar = !soloLectura && r.estado_nombre !== 'Presente' && r.estado_nombre !== 'Sin registro' && Boolean(r.id);
                       filas.push(
                         <tr key={r.id ?? `sin-reg-${idx}`}>
                           <td className="table-cell-strong">{r.alumno_nombre}</td>
@@ -433,11 +573,14 @@ function Asistencias() {
                           <td>{r.hora_carga || '-'}</td>
                           <td>
                             {puedeJustificar ? (
-                              r.justificado ? (
-                                <span className="badge badge-success">Justificado</span>
-                              ) : (
-                                <span className="badge badge-warning">No justificado</span>
-                              )
+                              <label className="cb-label" style={{ cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(r.justificado)}
+                                  onChange={(e) => handleJustificar(r, e.target.checked)}
+                                />
+                                <span>Sí</span>
+                              </label>
                             ) : r.justificado ? (
                               <span className="badge badge-success">Justificado</span>
                             ) : '-'}

@@ -82,7 +82,7 @@ function Calificaciones({ hijo }) {
       estudianteNombre: `${estudiante.apellido}, ${estudiante.nombre}`,
       dni: estudiante.dni,
       cursoNombre: estudiante.curso_nombre_api || cursoNombre,
-      anioLectivo: new Date().getFullYear(),
+      anioLectivo: estudiante.ciclo_anio || new Date().getFullYear(),
       materias: calificacionesDisplay,
       inasistenciasPorMateria,
       intensificaciones_1c,

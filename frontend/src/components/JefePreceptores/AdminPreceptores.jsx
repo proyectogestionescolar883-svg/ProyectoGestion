@@ -683,7 +683,7 @@ function AdminPreceptores() {
               </tr>
             ) : (
               filteredPreceptores.map((p) => (
-                <Fragment key={p.id_preceptor}>
+                <Fragment key={p.sin_perfil ? `sin-perfil-${p.id_usuario}` : p.id_preceptor}>
                   <tr>
                     <td>{p.nombre}</td>
                     <td>{p.apellido}</td>

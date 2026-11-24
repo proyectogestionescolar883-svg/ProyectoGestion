@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
@@ -347,7 +347,7 @@ const formVacio = {
   telefono: '',
 };
 
-function Docentes() {
+function Docentes({ navContext }) {
   const { docentes, actasDocente, cursoMateria, planificaciones, refreshData } = useData();
   const toast = useToast();
   const [searchTerm, setSearchTerm] = useState('');
@@ -370,6 +370,7 @@ function Docentes() {
   const [personasParaAgregarRol, setPersonasParaAgregarRol] = useState([]);
   const [cargandoPersonasSinRol, setCargandoPersonasSinRol] = useState(false);
   const [idsDocentesSinRol, setIdsDocentesSinRol] = useState([]);
+  const navDocentesAplicado = useRef(null);
 
   const cargarPersonasSinRol = async () => {
     setCargandoPersonasSinRol(true);
@@ -386,6 +387,43 @@ function Docentes() {
   useEffect(() => {
     cargarPersonasSinRol();
   }, []);
+
+  useEffect(() => {
+    const marca = navContext?.timestamp;
+    if (!marca || navDocentesAplicado.current === marca) return;
+    const planificacionId = navContext?.planificacionId ?? navContext?.planificacion_id;
+    const ddjjId = navContext?.ddjjId ?? navContext?.ddjj_id;
+    if (!planificacionId && !ddjjId) return;
+
+    let docente = null;
+    if (planificacionId) {
+      const planificacion = (planificaciones || []).find(
+        (p) => String(p.id_planificacion) === String(planificacionId),
+      );
+      const idDocente = planificacion?.id_docente ?? planificacion?.docenteId;
+      docente = (docentes || []).find(
+        (d) => String(d.id) === String(idDocente) || String(d.id_docente) === String(idDocente),
+      );
+      if (docente) {
+        setActasAbierto(null);
+        setVerDdjj(null);
+        setCursosAbierto(docente.id);
+      }
+    } else {
+      docente = (docentes || []).find(
+        (d) => String(d.ddjj_id) === String(ddjjId) || String(d.id) === String(ddjjId),
+      );
+      if (docente) {
+        setActasAbierto(null);
+        setCursosAbierto(null);
+        setVerDdjj(docente.id);
+      }
+    }
+    if (docente) {
+      navDocentesAplicado.current = marca;
+      setSearchTerm(docente.apellido || docente.nombre || '');
+    }
+  }, [navContext, docentes, planificaciones]);
 
   const cargarPersonasConRol = async () => {
     try {

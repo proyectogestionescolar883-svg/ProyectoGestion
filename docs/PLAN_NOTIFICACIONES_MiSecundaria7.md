@@ -324,7 +324,7 @@ Se relevó el inventario completo de endpoints y sus permisos de escritura (\`vi
 
 \| E3 | Asistencia (ausencia) registrada | \`AsistenciaViewSet\` (\`PuedeRegistrarAsistencias\` → admin/director/preceptor/docente) | Estudiante + familia | **\*\*Anti-spam crítico\*\***: agrupar por día/jornada (una notificación por fecha con resumen de ausencias), no una por inasistencia |
 
-\| E4 | Apercibimiento / nota de conducta en acta? **\*\*[REQUIERE DECISIÓN]\*\*** | \`ActaViewSet\` / \`ActaAlumnoViewSet\` (\`PuedeGestionarActas\`) | Estudiante + familia | solo si hay tipo de acta "apercibimiento/observación" |
+\| E4 | Apercibimiento / nota de conducta en acta | \`ActaViewSet\` / \`ActaAlumnoViewSet\` (\`PuedeGestionarActas\`) | Estudiante + familia + preceptores del curso + jefe | solo si hay tipo de acta "apercibimiento/observación" |
 
 \| E5 | Acta **\*\*cerrada/visada\*\*** por director | \`ActaViewSet\` transición de estado | Estudiante + familia + docentes involucrados | notificar solo en el "cierre", no en cada edición |
 
@@ -332,9 +332,9 @@ Se relevó el inventario completo de endpoints y sus permisos de escritura (\`vi
 
 \| E7 | Comunicado publicado | \`ComunicadoViewSet\` (\`PuedePublicarComunicados\` → admin/director/jefe\_preceptores) | Todos los alcanzados por \`comunicado\_alcance\` | **\*\*Reutilizar\*\*** \`\_filter\_visible\_comunicados\`/alcances; una notificación por comunicado por destinatario |
 
-\| E8 | Planificación subida/actualizada por docente | \`PlanificacionViewSet\` (\`PuedeGestionarPlanificaciones\` → admin/director/docente) | Director (+ jefe de área si existiera) | no a todos; solo supervisión |
+\| E8 | Planificación subida/actualizada por docente | \`PlanificacionViewSet\` (\`PuedeGestionarPlanificaciones\` → admin/director/docente) | Admin + director | no a todos; solo supervisión |
 
-\| E9 | DDJJ presentada por docente | \`DdjjDocenteViewSet\` (\`PuedeGestionarAmbitoDocente\`) | Director | |
+\| E9 | DDJJ presentada por docente | \`DdjjDocenteViewSet\` (\`PuedeGestionarAmbitoDocente\`) | Admin + director | |
 
 \| E10 | Materia adeudada / pasa a **\*\*Previa\*\*** | \`MateriaAdeudadaViewSet\`; transición Feb→Previa (\`\_pasar\_a\_previa\`) | Estudiante + familia | **\*\*evento académico importante\*\*** |
 
@@ -346,11 +346,11 @@ Se relevó el inventario completo de endpoints y sus permisos de escritura (\`vi
 
 \| E14 | Usuario habilitado/deshabilitado (programado) | \`middleware\`/\`usuario\_estado.py\` (evento programado) | el usuario afectado, o admin | "tu usuario será deshabilitado el ..." / "fue habilitado" |
 
-\| E15 | Adelanto de horas aprobado | \`AdelantoHorasViewSet\` (\`PuedeGestionarAdelantos\` → admin/director/jefe\_preceptores/preceptor) | Docente solicitante | |
+\| E15 | Adelanto de horas aprobado | \`AdelantoHorasViewSet\` (\`PuedeGestionarAdelantos\` → admin/director/jefe\_preceptores/preceptor) | Docente titular + preceptores del curso + directivos + jefe + estudiantes del curso + familias | |
 
 \| E16 | Evento institucional creado/actualizado | \`EventoInstitucionalViewSet\` (\`IsAdminOrDirectorForWrite\`) | alcanzados por \`alcance\` | similar a comunicado |
 
-\| E17 | Suplencia asignada | \`SuplenciaDocenteViewSet\` (\`IsAdminOrDirectorForWrite\`) | Docente suplente | |
+\| E17 | Suplencia asignada | \`SuplenciaDocenteViewSet\` (\`IsAdminOrDirectorForWrite\`) | Docente suplente + preceptores del curso + directivos + estudiantes del curso + familias | |
 
 \| E18 | Recursada cargada / promovida | \`RecursadaMateriaViewSet\` / \`RecursadaCalificacionViewSet\` (\`IsAdminOrDirectorForWrite\`) | Estudiante + familia | |
 
@@ -368,9 +368,9 @@ Se relevó el inventario completo de endpoints y sus permisos de escritura (\`vi
 
 \- **\*\*Preceptor\*\***: E7/E16 alcanzados a sus cursos; E3 (resumen diario de ausencias de sus cursos) **\*\*[REQUIERE DECISIÓN]\*\***.
 
-\- **\*\*Jefe de preceptores\*\***: E7/E16 globales; resúmenes; E6.
+\- **\*\*Jefe de preceptores\*\***: E4, E15, E20, E21 y E7/E16 según alcance. No recibe E1/E6 de calificaciones.
 
-\- **\*\*Admin / Director\*\***: E8, E9 (planificaciones/DDJJ de docentes), E6 (actas a visar), E14 (usuarios), resúmenes generales. Ambos roles comparten \`AdminDashboard\`.
+\- **\*\*Admin / Director\*\***: E8, E9 (planificaciones/DDJJ de docentes), E14 (usuarios), E16/eventos institucionales y cambios de estructura. No reciben E4/E21 de actas ni E1/E6 de calificaciones. Ambos roles comparten \`AdminDashboard\`.
 
 **---**
 
@@ -621,7 +621,7 @@ No implementar todavía la UI completa ni los eventos automáticos.
 
 **Criterio de finalización:** la API queda segura y preparada para que el sistema pueda generar notificaciones posteriormente.
 
-**Estado:** PENDIENTE.
+**Estado:** COMPLETADA.
 
 ---
 
@@ -1084,8 +1084,8 @@ Archivos modificados:
   - `DdjjDocenteViewSet.mi_ddjj` (POST): hook E9 (notifica a directivos cuando se presenta DDJJ).
 - `backend/proyecto/escuela/tests/test_notificaciones_eventos_parte5.py` (nuevo): 9 tests (E15, E17, E8, E9).
 Cambios realizados:
-- E15 — Adelanto de horas aprobado: la creación del adelanto por usuario autorizado (preceptor/admin/director) equivale a aprobación; notifica al `id_docente` del adelanto si tiene usuario asociado.
-- E17 — Suplencia asignada: la creación de una suplencia activa notifica al `id_docente_suplente` si tiene usuario asociado.
+- E15 — Adelanto de horas aprobado: la creación del adelanto por usuario autorizado equivale a aprobación; notifica al docente titular, preceptores del curso, directivos, jefe, estudiantes del curso y familias.
+- E17 — Suplencia asignada: la creación de una suplencia activa notifica al docente suplente, preceptores del curso, directivos, estudiantes del curso y familias.
 - E8 — Planificación para revisión: cuando un docente (rol 'docente') crea o actualiza una planificación, notifica a usuarios con roles 'admin'/'director'. La revisión formal queda pendiente (Parte 7); aquí solo aviso de contenido nuevo.
 - E9 — DDJJ presentada: al presentar DDJJ vía `mi_ddjj` POST, notifica a directivos (admin/director).
 - `_usuarios_directivos()` centraliza la resolución de usuarios con roles admin/director para E8 y E9.
