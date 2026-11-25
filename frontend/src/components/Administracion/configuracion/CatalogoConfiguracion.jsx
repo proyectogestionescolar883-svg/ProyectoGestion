@@ -236,7 +236,6 @@ export default function CatalogoConfiguracion({
               type="checkbox"
               checked={mostrarInactivos}
               onChange={(e) => setMostrarInactivos(e.target.checked)}
-              style={{ marginRight: '8px' }}
             />
             Mostrar registros inactivos
           </label>

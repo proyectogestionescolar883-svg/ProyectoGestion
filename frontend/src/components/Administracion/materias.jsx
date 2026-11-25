@@ -142,7 +142,7 @@ function GestionMaterias() {
 
       <div className="flex-row--between mb-16">
         <label style={{ cursor: 'pointer', userSelect: 'none' }}>
-          <input type="checkbox" checked={mostrarInactivos} onChange={(e) => setMostrarInactivos(e.target.checked)} style={{ marginRight: '8px' }} />
+          <input type="checkbox" checked={mostrarInactivos} onChange={(e) => setMostrarInactivos(e.target.checked)} />
           Mostrar registros inactivos
         </label>
         <button type="button" className="btn btn-primary" onClick={abrirNuevo}>

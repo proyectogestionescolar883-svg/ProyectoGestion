@@ -7467,3 +7467,32 @@ td.historial-valor-cell {
         padding: 8px 8px calc(8px + env(safe-area-inset-bottom)) !important;
     }
 }
+
+.flex-row--between {
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.flex-row--between > label {
+    min-width: 0;
+}
+
+.flex-row--between > label > input[type="checkbox"] {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+.flex-row--between > .btn {
+    flex: 0 0 auto;
+}
+
+@media (max-width: 900px) {
+    .flex-row--between > label {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    .flex-row--between > .btn {
+        flex: 0 0 auto;
+    }
+}
