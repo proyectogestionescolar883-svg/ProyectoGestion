@@ -314,7 +314,7 @@ function Asistencias({ navContext }) {
   const fechaActual = tab === 'dia' ? hoy() : (tab === 'registro' ? regFecha : (tab === 'materia' ? fechaMateria : hoy()));
   const suspensionInfo = fechaActual ? getSuspensionInfo(eventosInstitucionales, fechaActual) : null;
   const bloqueaEscritura = suspensionInfo?.bloqueaEscritura;
-  const puedeEditar = ['admin', 'director'].includes(user?.role);
+  const puedeEditar = user?.role === 'admin';
   const soloLectura = !puedeEditar || bloqueaEscritura;
   const puedeCargaMasiva = ['docente', 'preceptor'].includes(String(user?.role || '').toLowerCase());
 

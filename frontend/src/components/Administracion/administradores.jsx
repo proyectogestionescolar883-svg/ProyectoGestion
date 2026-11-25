@@ -475,23 +475,25 @@ function Administradores() {
           <section className="preceptor-form-section">
             <h4>Datos administrativos</h4>
             <div className="preceptor-form-row preceptor-form-row--two">
-              <div className="form-group-filter">
-                <label htmlFor="rol">Rol</label>
-                <select
-                  id="rol"
-                  value={ROLES_ASIGNABLES.some((opcion) => opcion.value === formData.rol) ? formData.rol : 'admin'}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    rol: e.target.value,
-                    cargo: cargoPorRol(e.target.value),
-                  })}
-                  disabled={!!editingUsuario || guardandoUsuario}
-                >
-                  {ROLES_ASIGNABLES.map((opcion) => (
-                    <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
-                  ))}
-                </select>
-              </div>
+              {!editingUsuario && (
+                <div className="form-group-filter">
+                  <label htmlFor="rol">Rol</label>
+                  <select
+                    id="rol"
+                    value={ROLES_ASIGNABLES.some((opcion) => opcion.value === formData.rol) ? formData.rol : 'admin'}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      rol: e.target.value,
+                      cargo: cargoPorRol(e.target.value),
+                    })}
+                    disabled={!!editingUsuario || guardandoUsuario}
+                  >
+                    {ROLES_ASIGNABLES.map((opcion) => (
+                      <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="form-group-filter">
                 <label htmlFor="cargo">Cargo</label>

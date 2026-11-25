@@ -225,8 +225,8 @@ function Historial({ ocultarRegistro = false }) {
                   <td><span className="badge badge-neutral">{h.accion}</span></td>
                   <td>{h.tabla_label || h.tabla_modificada}</td>
                   {!ocultarRegistro && <td>{h.id_registro}</td>}
-                  <td className="historial-valor">{h.valor_anterior || '-'}</td>
-                  <td className="historial-valor">{h.valor_nuevo || '-'}</td>
+                  <td className="historial-valor-cell"><div className="historial-valor">{h.valor_anterior || '-'}</div></td>
+                  <td className="historial-valor-cell"><div className="historial-valor">{h.valor_nuevo || '-'}</div></td>
                 </tr>
               ))
             )}

@@ -143,8 +143,8 @@ function PanelAdmin({ miDirectivo, user }) {
       </div>
 
       {esDirector && (
-        <div className="inline-form-container">
-          <section className="preceptor-form-section">
+        <div className="inline-form-container mis-datos-container">
+          <section className="preceptor-form-section mis-datos-section">
             <h4>Mis datos personales</h4>
             {!editando ? (
               <>

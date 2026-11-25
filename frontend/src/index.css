@@ -7275,3 +7275,85 @@ div:has(> label:has(input[type="checkbox"])) {
         max-width: 100%;
     }
 }
+
+.mis-datos-container.inline-form-container {
+    background: #ffffff;
+    color: #0f172a;
+}
+
+.mis-datos-container.inline-form-container .mis-datos-section.preceptor-form-section {
+    color: #0f172a;
+    border-top-color: #e2e8f0;
+}
+
+.mis-datos-container.inline-form-container .mis-datos-section.preceptor-form-section h4 {
+    color: #0f172a;
+}
+
+.mis-datos-container.inline-form-container .mis-datos-section.preceptor-form-section .profile-label,
+.mis-datos-container.inline-form-container .mis-datos-section.preceptor-form-section label {
+    color: #334155;
+}
+
+.mis-datos-container.inline-form-container .mis-datos-section.preceptor-form-section .profile-value {
+    color: #0f172a;
+}
+
+.mis-datos-container.inline-form-container .mis-datos-section.preceptor-form-section .form-group-filter input {
+    background: #ffffff;
+    color: #0f172a;
+}
+
+.mis-datos-container.inline-form-container .mis-datos-section.preceptor-form-section .form-group-filter input::placeholder {
+    color: #64748b;
+    opacity: 1;
+}
+
+td.historial-valor-cell {
+    min-width: 0;
+    max-width: 320px;
+    width: 320px;
+    white-space: normal;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    vertical-align: top;
+}
+
+.historial-valor {
+    display: block;
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+    max-height: 220px;
+    padding: 8px 10px;
+    background: #f8fafc;
+    border: 1px solid var(--border-color, #dee2e6);
+    border-radius: 8px;
+    color: var(--table-text, var(--text-dark, #27313f));
+    font-size: 0.85rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+    td.historial-valor-cell {
+        width: auto;
+        min-width: 0;
+        max-width: 220px;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    .historial-valor {
+        max-width: 100%;
+        max-height: 160px;
+        padding: 6px 8px;
+        font-size: 0.8rem;
+    }
+}
