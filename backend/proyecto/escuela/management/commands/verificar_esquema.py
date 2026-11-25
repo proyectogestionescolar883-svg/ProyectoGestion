@@ -56,7 +56,7 @@ class Command(BaseCommand):
             )
             self.stdout.write('')
             for clave in ('tablas', 'agregadas', 'endurecidas', 'relajadas',
-                          'indices', 'rellenos'):
+                          'indices', 'unicos', 'rellenos'):
                 for item in informe.get(clave, []):
                     self.stdout.write(f'  {clave}: {item}')
             if informe['pendientes']:
@@ -78,7 +78,7 @@ class Command(BaseCommand):
         if total:
             self.stdout.write(self.style.ERROR(
                 f'Esquema desalineado: {total} diferencia(s). '
-                'Ejecutá `manage.py migrate` (o `verificar_esquema --aplicar`).'
+                'Ejecutá `manage.py verificar_esquema --aplicar`.'
             ))
             raise SystemExit(1)
 

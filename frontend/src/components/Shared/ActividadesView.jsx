@@ -66,7 +66,7 @@ function ActividadesView({ userRole, selectedChild, cursoId: cursoIdOverride = n
   const cursoId = useMemo(() => {
     if (cursoIdOverride) return cursoIdOverride;
     if (userRole === 'alumno') {
-      const miEstudiante = estudiantes.find((a) => a.id_usuario === user?.id);
+      const miEstudiante = estudiantes.find((a) => String(a.id_usuario) === String(user?.id));
       return miEstudiante?.id_curso;
     }
     if (userRole === 'familia' && selectedChild) {

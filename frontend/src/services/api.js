@@ -2,6 +2,8 @@ import axios from 'axios';
 import { reportarErrorGlobal } from '../context/ErrorOverlayContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const TIMEOUT_GLOBAL_MS = 20000;
+const RESPONSE_TYPES_SIN_TIMEOUT = new Set(['blob', 'arraybuffer', 'stream']);
 
 // Origen del backend sin el sufijo '/api': se usa como base para URLs de
 // archivos/medios (p. ej. '/media/planificaciones/...').
@@ -10,9 +12,13 @@ export const BASE_URL = API_BASE.replace(/\/api\/?$/, '');
 const api = axios.create({
   baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
+  timeout: TIMEOUT_GLOBAL_MS,
 });
 
 api.interceptors.request.use((config) => {
+  if (RESPONSE_TYPES_SIN_TIMEOUT.has(config.responseType)) {
+    config.timeout = 0;
+  }
   const token = localStorage.getItem('access_token');
   if (token && !config.url?.endsWith('/login/')) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -37,7 +43,7 @@ export function setRolActivoHeader(rol) {
 function refrescarAccessToken(refresh) {
   if (!refreshEnCurso) {
     refreshEnCurso = axios
-      .post(`${API_BASE}/token/refresh/`, { refresh })
+      .post(`${API_BASE}/token/refresh/`, { refresh }, { timeout: TIMEOUT_GLOBAL_MS })
       .then(({ data }) => {
         localStorage.setItem('access_token', data.access);
         return data.access;
@@ -56,6 +62,9 @@ function refrescarAccessToken(refresh) {
  * un toast que se cierra solo. (punto 1.3)
  */
 function mensajeErrorGlobal(error) {
+  if (error?.code === 'ECONNABORTED') {
+    return 'La solicitud tardó demasiado. Revise su conexión e intente nuevamente.';
+  }
   if (!error?.response) {
     if (error?.code === 'ERR_CANCELED') return null;
     return 'No se pudo conectar con el servidor. Verifique su conexión e intente nuevamente.';

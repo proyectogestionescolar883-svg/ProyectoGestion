@@ -2,6 +2,8 @@ import threading
 
 from django.contrib.auth.models import User
 from django.contrib.auth.hashers import check_password
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from escuela.models import Usuario, UsuarioRol
 
@@ -36,13 +38,42 @@ class UsuarioBackend:
                 'is_active': True,
             },
         )
+        sincronizar_auth_user(usuario)
+        django_user.refresh_from_db(fields=['is_active'])
         return django_user
 
     def get_user(self, user_id):
         try:
-            return User.objects.get(pk=user_id)
+            django_user = User.objects.get(pk=user_id)
         except User.DoesNotExist:
             return None
+        usuario = Usuario.objects.filter(usuario=django_user.username).first()
+        if usuario and (not usuario.estado or usuario.eliminado):
+            return None
+        return django_user
+
+
+def sincronizar_auth_user(usuario):
+    if not usuario or not getattr(usuario, 'usuario', None):
+        return None
+    activo = bool(usuario.estado) and not bool(usuario.eliminado)
+    django_user, created = User.objects.get_or_create(
+        username=usuario.usuario,
+        defaults={'is_active': activo},
+    )
+    if not created and django_user.is_active != activo:
+        django_user.is_active = activo
+        django_user.save(update_fields=['is_active'])
+    return django_user
+
+
+class UsuarioJWTAuthentication(JWTAuthentication):
+    def get_user(self, validated_token):
+        django_user = super().get_user(validated_token)
+        usuario = Usuario.objects.filter(usuario=django_user.username).first()
+        if usuario and (not usuario.estado or usuario.eliminado):
+            raise AuthenticationFailed('Usuario deshabilitado o eliminado.', code='user_inactive')
+        return django_user
 
 
 def get_roles_reales(username):

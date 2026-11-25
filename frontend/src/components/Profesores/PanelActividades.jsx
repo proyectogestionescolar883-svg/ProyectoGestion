@@ -576,6 +576,7 @@ function PanelActividades({ cursoMateriaId, docenteId, puedeEditar = true, misAs
       misAsignaciones={misAsignaciones}
       misCursos={misCursos}
       cursosObj={cursosObj}
+      puedeEditar={puedeEditar}
     />
     </>
   );

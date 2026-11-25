@@ -171,7 +171,7 @@ class Command(BaseCommand):
                 from rest_framework.test import APIClient
                 from rest_framework_simplejwt.tokens import RefreshToken
 
-                from escuela.auth_backend import make_password
+                from django.contrib.auth.hashers import make_password
 
                 rol_admin, rol_creado = Rol.objects.get_or_create(nombre_rol='admin')
                 usr = Usuario.objects.create(

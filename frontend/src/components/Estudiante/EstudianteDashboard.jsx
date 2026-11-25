@@ -48,7 +48,7 @@ function EstudianteDashboard({ user, onLogout }) {
     if (vista) setView(vista);
   }, [navIntent]);
   const miEstudiante = useMemo(
-    () => estudiantes.find((a) => a.id_usuario === user?.id) || null,
+    () => estudiantes.find((a) => String(a.id_usuario) === String(user?.id)) || null,
     [estudiantes, user],
   );
   const {

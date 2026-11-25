@@ -231,6 +231,19 @@ INDICES = (
     },
 )
 
+UNICOS = (
+    {
+        'tabla': 'ddjj_docente',
+        'indice': 'uniq_ddjj_docente_docente_ciclo',
+        'columnas': ('id_docente', 'id_ciclo'),
+    },
+    {
+        'tabla': 'calificaciones',
+        'indice': 'uniq_calificaciones_alumno_cm_periodo',
+        'columnas': ('id_alumno', 'id_curso_materia', 'id_periodo'),
+    },
+)
+
 # Rellenos de datos que necesitan una consulta (no literales).
 # Formato: (tabla, columna, sql, nota, tablas_extra_que_deben_existir)
 RELLENOS_CONSULTA = (
@@ -423,6 +436,23 @@ def nulos_en(cursor, tabla, columna):
     return rows[0][0]
 
 
+def duplicados_en(cursor, tabla, columnas):
+    columnas_sql = ', '.join(_q(cursor, columna) for columna in columnas)
+    donde = ' AND '.join(
+        f'{_q(cursor, columna)} IS NOT NULL' for columna in columnas
+    )
+    rows = _filas(
+        cursor,
+        f'SELECT {columnas_sql}, COUNT(*) FROM {_q(cursor, tabla)} '
+        f'WHERE {donde} GROUP BY {columnas_sql} '
+        'HAVING COUNT(*) > 1 ORDER BY COUNT(*) DESC LIMIT 1',
+    )
+    if not rows:
+        return None
+    valores = ', '.join(str(valor) for valor in rows[0][:-1])
+    return f'{valores} ({rows[0][-1]} filas)'
+
+
 # --------------------------------------------------------------------------
 # Aplicación / verificación
 # --------------------------------------------------------------------------
@@ -435,7 +465,7 @@ def aplicar_esquema(connection, log=None):
     log = log or (lambda msg: None)
     informe = {
         'agregadas': [], 'omitidas': [], 'rellenos': [], 'endurecidas': [],
-        'relajadas': [], 'indices': [], 'tablas': [], 'pendientes': [],
+        'relajadas': [], 'indices': [], 'unicos': [], 'tablas': [], 'pendientes': [],
     }
 
     with connection.cursor() as cursor:
@@ -567,17 +597,52 @@ def aplicar_esquema(connection, log=None):
                 informe['indices'].append((tabla, spec['fk_nombre']))
                 log(f'+ FK {tabla}.{spec["fk_nombre"]}')
 
+        for spec in UNICOS:
+            tabla = spec['tabla']
+            columnas = spec['columnas']
+            nombre = spec['indice']
+            if tabla not in existentes:
+                informe['pendientes'].append((tabla, nombre, 'la tabla no existe'))
+                continue
+            faltan = [c for c in columnas if c not in columnas_de(cursor, tabla)]
+            if faltan:
+                informe['pendientes'].append(
+                    (tabla, nombre, 'faltan columnas: %s' % ', '.join(faltan))
+                )
+                continue
+            if nombre in indices_de(cursor, tabla):
+                continue
+            duplicado = duplicados_en(cursor, tabla, columnas)
+            if duplicado:
+                informe['pendientes'].append(
+                    (
+                        tabla, nombre,
+                        'hay duplicados (%s); no se creó el índice único' % duplicado,
+                    )
+                )
+                log(f'! índice único {tabla}.{nombre} omitido: hay duplicados')
+                continue
+            columnas_sql = ', '.join(_q(cursor, columna) for columna in columnas)
+            cursor.execute(
+                f'CREATE UNIQUE INDEX {_q(cursor, nombre)} '
+                f'ON {_q(cursor, tabla)} ({columnas_sql})'
+            )
+            informe['unicos'].append((tabla, nombre, columnas))
+            log(f'+ índice único {tabla}.{nombre}')
+
     return informe
 
 
 def verificar_esquema(connection):
     """Compara el esquema físico con la especificación.
 
-    Devuelve ``{'faltantes': [...], 'nulabilidad': [...], 'indices': [...]}``.
+    Devuelve ``{'faltantes': [...], 'nulabilidad': [...], 'indices': [...],
+    'unicos': [...]}``.
     """
     faltantes = []
     nulabilidad = []
     indices = []
+    unicos = []
 
     with connection.cursor() as cursor:
         existentes = tablas_de(cursor)
@@ -615,7 +680,29 @@ def verificar_esquema(connection):
                         (spec['tabla'], spec['fk_nombre'], 'FK faltante'),
                     )
 
-    return {'faltantes': faltantes, 'nulabilidad': nulabilidad, 'indices': indices}
+        for spec in UNICOS:
+            tabla = spec['tabla']
+            if tabla not in existentes:
+                continue
+            columnas = spec['columnas']
+            faltan = [c for c in columnas if c not in columnas_de(cursor, tabla)]
+            if faltan:
+                unicos.append(
+                    (tabla, spec['indice'], 'faltan columnas: %s' % ', '.join(faltan))
+                )
+                continue
+            if spec['indice'] in indices_de(cursor, tabla):
+                continue
+            motivo = 'índice único faltante'
+            duplicado = duplicados_en(cursor, tabla, columnas)
+            if duplicado:
+                motivo += '; hay duplicados (%s)' % duplicado
+            unicos.append((tabla, spec['indice'], motivo))
+
+    return {
+        'faltantes': faltantes, 'nulabilidad': nulabilidad,
+        'indices': indices, 'unicos': unicos,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -679,6 +766,40 @@ SET @existe := (SELECT COUNT(*) FROM information_schema.STATISTICS
                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{tabla}'
                   AND INDEX_NAME = '{indice}');
 SET @ddl := IF(@existe = 0, '{ddl}', 'DO 0');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+"""
+
+_PLANTILLA_UNICO = """\
+SET @tabla_existe := (SELECT COUNT(*) FROM information_schema.TABLES
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{tabla}');
+SET @columnas_existen := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{tabla}'
+      AND COLUMN_NAME IN ({columnas_lista})
+);
+SET @existe := (SELECT COUNT(*) FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{tabla}'
+                  AND INDEX_NAME = '{indice}');
+SET @duplicados := IF(
+    @tabla_existe = 0 OR @columnas_existen < {cantidad}, 0,
+    (SELECT COUNT(*) FROM (
+        SELECT 1 FROM `{tabla}` WHERE {not_null}
+        GROUP BY {columnas} HAVING COUNT(*) > 1
+    ) AS d)
+);
+SET @ddl := IF(
+    @existe = 0 AND @tabla_existe = 1
+        AND @columnas_existen = {cantidad} AND @duplicados = 0,
+    'CREATE UNIQUE INDEX `{indice}` ON `{tabla}` ({columnas})',
+    'DO 0'
+);
+SELECT IF(@duplicados > 0,
+          'ADVERTENCIA: hay duplicados en {tabla} ({columnas}); no se creó `{indice}`.',
+          IF(@existe = 0 AND @tabla_existe = 1 AND @columnas_existen = {cantidad},
+             'OK: unicidad {tabla} ({columnas}).',
+             'OMITIDO: no se pudo crear `{indice}` en {tabla}.')) AS resultado;
 PREPARE stmt FROM @ddl;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
@@ -852,6 +973,25 @@ def sql_esquema():
             ddl=_dentro_de_literal(
                 f'ALTER TABLE `{spec["tabla"]}` ' + spec['ddl_fk']
             ),
+        ))
+        out.append('')
+
+    for spec in UNICOS:
+        columnas_sql = ', '.join(f'`{columna}`' for columna in spec['columnas'])
+        columnas_lista = ', '.join(
+            "'%s'" % columna for columna in spec['columnas']
+        )
+        not_null = ' AND '.join(
+            f'`{columna}` IS NOT NULL' for columna in spec['columnas']
+        )
+        out.append(f'-- unicidad de {spec["tabla"]}: {columnas_sql}')
+        out.append(_PLANTILLA_UNICO.format(
+            tabla=spec['tabla'],
+            indice=spec['indice'],
+            columnas=columnas_sql,
+            columnas_lista=columnas_lista,
+            not_null=not_null,
+            cantidad=len(spec['columnas']),
         ))
         out.append('')
 

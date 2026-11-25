@@ -15,6 +15,7 @@ export function useAsistenciasAlumno(alumnoId) {
   useEffect(() => {
     if (!alumnoId) {
       setRegistros([]);
+      setLoading(false);
       return undefined;
     }
     let cancel = false;

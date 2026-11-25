@@ -52,6 +52,13 @@ class Usuario(models.Model):
 
         self.contrasena = make_password(raw_password)
 
+    def save(self, *args, **kwargs):
+        resultado = super().save(*args, **kwargs)
+        from escuela.auth_backend import sincronizar_auth_user
+
+        sincronizar_auth_user(self)
+        return resultado
+
 
 class Rol(models.Model):
     id_rol = models.AutoField(primary_key=True)
@@ -497,6 +504,7 @@ class Calificacion(models.Model):
     class Meta:
         managed = False
         db_table = 'calificaciones'
+        unique_together = (('id_alumno', 'id_curso_materia', 'id_periodo'),)
 
 
 class EstadoAsistencia(models.Model):

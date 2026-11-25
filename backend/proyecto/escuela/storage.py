@@ -14,6 +14,34 @@ RUTA_MEDIA = '/media/'
 RUTA_API_MEDIA = '/api/media/'
 PREFIJOS = (RUTA_MEDIA, RUTA_API_MEDIA)
 
+MIME_INLINE = frozenset({
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+    'image/bmp',
+})
+MIME_ATTACHMENT = frozenset({
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/octet-stream',
+    'text/plain',
+    'text/csv',
+})
+
+
+def tipo_mime_segmento(content_type):
+    return (content_type or '').split(';', 1)[0].strip().lower()
+
+
+def es_mime_inline(content_type):
+    return tipo_mime_segmento(content_type) in MIME_INLINE
+
+
+def es_mime_adjunto(content_type):
+    return tipo_mime_segmento(content_type) in MIME_ATTACHMENT
+
 
 def normalizar_ruta(valor):
     if not valor:

@@ -14,7 +14,7 @@ function fechaHoyLabel() {
   return new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
 }
 
-function ProgresoTarea({ icon, color, value, total, label }) {
+function ProgresoTarea({ icon, color, value, total, label, mensajeSinTotal = 'Sin clase hoy', ocultarBarra = false }) {
   const esperadoValido = total > 0;
   const pct = esperadoValido ? Math.min(100, Math.round(((value || 0) / total) * 100)) : 0;
   const ok = esperadoValido ? (value || 0) >= total : null;
@@ -26,22 +26,24 @@ function ProgresoTarea({ icon, color, value, total, label }) {
       </div>
       <div className="stats-cobertura-nums" style={{ marginTop: '8px' }}>
         <span style={{ color: '#334' }}>
-          {esperadoValido ? `${value || 0} de ${total}` : 'Sin clase hoy'}
+          {esperadoValido ? `${value || 0} de ${total}` : mensajeSinTotal}
         </span>
         {esperadoValido && (
           <span style={{ color: ok ? '#198754' : '#d97706', fontWeight: 600 }}>{pct}%</span>
         )}
       </div>
-      <div className="stats-progress-track">
-        <div
-          className="stats-progress-fill"
-          style={{
-            width: esperadoValido ? `${pct}%` : 0,
-            background: ok ? '#198754' : '#d97706',
-            minWidth: pct > 0 ? '10px' : 0,
-          }}
-        />
-      </div>
+      {!ocultarBarra && (
+        <div className="stats-progress-track">
+          <div
+            className="stats-progress-fill"
+            style={{
+              width: esperadoValido ? `${pct}%` : 0,
+              background: ok ? '#198754' : '#d97706',
+              minWidth: pct > 0 ? '10px' : 0,
+            }}
+          />
+        </div>
+      )}
       {esperadoValido && (
         <div className="stats-panel-foot" style={{ marginTop: '14px', fontSize: '0.72rem', textAlign: 'center' }}>
           {ok ? (
@@ -110,6 +112,7 @@ function SupervisionPreceptores() {
         const t = tareas(p);
         const esperadosHoy = p.docentes_esperados_hoy ?? t.docentes_esperados_hoy ?? 0;
         const registradosHoy = t.docentes_registrados_hoy ?? 0;
+        const esperadosSemana = p.docentes_esperados_semana ?? t.docentes_esperados_semana ?? 0;
         return (
           <div className="card mt-16" key={p.id_preceptor}>
             <div className="card-header-flex">
@@ -150,8 +153,10 @@ function SupervisionPreceptores() {
                 icon="fa-calendar-week"
                 color="#7c3aed"
                 value={t.asistencias_docentes_semana ?? 0}
-                total={-1}
+                total={esperadosSemana}
                 label="Asistencia de docentes (semana)"
+                mensajeSinTotal="Sin total semanal informado"
+                ocultarBarra={!esperadosSemana}
               />
             </div>
           </div>

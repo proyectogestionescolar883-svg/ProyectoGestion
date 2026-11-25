@@ -20,7 +20,7 @@ class Command(BaseCommand):
 
         self.stdout.write('\n=== DIRECTIVOS ===')
         for directivo in Directivo.objects.all():
-            self.stdout.write(f"  id_directivo: {directivo.id_directivo}, id_usuario: {directivo.id_usuario_id}, nombre: {directivo.nombre}, apellido: {directivo.apellido}, dni: {directivo.dni}")
+            self.stdout.write(f"  id_directivo: {directivo.id_directivo}, id_usuario: {directivo.id_usuario_id}, nombre: {directivo.nombre}, apellido: {directivo.apellido}, dni: ***")
 
         self.stdout.write('\n=== USUARIOS CON ROL ADMIN ===')
         admin_users = Usuario.objects.filter(

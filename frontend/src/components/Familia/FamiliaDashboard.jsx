@@ -24,7 +24,7 @@ function FamiliaDashboard({ user, onLogout }) {
   const navAplicadoRef = useRef(null);
 
   const miTutor = useMemo(
-    () => padresTutores.find((pt) => pt.id_usuario === user?.id) || null,
+    () => padresTutores.find((pt) => String(pt.id_usuario) === String(user?.id)) || null,
     [padresTutores, user],
   );
   const nombreCompletoTutor = miTutor ? `${miTutor.apellido}, ${miTutor.nombre}` : null;

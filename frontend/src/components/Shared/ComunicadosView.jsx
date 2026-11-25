@@ -111,7 +111,7 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
 
     switch (userRole) {
       case 'alumno': {
-        const miEstudiante = estudiantes.find((a) => a.id_usuario === userId);
+        const miEstudiante = estudiantes.find((a) => String(a.id_usuario) === String(userId));
         const miCurso = miEstudiante ? cursosObj.find((c) => c.id_curso === miEstudiante.id_curso) : null;
         if (!miCurso) return [];
         return comunicados
@@ -129,7 +129,7 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
             .filter((c) => comunicadoMatchesCurso(c, cursoObj));
         }
 
-        const miTutor = padresTutores.find((pt) => pt.id_usuario === userId);
+        const miTutor = padresTutores.find((pt) => String(pt.id_usuario) === String(userId));
         if (!miTutor) return [];
         const misHijos = estudiantes;
         const cursosHijos = misHijos
@@ -180,7 +180,7 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
       }
 
       case 'preceptor': {
-        const miPreceptor = preceptores.find((p) => p.id_usuario === userId);
+        const miPreceptor = preceptores.find((p) => String(p.id_usuario) === String(userId));
         if (!miPreceptor) return [];
         let misCursos = cursosObj.filter((c) => Number(c.id_preceptor) === Number(miPreceptor.id));
         if (cursoSeleccionado) {

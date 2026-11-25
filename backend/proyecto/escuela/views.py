@@ -18,7 +18,7 @@ from rest_framework.parsers import FormParser, MultiPartParser, JSONParser
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from escuela.auth_backend import get_roles_for_usuario, get_roles_reales
+from escuela.auth_backend import get_roles_for_usuario, get_roles_reales, sincronizar_auth_user
 from escuela.carga_unica import (
     CLAVE_ITEMS,
     bloques_del_dia,
@@ -1677,6 +1677,7 @@ class UsuarioViewSet(HistorialMixin, viewsets.ModelViewSet):
 
         estado_anterior = serializer.instance.estado
         super().perform_update(serializer)
+        sincronizar_auth_user(serializer.instance)
         _notificar_usuario_estado(serializer.instance, estado_anterior)
 
     def perform_destroy(self, instance):
@@ -1698,6 +1699,7 @@ class UsuarioViewSet(HistorialMixin, viewsets.ModelViewSet):
             'fecha_habilitacion_programada',
         ])
         super().perform_destroy(instance)
+        sincronizar_auth_user(instance)
 
     @action(detail=False, methods=['post'], url_path='quitar-rol', permission_classes=[IsAuthenticated, PuedeGestionarPersonas])
     def quitar_rol(self, request):
@@ -2703,6 +2705,33 @@ class PadreTutorViewSet(HistorialMixin, viewsets.ModelViewSet):
         if 'admin' not in roles and 'director' not in roles and 'jefe_preceptores' not in roles:
             raise PermissionDenied("Solo administradores, directores o jefes de preceptores pueden gestionar familias.")
 
+    def _validar_alumnos_ids(self, serializer):
+        alumnos_ids = serializer.validated_data.get('alumnos_ids') or []
+        if not alumnos_ids:
+            return
+        roles = roles_efectivos(self.request)
+        if not (roles & {'preceptor', 'jefe_preceptores'}):
+            return
+        ids = {int(alumno_id) for alumno_id in alumnos_ids}
+        permitidos = alumnos_permitidos(self.request)
+        if permitidos is not None:
+            permitidos_ids = set(
+                permitidos.filter(id_alumno__in=ids).values_list('id_alumno', flat=True)
+            )
+        elif _es_preceptor_operativo(self.request, roles):
+            cursos_ids = _preceptor_cursos_ids(self.request)
+            permitidos_ids = set(
+                Alumno.objects.filter(
+                    id_alumno__in=ids, id_curso_id__in=cursos_ids,
+                ).values_list('id_alumno', flat=True)
+            )
+        else:
+            return
+        if permitidos_ids != ids:
+            raise ValidationError({
+                'alumnos_ids': 'No podés vincular alumnos fuera de tu alcance.',
+            })
+
     def perform_create(self, serializer):
         username = self.request.user.username if self.request.user.is_authenticated else None
         roles = get_roles_for_usuario(username) if username else []
@@ -2710,6 +2739,7 @@ class PadreTutorViewSet(HistorialMixin, viewsets.ModelViewSet):
             raise PermissionDenied('Los jefes de preceptores no pueden crear tutores.')
         if 'preceptor' not in roles:
             self._require_admin_or_director()
+        self._validar_alumnos_ids(serializer)
         super().perform_create(serializer)
         padre = serializer.instance
         curso_ids = list(
@@ -3663,6 +3693,39 @@ class AsistenciaViewSet(viewsets.ModelViewSet):
         if curso_id not in _preceptor_cursos_ids(self.request):
             raise PermissionDenied('No autorizado para modificar asistencias de este curso.')
 
+    def _validar_curso_materia_server_time(self, cm_id):
+        roles = roles_efectivos(self.request)
+        if roles & {'admin', 'director', 'jefe_preceptores'}:
+            return
+        cm = CursoMateria.objects.filter(pk=cm_id).first()
+        if cm is None:
+            return
+        if _es_preceptor_operativo(self.request, roles):
+            if cm.id_curso_id not in _preceptor_cursos_ids(self.request):
+                raise PermissionDenied('No autorizado para consultar este curso materia.')
+            return
+        if 'docente' in roles:
+            docente = docente_del_usuario(self.request)
+            if not docente:
+                raise PermissionDenied('No se encontró un perfil de docente asociado al usuario.')
+            permitidos = set(materias_docente_ids_para(docente))
+            activo = obtener_docente_activo(cm.id_curso_materia)
+            if activo.docente and activo.docente.id_docente == docente.id_docente:
+                permitidos.add(cm.id_curso_materia)
+            if cm.id_curso_materia not in permitidos:
+                raise PermissionDenied('No autorizado para consultar este curso materia.')
+            return
+        permitidos = alumnos_permitidos(self.request)
+        if permitidos is not None:
+            ids = permitidos.values_list('id_alumno', flat=True)
+            if not Alumno.objects.filter(
+                id_curso_id=cm.id_curso_id, id_alumno__in=ids,
+            ).exists():
+                raise PermissionDenied('No autorizado para consultar este curso materia.')
+            return
+        if not roles:
+            raise PermissionDenied('No tenés permiso para consultar este curso materia.')
+
     def perform_create(self, serializer):
         """Red de seguridad del alta: el día suspendido es solo lectura.
 
@@ -3713,6 +3776,7 @@ class AsistenciaViewSet(viewsets.ModelViewSet):
         }
         cm_id = request.query_params.get('curso_materia')
         if cm_id:
+            self._validar_curso_materia_server_time(cm_id)
             horarios_hoy = self._horarios_hoy(cm_id, dia, ahora.date())
             data['horarios_hoy'] = horarios_hoy
             data['estado'] = self._estado_horario(horarios_hoy, ahora)
@@ -4789,6 +4853,11 @@ class AsistenciaDocenteViewSet(viewsets.ViewSet):
                 {'error': 'No se puede registrar asistencia docente en una fecha pasada.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if fecha_objetivo > fecha_hoy:
+            return Response(
+                {'error': 'No se puede registrar asistencia docente en una fecha futura.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         es_hoy = fecha_objetivo == fecha_hoy
         dia_objetivo = _dia_semana_es(datetime.combine(fecha_objetivo, time(12, 0)))
@@ -4828,22 +4897,18 @@ class AsistenciaDocenteViewSet(viewsets.ViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        # Punto 2.2: se valida sobre la fecha objetivo (no solo "hoy"), para que
-        # tampoco se pueda cargar por adelantado en un día que ya está
-        # declarado como suspendido.
-        activo_ev, tipo_ev, desc_ev, horario_ev, _, _ = evento_institucional_activo(
-            fecha_objetivo, hora_actual,
-        )
+        inicio, fin = bloque_encontrado
+        activo_ev = _evento_activo_en_franja(fecha_objetivo, inicio, fin)
         if activo_ev:
+            ev, _, _, horario_ev = activo_ev
             return Response({
                 'error': (
-                    f'No es posible registrar asistencias. Existe un evento institucional activo: "{tipo_ev}". '
-                    f'{desc_ev or ""} Horario afectado: {horario_ev}. La información del día es de solo lectura.'
+                    f'No es posible registrar asistencias. Existe un evento institucional activo: "{ev.tipo_evento}". '
+                    f'{ev.descripcion or ""} Horario afectado: {horario_ev}. La información del día es de solo lectura.'
                 ).strip(),
                 'evento_activo': True,
             }, status=status.HTTP_403_FORBIDDEN)
 
-        inicio, fin = bloque_encontrado
         duplicada = AsistenciaDocente.objects.filter(
             id_docente_id=docente_id,
             id_curso_materia_id=cm_id,
@@ -5053,6 +5118,7 @@ class EventoInstitucionalViewSet(HistorialMixin, viewsets.ModelViewSet):
             response.data['eventos_reemplazados'] = reemplazados
         return response
 
+    @transaction.atomic
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
         usuario = Usuario.objects.filter(usuario=self.request.user.username).first()
@@ -5099,6 +5165,7 @@ class EventoInstitucionalViewSet(HistorialMixin, viewsets.ModelViewSet):
         self._historial_alta(serializer)
         _notificar_evento_institucional(serializer.instance)
 
+    @transaction.atomic
     def perform_update(self, serializer):
         from rest_framework.exceptions import ValidationError
         from django.db.models import Q
@@ -5230,6 +5297,48 @@ class ActaViewSet(HistorialMixin, ActaPropiedadMixin, viewsets.ModelViewSet):
                 .values_list('id_acta', flat=True)
             )
             qs = qs.filter(id_acta__in=acta_ids)
+
+        roles = roles_efectivos(self.request)
+        if not (roles & {'admin', 'director', 'jefe_preceptores', 'familia', 'alumno'}):
+            acta_ids = set()
+            cursos_ids = set()
+            docentes_ids = set()
+            if _es_preceptor_operativo(self.request, roles):
+                cursos_ids.update(_preceptor_cursos_ids(self.request))
+            if 'docente' in roles:
+                docente = docente_del_usuario(self.request)
+                if docente:
+                    cm_ids = set(materias_docente_ids_para(docente))
+                    materias = CursoMateria.objects.filter(
+                        id_curso_materia__in=cm_ids, activo=True, estado=True,
+                    )
+                    cursos_ids.update(materias.values_list('id_curso', flat=True))
+                    docentes_ids.update(materias.values_list('id_docente', flat=True))
+                    docentes_ids.add(docente.id_docente)
+                    acta_ids.update(
+                        ActaDocente.objects.filter(id_docente=docente)
+                        .values_list('id_acta', flat=True)
+                    )
+            if cursos_ids:
+                alumnos_ids = Alumno.objects.filter(
+                    id_curso_id__in=cursos_ids,
+                ).values_list('id_alumno', flat=True)
+                acta_ids.update(
+                    ActaCurso.objects.filter(id_curso_id__in=cursos_ids)
+                    .values_list('id_acta', flat=True)
+                )
+                acta_ids.update(
+                    ActaAlumno.objects.filter(id_alumno_id__in=alumnos_ids)
+                    .values_list('id_acta', flat=True)
+                )
+                acta_ids.update(
+                    ActaDocente.objects.filter(id_docente_id__in=docentes_ids)
+                    .values_list('id_acta', flat=True)
+                )
+            if not acta_ids:
+                return qs.none()
+            qs = qs.filter(id_acta__in=acta_ids)
+
         curso = self.request.query_params.get('curso')
         alumno = self.request.query_params.get('alumno')
         docente = self.request.query_params.get('docente')
@@ -5799,6 +5908,17 @@ class LibroTemaViewSet(HistorialMixin, viewsets.ModelViewSet):
                     break
             if elegido is None:
                 elegido = bloques[0] if bloques else None
+            if elegido:
+                activo_ev = _evento_activo_en_franja(
+                    fecha_hoy, elegido['hora_inicio'], elegido['hora_fin'],
+                )
+                if activo_ev:
+                    ev, _, _, horario_ev = activo_ev
+                    raise PermissionDenied(
+                        'No puede cargar el Libro de Temas porque hay un evento '
+                        f'institucional activo ({ev.tipo_evento}) en el bloque '
+                        f'seleccionado ({horario_ev}).'
+                    )
             ahora = timezone.localtime()
             if elegido:
                 info = {
@@ -6237,7 +6357,7 @@ class NotificacionViewSet(viewsets.ReadOnlyModelViewSet):
         Administración (botón rojo "Ver DDJJ" cuando el docente todavía no
         cargó su declaración jurada).
         """
-        if not es_rol_amplio(request):
+        if not (roles_efectivos(request) & {'admin', 'director'}):
             raise PermissionDenied('No tenés permisos para enviar recordatorios.')
 
         id_docente = request.data.get('id_docente')
@@ -7337,6 +7457,12 @@ class BloqueoHorarioAlumnoViewSet(viewsets.ModelViewSet):
         super().perform_update(serializer)
         if estado_anterior and not serializer.instance.estado:
             _notificar_bloqueo_horario(serializer.instance, accion='desactivado')
+
+    def perform_destroy(self, instance):
+        instance.estado = False
+        instance.fecha_desbloqueo = timezone.now()
+        instance.save(update_fields=['estado', 'fecha_desbloqueo'])
+        _notificar_bloqueo_horario(instance, accion='desactivado')
 
 
 class PromocionAlumnoViewSet(viewsets.ModelViewSet):

@@ -31,7 +31,10 @@ const RE_INPUT_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 function esFechaValida(value) {
   if (typeof value !== 'string' || !RE_INPUT_DATETIME.test(value)) return false;
   const [y, m, d] = value.slice(0, 10).split('-').map(Number);
+  const [hh, mm] = value.slice(11, 16).split(':').map(Number);
   if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return false;
+  if ([y, m, d, hh, mm].some(Number.isNaN)) return false;
   const date = new Date(y, m - 1, d);
   return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
 }
@@ -39,7 +42,9 @@ function esFechaValida(value) {
 function fechaDesdeInput(value) {
   // `new Date('2026-03-05T14:30')` se interpreta como hora LOCAL, que es
   // exactamente lo que necesitamos para comparar dos valores del mismo input.
-  return esFechaValida(value) ? new Date(value).getTime() : null;
+  if (!esFechaValida(value)) return null;
+  const tiempo = new Date(value).getTime();
+  return Number.isNaN(tiempo) ? null : tiempo;
 }
 
 function formatearCorta(value) {

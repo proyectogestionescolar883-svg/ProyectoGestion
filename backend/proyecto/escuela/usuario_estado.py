@@ -1,6 +1,7 @@
 from django.db import models, transaction
 from django.utils import timezone
 
+from escuela.auth_backend import sincronizar_auth_user
 from escuela.models import Usuario
 from escuela.notifications import notificar_estado_cuenta
 
@@ -39,5 +40,6 @@ def aplicar_programaciones_usuario(now=None):
 
             if update_fields:
                 usuario.save(update_fields=list(dict.fromkeys(update_fields)))
+                sincronizar_auth_user(usuario)
                 notificar_estado_cuenta(usuario)
 

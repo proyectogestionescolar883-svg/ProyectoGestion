@@ -336,7 +336,7 @@ function AsignacionCursos() {
                   </tr>
                 ) : (
                   preceptoresOrdenados.map((p) => (
-                    <tr key={p.id_preceptor}>
+                    <tr key={p.id}>
                       <td className="table-cell-strong">
                         <i className="fas fa-user-tie icon-muted" aria-hidden="true" />
                         {' '}{p.apellido}, {p.nombre}

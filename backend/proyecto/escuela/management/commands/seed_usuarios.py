@@ -50,7 +50,7 @@ class Command(BaseCommand):
 
             if created:
                 self.stdout.write(self.style.SUCCESS(
-                    f"  Creado: {data['usuario']} (contraseña: {data['contrasena']})"
+                    f"  Creado: {data['usuario']}"
                 ))
             else:
                 self.stdout.write(f"  Ya existe: {data['usuario']}")

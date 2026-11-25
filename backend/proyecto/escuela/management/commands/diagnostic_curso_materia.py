@@ -36,7 +36,10 @@ class Command(BaseCommand):
         
         # 5. Connection settings
         self.stdout.write('\n5. CONNECTION SETTINGS_DICT:')
-        self.stdout.write(f'   {connection.settings_dict}')
+        cfg = dict(connection.settings_dict)
+        if cfg.get('PASSWORD'):
+            cfg['PASSWORD'] = '***'
+        self.stdout.write(f'   {cfg}')
         
         # 6. Conteo ORM
         self.stdout.write('\n6. CONTEO ORM:')

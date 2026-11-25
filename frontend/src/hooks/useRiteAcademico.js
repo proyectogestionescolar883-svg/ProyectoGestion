@@ -25,6 +25,7 @@ export function useRiteAcademico(alumnoId) {
       setPosteriores([]);
       setRecursadas([]);
       setPrevias([]);
+      setLoading(false);
       return undefined;
     }
     let cancel = false;

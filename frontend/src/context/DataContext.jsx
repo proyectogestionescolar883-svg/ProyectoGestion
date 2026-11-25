@@ -170,6 +170,15 @@ export function DataProvider({ children }) {
   const enCursoRef = useRef(new Map());
   const generacionRef = useRef(0);
 
+  const actualizarData = useCallback((actualizador) => {
+    const anterior = dataRef.current;
+    if (!anterior) return;
+    const siguiente = typeof actualizador === 'function' ? actualizador(anterior) : actualizador;
+    if (siguiente === anterior) return;
+    dataRef.current = siguiente;
+    setData(siguiente);
+  }, []);
+
   // Selector global de curso y materia para el panel docente
   const [selectedCursoId, setSelectedCursoId] = useState('');
   const [selectedMateria, setSelectedMateria] = useState('');
@@ -242,9 +251,7 @@ export function DataProvider({ children }) {
 
   const nombreMateriaDesdeIds = useCallback((materiaId, cursoMateriaId) => {
     if (!cursoMateriaDatos) return '';
-    const lista = Array.isArray(cursoMateriaDatos)
-      ? cursoMateriaDatos
-      : (cursoMateriaDatos.results || []);
+    const lista = Array.isArray(cursoMateriaDatos) ? cursoMateriaDatos : [];
     if (cursoMateriaId) {
       const porCm = lista.find((cm) => String(cm.id) === String(cursoMateriaId));
       if (porCm && porCm.materia_nombre) return porCm.materia_nombre;
@@ -318,6 +325,8 @@ export function DataProvider({ children }) {
     }
     setError(null);
     generacionRef.current += 1;
+    const generacion = generacionRef.current;
+    const esGeneracionActual = () => generacion === generacionRef.current;
     cargadasRef.current.clear();
     try {
       const [
@@ -384,6 +393,8 @@ export function DataProvider({ children }) {
         getSuplencias().catch(() => []),
         Promise.resolve([]),
       ]);
+
+      if (!esGeneracionActual()) return;
 
       const estudiantesPreCurso = (Array.isArray(estudiantesRaw) ? estudiantesRaw : []).map((a) => ({
         id: a.id_alumno,
@@ -744,7 +755,7 @@ export function DataProvider({ children }) {
         const alcanceLabel = alcanceLabels.length > 0 ? alcanceLabels.join(', ') : 'General';
         const cicloId = alcances.find((a) => a.id_ciclo)?.id_ciclo || null;
         const cicloObj = cicloId
-          ? ciclosRaw.find((cy) => Number(cy.id_ciclo) === Number(cicloId))
+          ? ciclosLectivos.find((cy) => Number(cy.id_ciclo) === Number(cicloId))
           : null;
         const materiaId = alcances.find((a) => a.id_materia)?.id_materia || c.id_materia || null;
         const materiaObj = materiaId
@@ -807,7 +818,7 @@ export function DataProvider({ children }) {
         fecha_subida: p.fecha_subida || null,
       }));
 
-      const suplencias = suplenciasRaw.map((s) => ({
+      const suplencias = (Array.isArray(suplenciasRaw) ? suplenciasRaw : []).map((s) => ({
         id: s.id_suplencia,
         id_curso_materia: s.id_curso_materia,
         id_docente_suplente: s.id_docente_suplente,
@@ -890,19 +901,19 @@ export function DataProvider({ children }) {
       dataRef.current = datos;
       setData(datos);
     } catch (err) {
+      if (!esGeneracionActual()) return;
       console.error('Error fetching data:', err);
       setError('Error al cargar datos del servidor');
     } finally {
+      if (!esGeneracionActual()) return;
       setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
   const aplicarParcial = useCallback((parcial) => {
-    const siguiente = { ...(dataRef.current || {}), ...parcial };
-    dataRef.current = siguiente;
-    setData(siguiente);
-  }, []);
+    actualizarData((prev) => ({ ...prev, ...parcial }));
+  }, [actualizarData]);
 
   const ensureData = useCallback(async (claves) => {
     const lista = Array.isArray(claves) ? claves : [claves];
@@ -995,9 +1006,7 @@ export function DataProvider({ children }) {
       return false;
     }
 
-    setData((prev) => {
-      if (!prev) return prev;
-
+    actualizarData((prev) => {
       const siguiente = { ...prev };
 
       if (Array.isArray(ciclosRaw)) {
@@ -1070,7 +1079,7 @@ export function DataProvider({ children }) {
     });
 
     return true;
-  }, []);
+  }, [actualizarData]);
 
   useEffect(() => {
     fetchData();
@@ -1082,17 +1091,14 @@ export function DataProvider({ children }) {
     } catch {
       return false;
     }
-    setData((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        notificaciones: prev.notificaciones.map((n) =>
-          n.id === id ? { ...n, leida: true } : n
-        ),
-      };
-    });
+    actualizarData((prev) => ({
+      ...prev,
+      notificaciones: prev.notificaciones.map((n) =>
+        n.id === id ? { ...n, leida: true } : n
+      ),
+    }));
     return true;
-  }, []);
+  }, [actualizarData]);
 
   const marcarTodasNotificacionesLeidas = useCallback(async (ids) => {
     try {
@@ -1100,8 +1106,7 @@ export function DataProvider({ children }) {
     } catch {
       return false;
     }
-    setData((prev) => {
-      if (!prev) return prev;
+    actualizarData((prev) => {
       const idsSet = new Set(ids);
       return {
         ...prev,
@@ -1111,7 +1116,7 @@ export function DataProvider({ children }) {
       };
     });
     return true;
-  }, []);
+  }, [actualizarData]);
 
   // Parte 8 / 5.1: navegación desde notificaciones. La selección global se
   // actualiza ANTES de propagar el navIntent, para que la vista destino ya
@@ -1141,8 +1146,7 @@ export function DataProvider({ children }) {
         const conocidos = idsInicialesRef.current;
         const nuevas = detectarNuevas(raw, conocidos);
         if (nuevas.length === 0) return;
-        setData((prev) => {
-          if (!prev) return prev;
+        actualizarData((prev) => {
           const yaPresentes = new Set(prev.notificaciones.map((n) => n.id));
           const aInsertar = nuevas.filter((n) => !yaPresentes.has(n.id));
           if (aInsertar.length === 0) return prev;
@@ -1155,7 +1159,7 @@ export function DataProvider({ children }) {
       }
     }, INTERVALO_POLL_NUEVAS);
     return () => clearInterval(intervalo);
-  }, []);
+  }, [actualizarData]);
 
   if (data) {
     data.refreshData = fetchData;

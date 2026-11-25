@@ -1,7 +1,7 @@
 // Generación de RITE escolar en PDF (vía ventana de impresión del navegador).
 import { cursoConOrientacion } from './orientacion';
 import { formatDNI } from './dni';
-import { NOTA_APROBACION } from './previasRendicion';
+import { NOTA_APROBACION, PERIODOS_RENDICION, PERIODO_LABELS } from './previasRendicion';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -12,16 +12,21 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-const PERIODO_LABELS = {
-  MARZO: 'Marzo',
-  JULIO: 'Julio',
-  AGOSTO: 'Agosto',
-  DICIEMBRE_1: 'Diciembre 1',
-  DICIEMBRE_2: 'Diciembre 2',
-  FEBRERO: 'Febrero',
+const ALIASES_PERIODO = {
+  'DICIEMBRE 1': 'DICIEMBRE_1',
+  'DICIEMBRE 2': 'DICIEMBRE_2',
 };
 
+const claveCanonicaPeriodo = (p) => ALIASES_PERIODO[p] || p;
 const labelPeriodo = (p) => PERIODO_LABELS[p] || p || '—';
+
+function notaRendicion(rendiciones, periodo) {
+  const canonica = claveCanonicaPeriodo(periodo);
+  const entrada = Object.entries(rendiciones || {}).find(
+    ([clave, nota]) => nota !== null && nota !== undefined && claveCanonicaPeriodo(clave) === canonica,
+  );
+  return entrada ? entrada[1] : '';
+}
 
 function promedioMateria(m) {
   const notas = [m.nota1, m.nota2].filter((n) => n !== null && n !== undefined && n !== '');
@@ -124,25 +129,15 @@ function seccionRecursadas(items) {
 }
 
 function seccionPrevias(items) {
-  const periodos = [
-    { key: 'MARZO', label: 'Marzo' },
-    { key: 'JULIO', label: 'Julio' },
-    { key: 'AGOSTO', label: 'Agosto' },
-    { key: 'DICIEMBRE 1', label: 'Diciembre 1' },
-    { key: 'DICIEMBRE 2', label: 'Diciembre 2' },
-    { key: 'FEBRERO', label: 'Febrero' },
-  ];
-  const headCols = periodos.map((p) => `<th>${p.label}</th>`).join('');
+  const periodos = PERIODOS_RENDICION.map((key) => ({ key, label: labelPeriodo(key) }));
+  const headCols = periodos.map((p) => `<th>${escapeHtml(p.label)}</th>`).join('');
   const rows =
     items && items.length
       ? items
           .map((p) => {
             const celdas = periodos
               .map((col) => {
-                const nota =
-                  p.rendiciones && p.rendiciones[col.key] !== null && p.rendiciones[col.key] !== undefined
-                    ? p.rendiciones[col.key]
-                    : '';
+                const nota = notaRendicion(p.rendiciones, col.key);
                 const clase =
                   nota !== '' && Number(nota) >= NOTA_APROBACION ? ' class="celda-aprobada"' : '';
                 return `<td${clase}>${escapeHtml(nota)}</td>`;

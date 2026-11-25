@@ -16,18 +16,20 @@ Además comprueba que las reglas de borrado en uso responden HTTP 400 y no 500.
 
 A diferencia de `manage.py test`, este comando corre contra la base REAL
 (como `verificar_esquema` y los demás comandos de diagnóstico), así que crea y
-borra datos de prueba. Usa por defecto el año 2099 —dentro del rango válido de
-la columna `YEAR(4)`, pero suficientemente lejos como para no pisar un ciclo
-real— y **borra todo lo que creó** al terminar. Si se interrumpe, se puede
-limpiar con:
+borra datos de prueba. Cada corrida genera una marca única y la incluye en los
+nombres creados; la limpieza se hace solo por esa marca o por los IDs creados
+en la corrida. Si se interrumpe, se puede limpiar con:
 
-    python manage.py verificar_flujo_configuracion --limpiar
+    python manage.py verificar_flujo_configuracion --limpiar --marca MARCA
+
+Sin `--marca` ni IDs de una corrida, `--limpiar` no borra nada y lo avisa.
 
 Uso:
     python manage.py verificar_flujo_configuracion
-    python manage.py verificar_flujo_configuracion --anio 2099 --limpiar
+    python manage.py verificar_flujo_configuracion --anio 2099 --limpiar --marca MARCA
 """
 import json
+import uuid
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -74,20 +76,25 @@ class Command(BaseCommand):
                             help='Usuario administrador con el que se prueba (por defecto adminsecundaria7).')
         parser.add_argument('--limpiar', action='store_true',
                             help='Solo borra los datos de una corrida anterior y sale.')
+        parser.add_argument('--marca', default=None,
+                            help='Marca única de una corrida anterior, para --limpiar.')
 
     def handle(self, *args, **options):
         anio = options['anio']
+        marca = options['marca'] or uuid.uuid4().hex[:10]
+        self.stdout.write('Marca de esta corrida: %s' % marca)
 
         if options['limpiar']:
-            self._limpiar(anio)
-            self.stdout.write(self.style.SUCCESS('Datos de prueba borrados.'))
+            borrados = self._limpiar(anio, marca)
+            if borrados:
+                self.stdout.write(self.style.SUCCESS(
+                    'Datos de prueba borrados: %d fila(s).' % borrados))
             return
 
-        fallos = self._recorrer(anio, options['usuario'])
-        # La limpieza corre siempre, haya fallos o no: nunca se dejan datos.
-        self._limpiar(anio)
+        fallos, creado = self._recorrer(anio, options['usuario'], marca)
+        self._limpiar(anio, marca, creado)
 
-        pendientes = {k: v for k, v in self._pendientes(anio).items() if v}
+        pendientes = {k: v for k, v in self._pendientes(anio, marca, creado).items() if v}
         if pendientes:
             self.stdout.write(self.style.ERROR(
                 'Quedaron datos de prueba: %s' % pendientes))
@@ -123,13 +130,13 @@ class Command(BaseCommand):
             self.stdout.write('        cuerpo: %s' % str(cuerpo)[:300])
         return bien
 
-    def _recorrer(self, anio, nombre_usuario):
+    def _recorrer(self, anio, nombre_usuario, marca):
         fallos = 0
         admin = User.objects.filter(username=nombre_usuario).first()
         if not admin:
             self.stderr.write(self.style.ERROR(
                 'No existe el usuario %s en auth_user.' % nombre_usuario))
-            return 1
+            return 1, {}
 
         # `test.Client` usa el host `testserver`, que no está en ALLOWED_HOSTS
         # (el proyecto define hosts reales), así que se fija uno válido.
@@ -170,9 +177,9 @@ class Command(BaseCommand):
         # -- 2) curso que usa el ciclo ----------------------------------
         self._titulo('2) Crear un curso que usa ese ciclo')
         cod, cuerpo = self._pedir(cli, 'post', f'{BASE}/cursos/',
-                                  data=json.dumps({
-                                      'nombre_curso': f'{anio}°1',
-                                      'id_ciclo': creado['ciclo'],
+                                   data=json.dumps({
+                                       'nombre_curso': f'{anio}°1 {marca}',
+                                       'id_ciclo': creado['ciclo'],
                                       'activo': True,
                                   }),
                                   content_type='application/json')
@@ -185,8 +192,8 @@ class Command(BaseCommand):
         # -- 3) módulo horario ------------------------------------------
         self._titulo('3) Crear un módulo horario')
         cod, cuerpo = self._pedir(cli, 'post', f'{BASE}/modulos/',
-                                  data=json.dumps({'nombre': 'Módulo Prueba',
-                                                   'hora_inicio': '07:30',
+                                  data=json.dumps({'nombre': f'Módulo Prueba {marca}',
+                                                    'hora_inicio': '07:30',
                                                    'hora_fin': '08:10'}),
                                   content_type='application/json')
         fallos += not self._ok('crear módulo', cod, {201}, cuerpo)
@@ -194,8 +201,8 @@ class Command(BaseCommand):
             creado['modulo'] = cuerpo['id_modulo']
 
         cod, cuerpo = self._pedir(cli, 'post', f'{BASE}/modulos/',
-                                  data=json.dumps({'nombre': 'Módulo Invertido',
-                                                   'hora_inicio': '08:10',
+                                  data=json.dumps({'nombre': f'Módulo Invertido {marca}',
+                                                    'hora_inicio': '08:10',
                                                    'hora_fin': '07:30'}),
                                   content_type='application/json')
         fallos += not self._ok('rechazar hora_fin anterior a hora_inicio', cod, {400}, cuerpo)
@@ -203,16 +210,16 @@ class Command(BaseCommand):
         # -- 4) período de evaluación ----------------------------------
         self._titulo('4) Crear un período de evaluación')
         cod, cuerpo = self._pedir(cli, 'post', f'{BASE}/periodos/',
-                                  data=json.dumps({'nombre_periodo': '1er Cuatrimestre',
-                                                   'orden_periodo': 1}),
+                                  data=json.dumps({'nombre_periodo': f'1er Cuatrimestre {marca}',
+                                                    'orden_periodo': 1}),
                                   content_type='application/json')
         fallos += not self._ok('crear período', cod, {201}, cuerpo)
         if cod == 201:
             creado['periodo'] = cuerpo['id_periodo']
 
         cod, cuerpo = self._pedir(cli, 'post', f'{BASE}/periodos/',
-                                  data=json.dumps({'nombre_periodo': 'Repetido',
-                                                   'orden_periodo': 1}),
+                                  data=json.dumps({'nombre_periodo': f'Repetido {marca}',
+                                                    'orden_periodo': 1}),
                                   content_type='application/json')
         fallos += not self._ok('rechazar orden duplicado', cod, {400}, cuerpo)
 
@@ -250,7 +257,7 @@ class Command(BaseCommand):
         # -- 6) tipo de acta --------------------------------------------
         self._titulo('6) Crear un tipo de acta')
         cod, cuerpo = self._pedir(cli, 'post', f'{BASE}/tipos-acta/',
-                                  data=json.dumps({'nombre_tipo': 'Acta de evaluación'}),
+                                  data=json.dumps({'nombre_tipo': f'Acta de evaluación {marca}'}),
                                   content_type='application/json')
         fallos += not self._ok('crear tipo de acta', cod, {201}, cuerpo)
         if cod == 201:
@@ -277,15 +284,20 @@ class Command(BaseCommand):
         self.stdout.write('        mensaje: %s' % str(cuerpo)[:250])
 
         if creado.get('modulo') and creado.get('curso'):
-            materia = Materia.objects.create(nombre_materia='Materia Prueba', estado=True)
+            materia = Materia.objects.create(
+                nombre_materia=f'Materia Prueba {marca}', estado=True,
+            )
+            creado['materia'] = materia.id_materia
             cm = CursoMateria.objects.create(
                 id_curso_id=creado['curso'], id_materia=materia,
                 estado=True, activo=True,
             )
-            Horario.objects.create(
+            creado['curso_materia'] = cm.id_curso_materia
+            horario = Horario.objects.create(
                 id_curso_materia=cm, id_modulo_id=creado['modulo'],
-                dia_semana='Lunes', aula='Aula Prueba',
+                dia_semana='Lunes', aula=f'Aula Prueba {marca}',
             )
+            creado['horario'] = horario.id_horario
             cod, cuerpo = self._pedir(cli, 'delete',
                                       f"{BASE}/modulos/{creado['modulo']}/")
             fallos += not self._ok('eliminar módulo con un horario asignado',
@@ -335,46 +347,183 @@ class Command(BaseCommand):
                                   content_type='application/json')
         fallos += not self._ok('anónimo no puede crear (401)', cod, {401}, cuerpo)
 
-        return fallos
+        return fallos, creado
 
     # ------------------------------------------------------------------
 
-    def _limpiar(self, anio):
-        """Borra todo lo que pudo crear una corrida anterior.
+    def _ids_de_prueba(self, anio, marca, creado=None):
+        creado = creado or {}
 
-        Se limpian `anio` y `anio + 1`: el paso de permisos crea un ciclo en el
-        año siguiente (el mismo año da 400 por duplicado, y hay que comprobar
-        que el admin puede escribir).
-        """
-        from escuela.models import ComunicadoAlcance
+        def ids(clave):
+            valor = creado.get(clave)
+            if valor is None:
+                return set()
+            if isinstance(valor, (list, tuple, set)):
+                return {int(v) for v in valor}
+            return {int(valor)}
 
-        anios = [anio, anio + 1]
-        ciclos = list(
-            CicloLectivo.all_objects.filter(anio__in=anios).values_list('id_ciclo', flat=True)
-        )
+        ciclos = ids('ciclo')
+        cursos = ids('curso')
+        modulos = ids('modulo')
+        periodos = ids('periodo')
+        tipos_acta = ids('tipo_acta')
+        materias = ids('materia')
+        cms = ids('curso_materia')
+        horarios = ids('horario')
+
+        if marca:
+            cursos_marcados = list(
+                Curso.all_objects.filter(nombre_curso__contains=marca)
+                .values_list('id_curso', 'id_ciclo_id')
+            )
+            cursos.update(curso for curso, _ in cursos_marcados)
+            ciclos.update(ciclo for _, ciclo in cursos_marcados if ciclo)
+            modulos.update(
+                Modulos.objects.filter(nombre__contains=marca)
+                .values_list('id_modulo', flat=True)
+            )
+            periodos.update(
+                PeriodoEvaluacion.all_objects.filter(nombre_periodo__contains=marca)
+                .values_list('id_periodo', flat=True)
+            )
+            tipos_acta.update(
+                TipoActa.objects.filter(nombre_tipo__contains=marca)
+                .values_list('id_tipo_acta', flat=True)
+            )
+            materias.update(
+                Materia.all_objects.filter(nombre_materia__contains=marca)
+                .values_list('id_materia', flat=True)
+            )
+        if cursos:
+            ciclos.update(
+                Curso.all_objects.filter(id_curso__in=cursos)
+                .values_list('id_ciclo_id', flat=True)
+            )
         if ciclos:
-            cursos = Curso.all_objects.filter(id_ciclo_id__in=ciclos).values_list('id_curso', flat=True)
-            cm_ids = CursoMateria.all_objects.filter(id_curso_id__in=list(cursos)).values_list('id_curso_materia', flat=True)
-            Horario.objects.filter(id_curso_materia_id__in=list(cm_ids)).delete()
-            CursoMateria.all_objects.filter(id_curso_materia__in=list(cm_ids)).delete()
-            Curso.all_objects.filter(id_curso__in=list(cursos)).delete()
-            ComunicadoAlcance.objects.filter(id_ciclo_id__in=ciclos).delete()
-            CicloLectivo.all_objects.filter(id_ciclo__in=ciclos).delete()
-        Materia.objects.filter(nombre_materia='Materia Prueba').delete()
-        Modulos.objects.filter(nombre__in=['Módulo Prueba', 'Módulo Invertido']).delete()
-        PeriodoEvaluacion.all_objects.filter(
-            nombre_periodo__in=['1er Cuatrimestre', 'Repetido'],
-        ).delete()
-        TipoActa.objects.filter(nombre_tipo='Acta de evaluación').delete()
-
-    def _pendientes(self, anio):
-        anios = [anio, anio + 1]
+            cursos.update(
+                Curso.all_objects.filter(id_ciclo_id__in=ciclos)
+                .values_list('id_curso', flat=True)
+            )
+        if cursos:
+            cms.update(
+                CursoMateria.all_objects.filter(id_curso_id__in=cursos)
+                .values_list('id_curso_materia', flat=True)
+            )
+        if materias:
+            cms.update(
+                CursoMateria.all_objects.filter(id_materia_id__in=materias)
+                .values_list('id_curso_materia', flat=True)
+            )
+        if cms:
+            horarios.update(
+                Horario.objects.filter(id_curso_materia_id__in=cms)
+                .values_list('id_horario', flat=True)
+            )
         return {
-            'ciclos_lectivos': CicloLectivo.all_objects.filter(anio__in=anios).count(),
-            'cursos': Curso.all_objects.filter(nombre_curso=f'{anio}°1').count(),
-            'materias': Materia.objects.filter(nombre_materia='Materia Prueba').count(),
-            'modulos': Modulos.objects.filter(nombre__startswith='Módulo Prueba').count(),
+            'ciclos': ciclos, 'cursos': cursos, 'modulos': modulos,
+            'periodos': periodos, 'tipos_acta': tipos_acta,
+            'materias': materias, 'cms': cms, 'horarios': horarios,
+        }
+
+    def _limpiar(self, anio, marca=None, creado=None):
+        from escuela.models import Acta, Calificacion, ComunicadoAlcance
+
+        ids = self._ids_de_prueba(anio, marca, creado)
+        if not any(ids.values()):
+            self.stdout.write(self.style.WARNING(
+                'No se pasó --marca ni hay IDs de una corrida: no se borró nada.'
+            ))
+            return 0
+
+        borrados = 0
+        if ids['horarios']:
+            borrados += Horario.objects.filter(
+                id_horario__in=ids['horarios'],
+            ).delete()[0]
+        if ids['cms']:
+            borrados += CursoMateria.all_objects.filter(
+                id_curso_materia__in=ids['cms'],
+            ).delete()[0]
+        if ids['cursos']:
+            borrados += Curso.all_objects.filter(
+                id_curso__in=ids['cursos'],
+            ).delete()[0]
+
+        ciclos_a_borrar = set(ids['ciclos'])
+        if ciclos_a_borrar:
+            con_cursos = set(
+                Curso.all_objects.filter(id_ciclo_id__in=ciclos_a_borrar)
+                .values_list('id_ciclo_id', flat=True).distinct()
+            )
+            ciclos_a_borrar -= con_cursos
+        if ciclos_a_borrar:
+            borrados += ComunicadoAlcance.objects.filter(
+                id_ciclo_id__in=ciclos_a_borrar,
+            ).delete()[0]
+            borrados += CicloLectivo.all_objects.filter(
+                id_ciclo__in=ciclos_a_borrar,
+            ).delete()[0]
+
+        materias_a_borrar = set(ids['materias'])
+        if materias_a_borrar:
+            con_cm = set(
+                CursoMateria.all_objects.filter(id_materia_id__in=materias_a_borrar)
+                .values_list('id_materia_id', flat=True).distinct()
+            )
+            materias_a_borrar -= con_cm
+        if materias_a_borrar:
+            borrados += Materia.objects.filter(
+                id_materia__in=materias_a_borrar,
+            ).delete()[0]
+
+        modulos_a_borrar = set(ids['modulos'])
+        if modulos_a_borrar:
+            con_horarios = set(
+                Horario.objects.filter(id_modulo_id__in=modulos_a_borrar)
+                .values_list('id_modulo_id', flat=True).distinct()
+            )
+            modulos_a_borrar -= con_horarios
+        if modulos_a_borrar:
+            borrados += Modulos.objects.filter(
+                id_modulo__in=modulos_a_borrar,
+            ).delete()[0]
+
+        periodos_a_borrar = set(ids['periodos'])
+        if periodos_a_borrar:
+            con_notas = set(
+                Calificacion.all_objects.filter(id_periodo_id__in=periodos_a_borrar)
+                .values_list('id_periodo_id', flat=True).distinct()
+            )
+            periodos_a_borrar -= con_notas
+        if periodos_a_borrar:
+            borrados += PeriodoEvaluacion.all_objects.filter(
+                id_periodo__in=periodos_a_borrar,
+            ).delete()[0]
+
+        tipos_a_borrar = set(ids['tipos_acta'])
+        if tipos_a_borrar:
+            con_actas = set(
+                Acta.all_objects.filter(id_tipo_acta_id__in=tipos_a_borrar)
+                .values_list('id_tipo_acta_id', flat=True).distinct()
+            )
+            tipos_a_borrar -= con_actas
+        if tipos_a_borrar:
+            borrados += TipoActa.objects.filter(
+                id_tipo_acta__in=tipos_a_borrar,
+            ).delete()[0]
+
+        return borrados
+
+    def _pendientes(self, anio, marca=None, creado=None):
+        ids = self._ids_de_prueba(anio, marca, creado)
+        return {
+            'ciclos_lectivos': CicloLectivo.all_objects.filter(
+                id_ciclo__in=ids['ciclos']).count(),
+            'cursos': Curso.all_objects.filter(id_curso__in=ids['cursos']).count(),
+            'materias': Materia.objects.filter(id_materia__in=ids['materias']).count(),
+            'modulos': Modulos.objects.filter(id_modulo__in=ids['modulos']).count(),
             'periodos': PeriodoEvaluacion.all_objects.filter(
-                nombre_periodo='1er Cuatrimestre').count(),
-            'tipos_acta': TipoActa.objects.filter(nombre_tipo='Acta de evaluación').count(),
+                id_periodo__in=ids['periodos']).count(),
+            'tipos_acta': TipoActa.objects.filter(
+                id_tipo_acta__in=ids['tipos_acta']).count(),
         }

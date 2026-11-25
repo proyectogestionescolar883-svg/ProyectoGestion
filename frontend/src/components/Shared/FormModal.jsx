@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 const FOCUSEABLES =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export default function FormModal({ title, onClose, children, error, onClearError, cerrarConEscape = true }) {
+export default function FormModal({ title, onClose, children, error, errorKey, onClearError, cerrarConEscape = true }) {
   const modalRef = useRef(null);
   const focoPrevioRef = useRef(null);
   const tituloId = useId();
@@ -14,6 +14,8 @@ export default function FormModal({ title, onClose, children, error, onClearErro
   // descarte se resuelve acá: se oculta localmente y, si el consumidor sí
   // limpia el error, también se le avota. Se re-arma cuando llega un error nuevo.
   const [errorDescartado, setErrorDescartado] = useState(false);
+  const errorToken = errorKey ?? error;
+  const ultimoTokenRef = useRef(errorToken);
   const errorVisible = Boolean(error) && !errorDescartado;
 
   const descartarError = useCallback(() => {
@@ -22,8 +24,11 @@ export default function FormModal({ title, onClose, children, error, onClearErro
   }, [onClearError]);
 
   useEffect(() => {
-    setErrorDescartado(false);
-  }, [error]);
+    if (!error || errorToken !== ultimoTokenRef.current) {
+      ultimoTokenRef.current = errorToken;
+      setErrorDescartado(false);
+    }
+  }, [error, errorToken]);
 
   // Callback ref estable: enfoca el texto una sola vez, al montarse. Con un
   // arrow ref inline React lo re-ejecutaba en cada render y el mensaje le robaba

@@ -16,7 +16,7 @@ function mensajeError(err) {
   return mensajeErrorAmigable(err);
 }
 
-function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones }) {
+function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones, puedeEditar = true }) {
   const toast = useToast();
 
   // Intensificaciones state
@@ -61,6 +61,7 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones }) {
   );
 
   const abrirModalNueva = () => {
+    if (!puedeEditar) return;
     setEditingId(null);
     setArchivoActual(null);
     setModalCursoId(misCursoMateriaActiva ? String(misCursoMateriaActiva.id_curso) : '');
@@ -74,6 +75,7 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones }) {
   };
 
   const abrirModalEditar = (act) => {
+    if (!puedeEditar) return;
     const cm = misAsignaciones.find((c) => c.id === act.id_curso_materia);
     setEditingId(act.id_actividad);
     setArchivoActual(act.archivo_pdf || null);
@@ -102,6 +104,7 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones }) {
 
   const handleGuardarActividad = async (e) => {
     e.preventDefault();
+    if (!puedeEditar) return;
     if (!modalCursoMateriaObj) {
       toast.error('No se pudo identificar la materia asignada.');
       return;
@@ -154,6 +157,7 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones }) {
   };
 
   const handleDeleteActividad = async (id) => {
+    if (!puedeEditar) return;
     await confirmarEliminacion('¿Está seguro de eliminar esta actividad?', {
       onConfirm: async () => {
         try {
@@ -171,17 +175,19 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones }) {
     <div className="card">
       <div className="card-header-flex">
         <h3><i className="fas fa-book-medical" aria-hidden="true" /> Materias Adeudadas e Intensificaciones</h3>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={abrirModalNueva}
-        >
-          <i className="fas fa-plus" aria-hidden="true" /> Nueva actividad
-        </button>
+        {puedeEditar && (
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={abrirModalNueva}
+          >
+            <i className="fas fa-plus" aria-hidden="true" /> Nueva actividad
+          </button>
+        )}
       </div>
       <p className="text-muted" style={{ margin: '-10px 0 20px' }}>Gestión de actividades de intensificación y previas.</p>
 
-      {showModal && (
+      {showModal && puedeEditar && (
         <FormModal title={editingId ? 'Editar actividad' : 'Nueva actividad'} onClose={cerrarModal}>
           <form onSubmit={handleGuardarActividad}>
             <div className="standard-modal-body" style={{ display: 'grid', gap: '14px' }}>
@@ -319,20 +325,26 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones }) {
                     ) : 'Sin archivo'}
                   </td>
                   <td>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-primary"
-                      onClick={() => abrirModalEditar(act)}
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-danger"
-                      onClick={() => handleDeleteActividad(act.id_actividad)}
-                    >
-                      Eliminar
-                    </button>
+                    {puedeEditar ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary"
+                          onClick={() => abrirModalEditar(act)}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-danger"
+                          onClick={() => handleDeleteActividad(act.id_actividad)}
+                        >
+                          Eliminar
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-muted">Solo lectura</span>
+                    )}
                   </td>
                 </tr>
               ))

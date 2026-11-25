@@ -43,7 +43,7 @@ function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEd
 
     switch (userRole) {
       case 'alumno': {
-        const miEstudiante = estudiantes.find((a) => a.id_usuario === userId);
+        const miEstudiante = estudiantes.find((a) => String(a.id_usuario) === String(userId));
         if (!miEstudiante) return [];
         const miCursoId = miEstudiante.id_curso;
 
@@ -64,7 +64,7 @@ function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEd
         }
 
         // Fallback: mostrar todos los diagnósticos de los hijos
-        const miTutor = padresTutores.find((pt) => pt.id_usuario === userId);
+        const miTutor = padresTutores.find((pt) => String(pt.id_usuario) === String(userId));
         if (!miTutor) return [];
         const misHijos = estudiantes;
         const cursosHijos = new Set(misHijos.map((h) => h.id_curso).filter(Boolean));

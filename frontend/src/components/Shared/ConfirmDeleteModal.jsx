@@ -28,14 +28,10 @@ export default function ConfirmDeleteModal({
         e.preventDefault();
         onCancel();
       }
-      if (e.key === 'Enter' && !loading) {
-        e.preventDefault();
-        onConfirm();
-      }
     };
     document.addEventListener('keydown', manejarTeclado);
     return () => document.removeEventListener('keydown', manejarTeclado);
-  }, [open, loading, onCancel, onConfirm]);
+  }, [open, loading, onCancel]);
 
   if (!open) return null;
 

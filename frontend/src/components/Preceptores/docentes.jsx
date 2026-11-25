@@ -13,6 +13,7 @@ import AccionesLeyenda from '../../components/Shared/AccionesLeyenda';
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import { useToast } from '../../context/ToastContext';
 import { mensajeErrorAmigable } from '../../utils/errores';
+import { aInputDateTime as toInputDateTime } from '../../utils/programacionEstado';
 import NumericInput from '../Shared/NumericInput';
 
 const SIN_CURSOS = [];
