@@ -11,7 +11,7 @@ function Notas({ navContext }) {
     selectedCursoId,
   } = useData();
   const { user } = useAuth();
-  const puedeEditar = ['admin', 'director'].includes(user?.role);
+  const puedeEditar = user?.role === 'admin';
   const navNotasAplicado = useRef(null);
 
   // Punto 1.4: la vista consume la selección global del header. No se vuelve a

@@ -516,7 +516,7 @@ function Actas({ anioLectivo, curso, onAnioChange, onCursoChange, onlyCursos = f
   }
 
   return (
-    <div className="card">
+    <div className="card actas-card">
       <h3><i className="fas fa-file-signature" aria-hidden="true" /> Actas</h3>
 
       {/* Toda acta necesita un tipo. Sin tipos cargados, `resolverTipoActa()`
@@ -611,7 +611,7 @@ function Actas({ anioLectivo, curso, onAnioChange, onCursoChange, onlyCursos = f
                               </a>
                             ) : '—'}
                           </td>
-                          <td>
+                          <td className="acciones-cell acciones-cell--grid2">
                             {canEditActa(acta) && (
                               <>
                                 <button type="button" className="btn btn-sm btn-secondary" onClick={() => startEdit(acta, 'alumno')}>
@@ -677,7 +677,7 @@ function Actas({ anioLectivo, curso, onAnioChange, onCursoChange, onlyCursos = f
                               </a>
                             ) : '—'}
                           </td>
-                          <td>
+                          <td className="acciones-cell acciones-cell--grid2">
                             {canEditActaDocente(acta) && (
                               <>
                                 <button type="button" className="btn btn-sm btn-secondary" onClick={() => startEdit(acta, 'docente')}>
@@ -741,7 +741,7 @@ function Actas({ anioLectivo, curso, onAnioChange, onCursoChange, onlyCursos = f
                             </a>
                           ) : '—'}
                         </td>
-                          <td>
+                          <td className="acciones-cell acciones-cell--grid2">
                             {canEditActa(acta) && (
                               <>
                                 <button type="button" className="btn btn-sm btn-secondary" onClick={() => startEdit(acta, 'curso')}>

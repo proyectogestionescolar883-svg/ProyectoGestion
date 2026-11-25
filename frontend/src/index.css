@@ -7250,3 +7250,28 @@ label:has(input[type="checkbox"]) > input[type="checkbox"] {
 div:has(> label:has(input[type="checkbox"])) {
     flex-wrap: wrap;
 }
+
+@media (max-width: 900px) {
+    .actas-card {
+        max-width: 100%;
+    }
+
+    .actas-card .table-responsive {
+        max-width: 100%;
+    }
+
+    .actas-card .table-responsive table {
+        min-width: 0;
+    }
+
+    .actas-card .table-responsive th,
+    .actas-card .table-responsive td {
+        min-width: 0;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .actas-card .card-header-flex .btn {
+        max-width: 100%;
+    }
+}
