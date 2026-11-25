@@ -7188,3 +7188,24 @@ tr.date-group-header td {
         white-space: normal;
     }
 }
+
+.standard-modal .preceptor-form label,
+.standard-modal .form-text,
+.inline-form-container label,
+.inline-form-container--light label,
+.administradores-inline-form label,
+.proyecto-form label,
+.acta-form label {
+    color: #e2e8f0;
+}
+
+.standard-modal .programacion-lista li,
+.standard-modal .proxima-accion-hint,
+.inline-form-container .programacion-lista li,
+.inline-form-container .proxima-accion-hint,
+.administradores-inline-form .programacion-lista li,
+.administradores-inline-form .proxima-accion-hint {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.16);
+    color: #e2e8f0;
+}

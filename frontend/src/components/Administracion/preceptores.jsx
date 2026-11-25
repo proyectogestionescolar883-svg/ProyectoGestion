@@ -23,7 +23,7 @@ import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import LoadingScreen from '../Shared/LoadingScreen';
 import AccionesLeyenda from '../Shared/AccionesLeyenda';
 import { mensajeErrorAmigable } from '../../utils/errores';
-import { aInputDateTime as toInputDateTime, errorProgramacion } from '../../utils/programacionEstado';
+import { aInputDateTime as toInputDateTime, aApiDateTime, errorProgramacion, ZONA_PROGRAMACION } from '../../utils/programacionEstado';
 import { cursosSinPreceptor, etiquetaCursosSinPreceptor } from '../../utils/cursosSinPreceptor';
 
 const formVacio = {
@@ -45,7 +45,7 @@ function formatDateTime(value) {
   if (!value) return '---';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '---';
-  return new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+  return new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: ZONA_PROGRAMACION }).format(date);
 }
 
 /**
@@ -396,8 +396,8 @@ function Preceptores({ rol = 'preceptor' }) {
       const payload = {
         ...formData,
         cursos_ids: normalizarCursosIds(formData.cursos_ids),
-        fecha_deshabilitacion_programada: formData.fecha_deshabilitacion_programada || null,
-        fecha_habilitacion_programada: formData.fecha_habilitacion_programada || null,
+        fecha_deshabilitacion_programada: aApiDateTime(formData.fecha_deshabilitacion_programada),
+        fecha_habilitacion_programada: aApiDateTime(formData.fecha_habilitacion_programada),
       };
       // El Jefe de Preceptores no se vincula a un Curso.id_preceptor: su alcance es dinámico a todos los cursos.
       if (esJefe) {

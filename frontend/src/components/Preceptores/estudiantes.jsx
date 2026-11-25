@@ -10,7 +10,7 @@ import { estudiantesPorAnioYCurso, cursosPorAnio, filtrosCompletos, aListaCursos
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import { useToast } from '../../context/ToastContext';
 import { mensajeErrorAmigable } from '../../utils/errores';
-import { aInputDateTime as toInputDateTime } from '../../utils/programacionEstado';
+import { aInputDateTime as toInputDateTime, aApiDateTime, ZONA_PROGRAMACION } from '../../utils/programacionEstado';
 import NumericInput from '../Shared/NumericInput';
 
 const formVacio = {
@@ -33,7 +33,7 @@ function formatDateTime(value) {
   if (!value) return '---';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '---';
-  return new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+  return new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short', timeZone: ZONA_PROGRAMACION }).format(date);
 }
 
 function normalize(str) {
@@ -188,8 +188,8 @@ function Estudiantes({ readOnly = false, preceptorCursos = [], anioLectivo: anio
           id_curso: cursoObj?.id_curso || null,
           usuario_nombre: form.usuario_nombre,
           contrasena: form.contrasena,
-          fecha_deshabilitacion_programada: form.fecha_deshabilitacion_programada || null,
-          fecha_habilitacion_programada: form.fecha_habilitacion_programada || null,
+          fecha_deshabilitacion_programada: aApiDateTime(form.fecha_deshabilitacion_programada),
+          fecha_habilitacion_programada: aApiDateTime(form.fecha_habilitacion_programada),
         };
         await createEstudiante(estudiantePayload);
         toast.success('Estudiante creado correctamente.');
@@ -204,8 +204,8 @@ function Estudiantes({ readOnly = false, preceptorCursos = [], anioLectivo: anio
           usuario_nombre: form.usuario_nombre || undefined,
           contrasena: form.contrasena || undefined,
           estado: form.estado,
-          fecha_deshabilitacion_programada: form.fecha_deshabilitacion_programada || null,
-          fecha_habilitacion_programada: form.fecha_habilitacion_programada || null,
+          fecha_deshabilitacion_programada: aApiDateTime(form.fecha_deshabilitacion_programada),
+          fecha_habilitacion_programada: aApiDateTime(form.fecha_habilitacion_programada),
           dni: form.dni,
           nombre: form.nombre,
           apellido: form.apellido,

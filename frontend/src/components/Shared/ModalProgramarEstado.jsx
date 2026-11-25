@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import FormModal from './FormModal';
-import { aInputDateTime, errorProgramacion } from '../../utils/programacionEstado';
+import { aApiDateTime, aInputDateTime, errorProgramacion, ZONA_PROGRAMACION } from '../../utils/programacionEstado';
 
 function formatearFecha(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short' }).format(d);
+  return new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short', timeZone: ZONA_PROGRAMACION }).format(d);
 }
 
 /**
@@ -84,8 +84,8 @@ export default function ModalProgramarEstado({
           }
           setError('');
           onGuardar({
-            fecha_deshabilitacion_programada: form.fecha_deshabilitacion_programada || null,
-            fecha_habilitacion_programada: form.fecha_habilitacion_programada || null,
+            fecha_deshabilitacion_programada: aApiDateTime(form.fecha_deshabilitacion_programada),
+            fecha_habilitacion_programada: aApiDateTime(form.fecha_habilitacion_programada),
           });
         }}
       >
@@ -140,7 +140,7 @@ export default function ModalProgramarEstado({
           )}
 
           <div className="form-group-filter">
-            <span style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--text-light)' }}>
+            <span style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem' }}>
               Programaciones registradas
             </span>
             {pendientes.length === 0 ? (

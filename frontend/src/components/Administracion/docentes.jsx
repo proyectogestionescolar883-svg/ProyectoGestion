@@ -10,9 +10,14 @@ import FormModal from '../../components/Shared/FormModal';
 import AgregarRolModal from '../../components/Shared/AgregarRolModal';
 import QuitarRolModal from '../../components/Shared/QuitarRolModal';
 import { mensajeErrorAmigable } from '../../utils/errores';
-import { aInputDateTime as toInputDateTime, errorProgramacion } from '../../utils/programacionEstado';
+import { aInputDateTime as toInputDateTime, aApiDateTime, errorProgramacion } from '../../utils/programacionEstado';
 
 const API_BASE = BASE_URL;
+
+function cleanTelefono(value) {
+  if (!value) return '';
+  return String(value).replace(/[^\d+\-()\s]/g, '');
+}
 
 function getAbsoluteFileUrl(path) {
   if (!path) return null;
@@ -473,8 +478,8 @@ function Docentes({ navContext }) {
           usuario_nombre: formData.usuario_nombre || undefined,
           contrasena: formData.contrasena || undefined,
           estado: formData.estado,
-          fecha_deshabilitacion_programada: formData.fecha_deshabilitacion_programada || null,
-          fecha_habilitacion_programada: formData.fecha_habilitacion_programada || null,
+          fecha_deshabilitacion_programada: aApiDateTime(formData.fecha_deshabilitacion_programada),
+          fecha_habilitacion_programada: aApiDateTime(formData.fecha_habilitacion_programada),
           dni: formData.dni,
           nombre: formData.nombre,
           apellido: formData.apellido,
@@ -492,8 +497,8 @@ function Docentes({ navContext }) {
           telefono: formData.telefono || null,
           usuario_nombre: formData.usuario_nombre,
           contrasena: formData.contrasena,
-          fecha_deshabilitacion_programada: formData.fecha_deshabilitacion_programada || null,
-          fecha_habilitacion_programada: formData.fecha_habilitacion_programada || null,
+          fecha_deshabilitacion_programada: aApiDateTime(formData.fecha_deshabilitacion_programada),
+          fecha_habilitacion_programada: aApiDateTime(formData.fecha_habilitacion_programada),
         });
         toast.success('Docente creado correctamente.');
       }
@@ -930,7 +935,7 @@ function Docentes({ navContext }) {
                   <input
                     type="text"
                     value={formData.telefono}
-                    onChange={(e) => setFormData((p) => ({ ...p, telefono: e.target.value }))}
+                    onChange={(e) => setFormData((p) => ({ ...p, telefono: cleanTelefono(e.target.value) }))}
                   />
                 </div>
               </div>

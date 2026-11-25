@@ -27,6 +27,7 @@
  */
 
 const RE_INPUT_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+export const ZONA_PROGRAMACION = 'America/Argentina/Buenos_Aires';
 
 function esFechaValida(value) {
   if (typeof value !== 'string' || !RE_INPUT_DATETIME.test(value)) return false;
@@ -54,18 +55,30 @@ function formatearCorta(value) {
 }
 
 /**
- * Convierte un ISO del backend al formato que espera `<input type="datetime-local">`.
- *
- * `toISOString()` devuelve UTC, así que hay que corregir el offset antes de cortar los
- * minutos: si no, una fecha cargada a las 18:00 aparece como 21:00 y al guardar
- * se corre tres horas.
+ * Convierte un ISO del backend al formato que espera `<input type="datetime-local">`,
+ * usando siempre la zona de la escuela aunque el navegador esté en otra zona.
  */
 export function aInputDateTime(value) {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  const offset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+  const partes = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: ZONA_PROGRAMACION,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(date).map(({ type, value: parte }) => [type, parte]),
+  );
+  return `${partes.year}-${partes.month}-${partes.day}T${partes.hour}:${partes.minute}`;
+}
+
+export function aApiDateTime(value) {
+  if (!esFechaValida(value)) return null;
+  return `${value.slice(0, 16)}:00-03:00`;
 }
 
 /**
