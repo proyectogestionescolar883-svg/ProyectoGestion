@@ -34,27 +34,19 @@ export default function Configuracion({ pestana, onPestanaChange }) {
   const Componente = activa.Componente;
 
   return (
-    <div className="card">
+    <div className="card configuracion-card">
       <div className="card-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
+        <div className="configuracion-header-row">
           <h2 className="m-0">
             <i className="fas fa-sliders-h" aria-hidden="true" /> Configuración
           </h2>
-          <div className="tabs-container m-0">
+          <div className="tabs-container configuracion-tabs">
             {PESTANAS.map((p) => (
               <button
                 key={p.id}
                 type="button"
                 className={`tab-btn${activa.id === p.id ? ' active' : ''}`}
                 onClick={() => onPestanaChange?.(p.id)}
-                style={{
-                  padding: '8px 16px',
-                  cursor: 'pointer',
-                  background: activa.id === p.id ? 'var(--primary-color)' : 'transparent',
-                  color: activa.id === p.id ? '#fff' : 'inherit',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px 4px 0 0',
-                }}
               >
                 {p.etiqueta}
               </button>
