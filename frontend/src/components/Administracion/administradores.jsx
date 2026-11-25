@@ -92,7 +92,7 @@ function Administradores() {
   });
   const [error, setError] = useState('');
   const [mostrarAgregarRol, setMostrarAgregarRol] = useState(false);
-  const [rolParaAgregar, setRolParaAgregar] = useState('admin');
+  const rolParaAgregar = 'admin';
   const [guardandoAgregarRol, setGuardandoAgregarRol] = useState(false);
   const [mostrarQuitarRol, setMostrarQuitarRol] = useState(false);
   const [rolParaQuitar, setRolParaQuitar] = useState('admin');
@@ -117,7 +117,7 @@ function Administradores() {
 
   useEffect(() => {
     cargarPersonasSinRol();
-  }, [rolParaAgregar]);
+  }, []);
 
   const { refreshData } = useData() || {};
 
@@ -522,23 +522,12 @@ function Administradores() {
       <div className="card-header-flex">
         <h3><i className="fas fa-user-shield" aria-hidden="true" /> Directivos</h3>
         <div className="header-actions">
-          <select
-            aria-label="Rol a asignar"
-            value={rolParaAgregar}
-            onChange={(e) => setRolParaAgregar(e.target.value)}
-            disabled={guardandoAgregarRol}
-            style={{ minWidth: 150 }}
-          >
-            {ROLES_ASIGNABLES.map((opcion) => (
-              <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
-            ))}
-          </select>
           <button
             type="button"
             className="btn btn-outline-primary"
             onClick={() => setMostrarAgregarRol(true)}
           >
-            <i className="fas fa-user-tag" aria-hidden="true" /> Agregar rol
+            <i className="fas fa-user-tag" aria-hidden="true" /> Agregar rol: Administrador
           </button>
           <select
             aria-label="Rol a quitar"
