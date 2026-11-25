@@ -26,9 +26,10 @@ export function suplenciasActivasLista(suplencias, fecha = new Date()) {
 export function suplenciasActivasEnFecha(suplencias, fecha = new Date()) {
   const mapa = {};
   suplenciasActivasLista(suplencias, fecha).forEach((s) => {
-    const actual = mapa[s.id_curso_materia];
+    const clave = String(s.id_curso_materia);
+    const actual = mapa[clave];
     if (!actual || (s.nivel ?? 1) > (actual.nivel ?? 1)) {
-      mapa[s.id_curso_materia] = s;
+      mapa[clave] = s;
     }
   });
   return mapa;
@@ -36,8 +37,8 @@ export function suplenciasActivasEnFecha(suplencias, fecha = new Date()) {
 
 export function esDocenteActivoEnMateria(mapa, cmId, docenteId) {
   if (!mapa || !cmId || !docenteId) return null;
-  const s = mapa[cmId];
-  if (s && s.id_docente_suplente && s.id_docente_suplente === docenteId) {
+  const s = mapa[String(cmId)];
+  if (s && s.id_docente_suplente && String(s.id_docente_suplente) === String(docenteId)) {
     return s;
   }
   return null;

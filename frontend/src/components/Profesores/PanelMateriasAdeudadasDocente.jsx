@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   getActividadesMateriasAdeudadas,
   createActividadMateriaAdeudada,
@@ -16,14 +16,12 @@ function mensajeError(err) {
   return mensajeErrorAmigable(err);
 }
 
-function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones, puedeEditar = true }) {
+function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones = [], puedeEditar = true }) {
   const toast = useToast();
 
   // Intensificaciones state
   const [actividades, setActividades] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [modalCursoId, setModalCursoId] = useState('');
-  const [modalMateriaNombre, setModalMateriaNombre] = useState('');
   const [titulo, setTitulo] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [tipo, setTipo] = useState('INTENSIFICACION');
@@ -33,22 +31,22 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones, puedeE
   const [archivoActual, setArchivoActual] = useState(null);
   const [loadingAct, setLoadingAct] = useState(false);
 
-  const modalCursoMateriaObj = misAsignaciones.find(
-    (cm) => String(cm.id_curso) === String(modalCursoId) && cm.materia_nombre === modalMateriaNombre
-  );
-
-  useEffect(() => {
-    loadActividades();
-  }, []);
-
-  const loadActividades = async () => {
+  const loadActividades = useCallback(async () => {
+    if (cursoMateriaId == null) {
+      setActividades([]);
+      return;
+    }
     try {
-      const data = await getActividadesMateriasAdeudadas();
+      const data = await getActividadesMateriasAdeudadas({ curso_materia: cursoMateriaId });
       setActividades(Array.isArray(data) ? data : []);
     } catch {
       setActividades([]);
     }
-  };
+  }, [cursoMateriaId]);
+
+  useEffect(() => {
+    loadActividades();
+  }, [loadActividades]);
 
   const actividadesMateria = useMemo(
     () =>
@@ -56,16 +54,24 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones, puedeE
     [actividades, cursoMateriaId],
   );
 
-  const misCursoMateriaActiva = misAsignaciones.find(
-    (cm) => String(cm.id) === String(cursoMateriaId),
+  const misCursoMateriaActiva = useMemo(
+    () => (Array.isArray(misAsignaciones) ? misAsignaciones : []).find(
+      (cm) => cm.id != null && cursoMateriaId != null && String(cm.id) === String(cursoMateriaId),
+    ),
+    [misAsignaciones, cursoMateriaId],
   );
 
+  const modalCursoMateriaObj = misCursoMateriaActiva;
+  const puedeEscribir = puedeEditar && !misCursoMateriaActiva?.esSuplente;
+
+  useEffect(() => {
+    if (!puedeEscribir) setShowModal(false);
+  }, [puedeEscribir]);
+
   const abrirModalNueva = () => {
-    if (!puedeEditar) return;
+    if (!puedeEscribir) return;
     setEditingId(null);
     setArchivoActual(null);
-    setModalCursoId(misCursoMateriaActiva ? String(misCursoMateriaActiva.id_curso) : '');
-    setModalMateriaNombre(misCursoMateriaActiva ? misCursoMateriaActiva.materia_nombre : '');
     setTitulo('');
     setDescripcion('');
     setTipo('INTENSIFICACION');
@@ -75,12 +81,9 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones, puedeE
   };
 
   const abrirModalEditar = (act) => {
-    if (!puedeEditar) return;
-    const cm = misAsignaciones.find((c) => c.id === act.id_curso_materia);
+    if (!puedeEscribir) return;
     setEditingId(act.id_actividad);
     setArchivoActual(act.archivo_pdf || null);
-    setModalCursoId(cm ? String(cm.id_curso) : '');
-    setModalMateriaNombre(act.materia_nombre || '');
     setTitulo(act.titulo || '');
     setDescripcion(act.descripcion || '');
     setTipo(act.tipo || 'INTENSIFICACION');
@@ -93,8 +96,6 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones, puedeE
     setShowModal(false);
     setEditingId(null);
     setArchivoActual(null);
-    setModalCursoId('');
-    setModalMateriaNombre('');
     setTitulo('');
     setDescripcion('');
     setTipo('INTENSIFICACION');
@@ -104,9 +105,9 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones, puedeE
 
   const handleGuardarActividad = async (e) => {
     e.preventDefault();
-    if (!puedeEditar) return;
-    if (!modalCursoMateriaObj) {
-      toast.error('No se pudo identificar la materia asignada.');
+    if (!puedeEscribir) return;
+    if (!modalCursoMateriaObj || modalCursoMateriaObj.id_docente == null) {
+      toast.error('No se pudo identificar la asignación titular de la materia.');
       return;
     }
     if (!titulo) {
@@ -127,7 +128,7 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones, puedeE
 
       const payload = {
         id_curso_materia: modalCursoMateriaObj.id,
-        id_docente: modalCursoMateriaObj.id_docente || misAsignaciones[0]?.id_docente,
+        id_docente: modalCursoMateriaObj.id_docente,
         titulo,
         descripcion,
         archivo_pdf: archivoUrl,
@@ -157,7 +158,7 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones, puedeE
   };
 
   const handleDeleteActividad = async (id) => {
-    if (!puedeEditar) return;
+    if (!puedeEscribir) return;
     await confirmarEliminacion('¿Está seguro de eliminar esta actividad?', {
       onConfirm: async () => {
         try {
@@ -175,7 +176,8 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones, puedeE
     <div className="card">
       <div className="card-header-flex">
         <h3><i className="fas fa-book-medical" aria-hidden="true" /> Materias Adeudadas e Intensificaciones</h3>
-        {puedeEditar && (
+        {!puedeEscribir && <span className="badge badge-neutral">Solo lectura</span>}
+        {puedeEscribir && (
           <button
             type="button"
             className="btn btn-primary"
@@ -187,7 +189,7 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones, puedeE
       </div>
       <p className="text-muted" style={{ margin: '-10px 0 20px' }}>Gestión de actividades de intensificación y previas.</p>
 
-      {showModal && puedeEditar && (
+      {showModal && puedeEscribir && (
         <FormModal title={editingId ? 'Editar actividad' : 'Nueva actividad'} onClose={cerrarModal}>
           <form onSubmit={handleGuardarActividad}>
             <div className="standard-modal-body" style={{ display: 'grid', gap: '14px' }}>
@@ -325,7 +327,7 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones, puedeE
                     ) : 'Sin archivo'}
                   </td>
                   <td>
-                    {puedeEditar ? (
+                    {puedeEscribir ? (
                       <>
                         <button
                           type="button"

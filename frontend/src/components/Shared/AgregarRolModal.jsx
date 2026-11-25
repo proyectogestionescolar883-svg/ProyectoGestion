@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import FormModal from './FormModal';
 
 function normalize(str) {
@@ -58,6 +58,15 @@ const ROLE_CONFIG = {
   },
 };
 
+const ROLE_CONFIG_DESCONOCIDO = {
+  label: 'Rol desconocido',
+  stepLabel: '',
+  needAssignment: false,
+  assignmentType: null,
+  assignmentKey: null,
+  minSelection: 0,
+};
+
 const ASSIGNMENT_LABELS = {
   alumnos: 'alumno(s)',
   cursos: 'curso(s)',
@@ -92,7 +101,15 @@ function AgregarRolModal({
   const [errorAsignacion, setErrorAsignacion] = useState('');
   const [busquedaAsignacion, setBusquedaAsignacion] = useState('');
 
-  const roleConfig = ROLE_CONFIG[rol] || { label: 'Rol', needAssignment: false, minSelection: 0 };
+  const rolConocido = Object.prototype.hasOwnProperty.call(ROLE_CONFIG, rol);
+  const roleConfig = useMemo(
+    () => (rolConocido ? ROLE_CONFIG[rol] : ROLE_CONFIG_DESCONOCIDO),
+    [rol, rolConocido],
+  );
+  const fetchFnsRef = useRef({ fetchAssignmentsFn, fetchCursosFn, fetchMateriasFn });
+  useEffect(() => {
+    fetchFnsRef.current = { fetchAssignmentsFn, fetchCursosFn, fetchMateriasFn };
+  }, [fetchAssignmentsFn, fetchCursosFn, fetchMateriasFn]);
 
   useEffect(() => {
     setBusqueda('');
@@ -110,37 +127,52 @@ function AgregarRolModal({
     setBusquedaAsignacion('');
   }, [titulo, rol]);
 
-  // Cargar las asignaciones disponibles al entrar al paso 2
+  const cargarAsignaciones = useCallback(async () => {
+    const { fetchAssignmentsFn: fetchA, fetchCursosFn: fetchC, fetchMateriasFn: fetchM } = fetchFnsRef.current;
+    if (roleConfig.assignmentType === 'curso_materia') {
+      const [cmData, cursosData, materiasData] = await Promise.all([
+        fetchA ? fetchA() : Promise.resolve([]),
+        fetchC ? fetchC() : Promise.resolve([]),
+        fetchM ? fetchM() : Promise.resolve([]),
+      ]);
+      return {
+        cursoMaterias: Array.isArray(cmData) ? cmData : [],
+        cursos: Array.isArray(cursosData) ? cursosData : [],
+        materias: Array.isArray(materiasData) ? materiasData : [],
+      };
+    }
+    const data = fetchA ? await fetchA() : [];
+    return { disponibles: Array.isArray(data) ? data : [] };
+  }, [roleConfig.assignmentType]);
+
   useEffect(() => {
-    if (paso !== 2 || !roleConfig.needAssignment) return;
+    if (paso !== 2 || !roleConfig.needAssignment) return undefined;
+    let activo = true;
     setCargandoAsignaciones(true);
     setErrorAsignacion('');
 
-    const cargar = async () => {
-      try {
+    cargarAsignaciones()
+      .then((data) => {
+        if (!activo) return;
         if (roleConfig.assignmentType === 'curso_materia') {
-          const [cmData, cursosData, materiasData] = await Promise.all([
-            fetchAssignmentsFn ? fetchAssignmentsFn() : Promise.resolve([]),
-            fetchCursosFn ? fetchCursosFn() : Promise.resolve([]),
-            fetchMateriasFn ? fetchMateriasFn() : Promise.resolve([]),
-          ]);
-          setCursoMateriasDisponibles(Array.isArray(cmData) ? cmData : []);
-          setCursosDisponibles(Array.isArray(cursosData) ? cursosData : []);
-          setTodasMaterias(Array.isArray(materiasData) ? materiasData : []);
+          setCursoMateriasDisponibles(data.cursoMaterias);
+          setCursosDisponibles(data.cursos);
+          setTodasMaterias(data.materias);
         } else {
-          const data = fetchAssignmentsFn ? await fetchAssignmentsFn() : [];
-          setAsignacionesDisponibles(Array.isArray(data) ? data : []);
+          setAsignacionesDisponibles(data.disponibles);
         }
-      } catch (err) {
+      })
+      .catch((err) => {
+        if (!activo) return;
         setErrorAsignacion('Error al cargar las opciones disponibles.');
         console.error(err);
-      } finally {
-        setCargandoAsignaciones(false);
-      }
-    };
+      })
+      .finally(() => {
+        if (activo) setCargandoAsignaciones(false);
+      });
 
-    cargar();
-  }, [paso, roleConfig.needAssignment, roleConfig.assignmentType, fetchAssignmentsFn, fetchCursosFn, fetchMateriasFn]);
+    return () => { activo = false; };
+  }, [paso, roleConfig.needAssignment, roleConfig.assignmentType, cargarAsignaciones]);
 
   // Punto 10.2: las materias del curso se derivan de la relación curso-materia.
   // La lista completa NUNCA se sobrescribe (si se sobreescribe, al cambiar de curso
@@ -295,6 +327,10 @@ function AgregarRolModal({
   };
 
   const handleConfirmar = () => {
+    if (!rolConocido) {
+      setErrorAsignacion(`No se reconoce el rol "${rol}".`);
+      return;
+    }
     if (roleConfig.needAssignment && asignaciones.length < roleConfig.minSelection) {
       setErrorAsignacion(
         `Debe seleccionar al menos ${roleConfig.minSelection} ${ASSIGNMENT_LABELS[roleConfig.assignmentType] || 'elemento(s)'}.`,
@@ -668,12 +704,16 @@ function AgregarRolModal({
   );
 
   const puedeConfirmar =
-    !roleConfig.needAssignment || asignaciones.length >= roleConfig.minSelection;
+    rolConocido && (!roleConfig.needAssignment || asignaciones.length >= roleConfig.minSelection);
 
   return (
     <FormModal title={titulo} onClose={onClose}>
       <div className="standard-modal-body" style={{ display: 'grid', gap: '14px' }}>
-        {paso === 1 ? renderPaso1() : paso === 2 ? renderPaso2() : renderPaso3()}
+        {!rolConocido ? (
+          <p className="form-error-message" role="alert">
+            No se reconoce el rol “{rol}”. No se puede agregar la asignación.
+          </p>
+        ) : paso === 1 ? renderPaso1() : paso === 2 ? renderPaso2() : renderPaso3()}
       </div>
       <div className="standard-modal-footer">
         {paso > 1 && (
@@ -688,7 +728,7 @@ function AgregarRolModal({
           <button
             type="button"
             className="btn btn-primary"
-            disabled={!personaSel || guardando}
+            disabled={!rolConocido || !personaSel || guardando}
             onClick={handleSiguiente}
           >
             <i className="fas fa-arrow-right" aria-hidden="true" /> Siguiente

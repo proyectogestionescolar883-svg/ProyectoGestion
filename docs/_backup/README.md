@@ -1,5 +1,7 @@
 # MiSecundaria7
 
+> **DOCUMENTO HISTÓRICO (backup).** README original; el vigente está en la raíz del repositorio.
+
 ## Estructura del proyecto
 
 - `backend/`: Backend Django.

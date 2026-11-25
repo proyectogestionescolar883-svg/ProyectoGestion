@@ -13,6 +13,11 @@ function seccionDeVista(viewId, items) {
 function Sidebar({ view, setView, onLogout }) {
   const [expandedSection, setExpandedSection] = useState(null);
   const menuWrapperRef = useRef(null);
+  const scrollTimeoutRef = useRef(null);
+
+  useEffect(() => () => {
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+  }, []);
 
   useEffect(() => {
     const sectionId = seccionDeVista(view, menuItems);
@@ -28,7 +33,7 @@ function Sidebar({ view, setView, onLogout }) {
     setExpandedSection(willExpand ? sectionId : null);
 
     if (willExpand && menuWrapperRef.current) {
-      setTimeout(() => {
+      scrollTimeoutRef.current = setTimeout(() => {
         const wrapper = menuWrapperRef.current;
         if (!wrapper) return;
         const sectionHeader = wrapper.querySelector(`[data-section-id="${sectionId}"]`);

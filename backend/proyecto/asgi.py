@@ -14,7 +14,9 @@ from django.core.asgi import get_asgi_application
 
 # Agrega backend/proyecto/ al path para que Python encuentre el paquete 'escuela'
 # (mismo ajuste que hace manage.py; necesario cuando se corre asgi.py directo).
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(BASE_DIR, 'proyecto'))
+sys.path.insert(0, BASE_DIR)
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'proyecto.settings')
 

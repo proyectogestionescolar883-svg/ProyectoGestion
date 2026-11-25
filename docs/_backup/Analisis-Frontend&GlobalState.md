@@ -1,5 +1,7 @@
 # Frontend Architecture Audit — MiSecundaria 7
 
+> **DOCUMENTO HISTÓRICO (backup).** Estado inicial del frontend; no es fuente de verdad vigente.
+
 > **Scope:** `frontend/src/services/api.js`, `frontend/src/context/DataContext.jsx`, and state-based navigation across all 6 Dashboard components.
 >
 > **Estado:** Análisis de código estático. Ejecución de correcciones y de instrumentación de debugging pendiente de las reglas pre-ejecución.

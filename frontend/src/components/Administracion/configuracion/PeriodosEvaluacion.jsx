@@ -108,7 +108,6 @@ export default function PeriodosEvaluacion() {
       alGuardar={async (item, payload) => {
         if (payload?.__desactivar) return deletePeriodo(item.id_periodo);
         if (payload?.__reactivar) return updatePeriodo(item.id_periodo, { estado: true });
-        if (payload?.__eliminar) return deletePeriodo(item.id_periodo);
         if (item) return updatePeriodo(item.id_periodo, payload);
         return createPeriodo(payload);
       }}

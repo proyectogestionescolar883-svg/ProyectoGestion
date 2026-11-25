@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 const ToastContext = createContext(null);
@@ -44,19 +44,27 @@ export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const temporizadoresRef = useRef({});
 
+  const limpiarTemporizadores = useCallback((id) => {
+    const temporizadores = temporizadoresRef.current[id];
+    if (!temporizadores) return;
+    clearTimeout(temporizadores.auto);
+    clearTimeout(temporizadores.salida);
+    delete temporizadoresRef.current[id];
+  }, []);
+
   const quitar = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
-    const temporizador = temporizadoresRef.current[id];
-    if (temporizador) {
-      clearTimeout(temporizador);
-      delete temporizadoresRef.current[id];
-    }
-  }, []);
+    limpiarTemporizadores(id);
+  }, [limpiarTemporizadores]);
 
   const cerrar = useCallback(
     (id) => {
       setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, saliendo: true } : t)));
-      temporizadoresRef.current[id] = setTimeout(() => quitar(id), DURACION_SALIDA);
+      const temporizadores = temporizadoresRef.current[id] || {};
+      clearTimeout(temporizadores.auto);
+      clearTimeout(temporizadores.salida);
+      temporizadores.salida = setTimeout(() => quitar(id), DURACION_SALIDA);
+      temporizadoresRef.current[id] = temporizadores;
     },
     [quitar],
   );
@@ -65,11 +73,18 @@ export function ToastProvider({ children }) {
     (tipo, mensaje, duracion = DURACION_DEFECTO) => {
       const id = ++contadorId;
       setToasts((prev) => [...prev, { id, tipo, mensaje }]);
-      temporizadoresRef.current[id] = setTimeout(() => cerrar(id), duracion);
+      temporizadoresRef.current[id] = {
+        auto: setTimeout(() => cerrar(id), duracion),
+        salida: null,
+      };
       return id;
     },
     [cerrar],
   );
+
+  useEffect(() => () => {
+    Object.keys(temporizadoresRef.current).forEach((id) => limpiarTemporizadores(id));
+  }, [limpiarTemporizadores]);
 
   const toast = useMemo(
     () => ({

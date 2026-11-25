@@ -17,8 +17,8 @@ function StatCard({ icon, value, label, color }) {
   );
 }
 
-function PanelEstudiante({ miEstudiante, user, recursadas = [] }) {
-  const { materiasPorCurso, calificacionesCompletas, periodos } = useData();
+function PanelEstudiante({ miEstudiante, recursadas = [] }) {
+  const { materiasPorCurso, calificacionesCompletas, cursosObj } = useData();
 
   // `asistenciasAdmin` del contexto está siempre vacío (`asistenciasRaw` se
   // pinea a `[]` porque la tabla completa no se descarga), por lo que la tarjeta
@@ -28,7 +28,9 @@ function PanelEstudiante({ miEstudiante, user, recursadas = [] }) {
   const stats = useMemo(() => {
     if (!miEstudiante) return null;
     const safeCalificaciones = calificacionesCompletas ?? [];
-    const misNotas = safeCalificaciones.filter((c) => c.id_alumno === miEstudiante.id);
+    const misNotas = safeCalificaciones.filter(
+      (c) => c.id_alumno != null && String(c.id_alumno) === String(miEstudiante.id),
+    );
     const notasNumericas = misNotas
       .map((c) => Number(c.nota_numerica))
       .filter((n) => !isNaN(n) && n > 0);
@@ -57,7 +59,11 @@ function PanelEstudiante({ miEstudiante, user, recursadas = [] }) {
     );
   }
 
-  const materiasDelCurso = materiasPorCurso[miEstudiante.curso] || [];
+  const cursoObj = cursosObj.find(
+    (c) => c.id_curso != null && miEstudiante.id_curso != null && String(c.id_curso) === String(miEstudiante.id_curso),
+  ) || null;
+  const nombreCurso = cursoObj?.nombre_curso || miEstudiante.curso;
+  const materiasDelCurso = materiasPorCurso[nombreCurso] || [];
 
   return (
     <div className="card">
@@ -106,7 +112,7 @@ function PanelEstudiante({ miEstudiante, user, recursadas = [] }) {
       </div>
 
       <div className="stats-grid">
-        {miEstudiante.curso && <StatCard icon="fa-users" value={cursoConOrientacion(miEstudiante.curso)} label="Curso actual" />}
+        {nombreCurso && <StatCard icon="fa-users" value={cursoConOrientacion(cursoObj || nombreCurso)} label="Curso actual" />}
         <StatCard icon="fa-calendar" value={miEstudiante.ciclo_anio || '—'} label="Ciclo lectivo" />
         <StatCard icon="fa-book" value={materiasDelCurso.length} label="Materias" />
         {stats.notasCount >= 3 && <StatCard icon="fa-star" value={stats.promedio} label="Promedio general" />}

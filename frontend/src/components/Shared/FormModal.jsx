@@ -18,9 +18,16 @@ export default function FormModal({ title, onClose, children, error, errorKey, o
   const ultimoTokenRef = useRef(errorToken);
   const errorVisible = Boolean(error) && !errorDescartado;
 
+  const focoAntesErrorRef = useRef(null);
+
   const descartarError = useCallback(() => {
     setErrorDescartado(true);
     if (typeof onClearError === 'function') onClearError();
+    requestAnimationFrame(() => {
+      const destino = focoAntesErrorRef.current;
+      if (destino instanceof HTMLElement && document.contains(destino)) destino.focus();
+      else modalRef.current?.focus();
+    });
   }, [onClearError]);
 
   useEffect(() => {
@@ -34,7 +41,15 @@ export default function FormModal({ title, onClose, children, error, errorKey, o
   // arrow ref inline React lo re-ejecutaba en cada render y el mensaje le robaba
   // el foco al usuario (y al botón Cerrar).
   const enfocarTexto = useCallback((nodo) => {
-    if (nodo) nodo.focus();
+    if (nodo) {
+      focoAntesErrorRef.current = document.activeElement;
+      nodo.focus();
+    }
+  }, []);
+
+  const esModalActivo = useCallback(() => {
+    const capas = document.querySelectorAll('.standard-modal, .confirm-modal');
+    return capas.length === 0 || capas[capas.length - 1] === modalRef.current;
   }, []);
 
   /* Al abrir: guarda el elemento que tenía el foco, lo lleva al primer campo
@@ -60,6 +75,7 @@ export default function FormModal({ title, onClose, children, error, errorKey, o
      nunca pueda escapar al contenido de atrás. */
   useEffect(() => {
     const manejarTeclado = (e) => {
+      if (!esModalActivo()) return;
       if (e.key === 'Escape') {
         // Si hay una capa por encima (confirmación o error), esa capa es la que
         // responde al Escape; el formulario no debe cerrarse también.
@@ -82,7 +98,11 @@ export default function FormModal({ title, onClose, children, error, errorKey, o
       }
       if (e.key !== 'Tab') return;
       const nodos = modalRef.current?.querySelectorAll(FOCUSEABLES);
-      if (!nodos || nodos.length === 0) return;
+      if (!nodos || nodos.length === 0) {
+        e.preventDefault();
+        modalRef.current?.focus();
+        return;
+      }
       const primero = nodos[0];
       const ultimo = nodos[nodos.length - 1];
       if (e.shiftKey && document.activeElement === primero) {
@@ -95,7 +115,7 @@ export default function FormModal({ title, onClose, children, error, errorKey, o
     };
     document.addEventListener('keydown', manejarTeclado);
     return () => document.removeEventListener('keydown', manejarTeclado);
-  }, [cerrarConEscape, onClose, errorVisible, descartarError]);
+  }, [cerrarConEscape, onClose, errorVisible, descartarError, esModalActivo]);
 
   return (
     <Fragment>

@@ -1,5 +1,9 @@
 # Documento de Relevamiento — Sistema de Gestión Escolar "Secundaria 7"
 
+> **DOCUMENTO HISTÓRICO.** Relevamiento inicial; describe necesidades y supuestos
+> de la primera etapa. El estado actual de requisitos está en
+> `REQUERIMIENTOS_SISTEMA_SECUNDARIA7.md` y en la documentación técnica.
+
 ---
 
 ## 1. Stakeholders a Entrevistar

@@ -56,12 +56,9 @@ SIN_AUTENTICAR = object()
 class BaseConfiguracionTests(TestCase):
     """Infraestructura común: clientes autenticados con roles reales."""
 
-    host = settings.ALLOWED_HOSTS[0]
+    host = settings.ALLOWED_HOSTS[0] if settings.ALLOWED_HOSTS else 'localhost'
 
     def setUp(self):
-        # La migración 0008 deja los cinco estados base en la base de test.
-        # Los tests de catálogo arrancan sin datos para poder medir exactamente
-        # lo que crean.
         EstadoAsistencia.objects.filter(
             nombre_estado__in=ESTADOS_ASISTENCIA_BASE,
         ).delete()

@@ -1,13 +1,15 @@
 asgiref==3.11.1
 Django==6.0.5
 django-cors-headers==4.7.0
+django-filter==25.2
 djangorestframework==3.16.0
 djangorestframework_simplejwt==5.5.0
 PyJWT==2.9.0
 PyMySQL==1.1.1
 psycopg2-binary==2.9.10
 python-dotenv==1.2.2
+Pillow==12.3.0
 sqlparse==0.5.5
-reportlab==4.4.1
+reportlab==5.0.0
 tzdata==2026.2
 gunicorn==23.0.0

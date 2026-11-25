@@ -19,6 +19,7 @@ export function ConfirmProvider({ children }) {
   const onConfirmRef = useRef(null);
 
   const confirmar = useCallback((opciones = {}) => new Promise((resolve) => {
+    resolverRef.current?.(false);
     onConfirmRef.current = opciones.onConfirm || null;
     resolverRef.current = resolve;
     setEliminando(false);

@@ -10,14 +10,11 @@ import {
   uploadFile,
   getCargasUnica,
   marcarCargaUnica,
-  BASE_URL,
 } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import FilePicker from '../Shared/FilePicker';
 import { mensajeErrorAmigable } from '../../utils/errores';
-
-const API_BASE = BASE_URL;
 
 const formVacio = { descripcion: '', archivo: null, ruta_archivo: null };
 
@@ -150,7 +147,12 @@ function PanelLibroTemas({ cursoMateriaId, materiaNombre, cursoNombre, miDocente
     setFormData(formVacio);
   };
 
+  useEffect(() => {
+    if (!puedeEditar) limpiar();
+  }, [puedeEditar]);
+
   const abrirEditar = (registro) => {
+    if (!puedeEditar) return;
     setFormData({
       descripcion: registro.descripcion || '',
       archivo: null,
@@ -161,7 +163,7 @@ function PanelLibroTemas({ cursoMateriaId, materiaNombre, cursoNombre, miDocente
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!puedeCrear) return;
+    if (!puedeEditar || !puedeCrear) return;
     if (editing && bloqueadoPorCarga) {
       toast.error('Este registro quedó bloqueado por la carga única; ya no puede modificarse.');
       return;
@@ -207,6 +209,7 @@ function PanelLibroTemas({ cursoMateriaId, materiaNombre, cursoNombre, miDocente
   };
 
   const handleEliminar = async (registro) => {
+    if (!puedeEditar) return;
     await confirmarEliminacion('¿Querés eliminar este registro del Libro de Temas?\n\nEl registro se dará de baja y no aparecerá más en los listados.', {
       onConfirm: async () => {
         try {
@@ -415,7 +418,7 @@ function PanelLibroTemas({ cursoMateriaId, materiaNombre, cursoNombre, miDocente
             ) : (
               registros.map((reg) => (
                 <Fragment key={reg.id_libro_tema}>
-                  <tr className={editing && editing.id_libro_tema === reg.id_libro_tema ? 'lt-fila-editando' : undefined}>
+                  <tr className={editing && editing.id_libro_tema != null && String(editing.id_libro_tema) === String(reg.id_libro_tema) ? 'lt-fila-editando' : undefined}>
                     <td>{reg.fecha ? new Date(`${reg.fecha}T00:00:00`).toLocaleDateString() : '—'}</td>
                     <td>{reg.curso_nombre || cursoNombre || '—'}</td>
                     <td>{reg.materia_nombre || materiaNombre || '—'}</td>

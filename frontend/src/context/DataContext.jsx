@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   getEstudiantes,
   getDocentes,
@@ -66,6 +66,12 @@ export function detectarNuevas(raw, conocidos) {
     nuevas.push(n);
   });
   return nuevas;
+}
+
+function registrarFallo(fallos, clave, err) {
+  fallos.push(clave);
+  console.error(`Error al cargar ${clave}:`, err);
+  return [];
 }
 
 function nombreCompleto(estudiante) {
@@ -160,8 +166,6 @@ export function DataProvider({ children }) {
   const [adminCursos, setAdminCursos] = useState([]);
   const [adminMaterias, setAdminMaterias] = useState([]);
   const [adminCursoMateria, setAdminCursoMateria] = useState([]);
-  const [eventosInstitucionales, setEventosInstitucionales] = useState([]);
-  const [suplencias, setSuplencias] = useState([]);
   // Parte 8: navegación desde notificaciones
   const [navIntent, setNavIntent] = useState(null);
   const hasLoadedRef = useRef(false);
@@ -181,38 +185,10 @@ export function DataProvider({ children }) {
 
   // Selector global de curso y materia para el panel docente
   const [selectedCursoId, setSelectedCursoId] = useState('');
+  const [selectedCursoNombre, setSelectedCursoNombre] = useState('');
   const [selectedMateria, setSelectedMateria] = useState('');
   const [selectedCursoMateriaId, setSelectedCursoMateriaId] = useState('');
 
-  // 5.6 — Multiselección de cursos. El header global pasó a ser un grupo de
-  // checkboxes de división, así que la selección son N cursos y no uno. Se
-  // guarda el **nombre** completo de cada curso (ej. ['3°1ª', '3°2ª']) y el
-  // `id_curso` de cada uno, porque las tablas filtran por nombre y los paneles
-  // por id.
-  const [selectedCursos, setSelectedCursos] = useState([]);
-  const [selectedCursoIds, setSelectedCursoIds] = useState([]);
-
-  // Mientras no se migren todas las vistas, `selectedCursoId` sigue siendo el
-  // primer curso de la selección. Es lo queallows que las vistas que todavía
-  // filtran por un curso solo sigan funcionando sin tocarlas.
-  const setSeleccionCursos = useCallback((nombres, ids) => {
-    const listaNombres = (Array.isArray(nombres) ? nombres : []).filter(Boolean);
-    const listaIds = (Array.isArray(ids) ? ids : []).filter((x) => x !== null && x !== undefined);
-    setSelectedCursos(listaNombres);
-    setSelectedCursoIds(listaIds.map(String));
-    setSelectedCursoId(listaIds.length > 0 ? String(listaIds[0]) : '');
-  }, []);
-
-  const clearSeleccionCursos = useCallback(() => {
-    setSelectedCursos([]);
-    setSelectedCursoIds([]);
-    setSelectedCursoId('');
-  }, []);
-
-  // 5.6 — Las vistas que aún fijan un solo curso (panel del Preceptor, navegación
-  // desde una notificación) pasan solo el `id_curso`. Para que los filtros por
-  // array no queden vacíos, ese curso se resuelve a nombre y se deja como
-  // selección de un único elemento.
   const nombreCursoDesdeId = useCallback((cursoId) => {
     if (cursoId === null || cursoId === undefined || cursoId === '') return '';
     const lista = data?.cursosObj;
@@ -221,23 +197,41 @@ export function DataProvider({ children }) {
     return c?.nombre_curso || '';
   }, [data]);
 
+  const nombreCurso = nombreCursoDesdeId(selectedCursoId) || selectedCursoNombre;
+  const selectedCursos = useMemo(() => (nombreCurso ? [nombreCurso] : []), [nombreCurso]);
+  const selectedCursoIds = useMemo(
+    () => (selectedCursoId === '' || selectedCursoId === null || selectedCursoId === undefined
+      ? []
+      : [String(selectedCursoId)]),
+    [selectedCursoId],
+  );
+
+  const setSeleccionCursos = useCallback((nombres, ids) => {
+    const listaNombres = (Array.isArray(nombres) ? nombres : []).filter(Boolean);
+    const listaIds = (Array.isArray(ids) ? ids : []).filter((x) => x !== null && x !== undefined);
+    const id = listaIds.length > 0 ? String(listaIds[0]) : '';
+    setSelectedCursoId(id);
+    setSelectedCursoNombre(listaNombres[0] || '');
+  }, []);
+
+  const clearSeleccionCursos = useCallback(() => {
+    setSelectedCursoId('');
+    setSelectedCursoNombre('');
+  }, []);
+
   const setSeleccionCursoMateria = useCallback((cursoId, materia, cursoMateriaId) => {
-    setSelectedCursoId(cursoId || '');
+    const id = cursoId === '' || cursoId === null || cursoId === undefined ? '' : String(cursoId);
+    setSelectedCursoId(id);
+    setSelectedCursoNombre(id ? nombreCursoDesdeId(id) : '');
     setSelectedMateria(materia || '');
     setSelectedCursoMateriaId(cursoMateriaId || '');
-    const nombre = nombreCursoDesdeId(cursoId);
-    setSelectedCursos(nombre ? [nombre] : []);
-    setSelectedCursoIds(cursoId === '' || cursoId === null || cursoId === undefined
-      ? []
-      : [String(cursoId)]);
   }, [nombreCursoDesdeId]);
 
   const clearSeleccionCursoMateria = useCallback(() => {
     setSelectedCursoId('');
+    setSelectedCursoNombre('');
     setSelectedMateria('');
     setSelectedCursoMateriaId('');
-    setSelectedCursos([]);
-    setSelectedCursoIds([]);
   }, []);
 
   // 5.1 — Materia pendiente de resolver por id. El backend emite la materia como
@@ -272,12 +266,8 @@ export function DataProvider({ children }) {
     const cursoMateriaId = p.cursoMateriaId ?? p.curso_materia_id ?? null;
 
     if (cursoResuelto !== '' && cursoResuelto !== null && cursoResuelto !== undefined) {
-      // 5.6 — Notificar desde una notificación marca una sola división, así que
-      // la selección pasa a ser de un único curso en los arrays también.
       setSelectedCursoId(String(cursoResuelto));
-      const nombreCurso = nombreCursoDesdeId(cursoResuelto);
-      setSelectedCursos(nombreCurso ? [nombreCurso] : []);
-      setSelectedCursoIds([String(cursoResuelto)]);
+      setSelectedCursoNombre(nombreCursoDesdeId(cursoResuelto));
     }
     if (cursoMateriaId) {
       setSelectedCursoMateriaId(String(cursoMateriaId));
@@ -328,6 +318,8 @@ export function DataProvider({ children }) {
     const generacion = generacionRef.current;
     const esGeneracionActual = () => generacion === generacionRef.current;
     cargadasRef.current.clear();
+    const fallos = [];
+    const cargar = (clave, promesa) => promesa.catch((err) => registrarFallo(fallos, clave, err));
     try {
       const [
         estudiantesRaw,
@@ -357,16 +349,13 @@ export function DataProvider({ children }) {
         suplenciasRaw,
         eventosInstitucionalesRaw,
       ] = await Promise.all([
-        getEstudiantes().catch(() => []),
-        getDocentes().catch(() => []),
-        getPreceptores().catch(() => []),
-        getCursos().catch(() => []),
-        getMaterias().catch(() => []),
-        getCursoMateria().catch((err) => {
-          console.error('Error fetching cursoMateria:', err);
-          return [];
-        }),
-        getCalificaciones().catch(() => []),
+        cargar('estudiantes', getEstudiantes()),
+        cargar('docentes', getDocentes()),
+        cargar('preceptores', getPreceptores()),
+        cargar('cursos', getCursos()),
+        cargar('materias', getMaterias()),
+        cargar('cursoMateria', getCursoMateria()),
+        cargar('calificaciones', getCalificaciones()),
         // La tabla completa de asistencias NO se descarga al inicio: es la
         // petición más pesada (toda la tabla, sin paginación ni filtros) y
         // ningún componente la consume desde el contexto global (los paneles
@@ -374,27 +363,28 @@ export function DataProvider({ children }) {
         // propios endpoints). Se deja la posición para no alterar el "map"
         // posicional del Promise.all.
         Promise.resolve([]),
-        getActas().catch(() => []),
-        getActaEstudiante().catch(() => []),
-        getActaCurso().catch(() => []),
-        getActaDocente().catch(() => []),
-        getHorarios().catch(() => []),
-        getModulos().catch(() => []),
-        getCiclosLectivos().catch(() => []),
-        getEstadosAsistencia().catch(() => []),
-        getNotificaciones().catch(() => []),
+        cargar('actas', getActas()),
+        cargar('actaEstudiante', getActaEstudiante()),
+        cargar('actaCurso', getActaCurso()),
+        cargar('actaDocente', getActaDocente()),
+        cargar('horarios', getHorarios()),
+        cargar('modulos', getModulos()),
+        cargar('ciclosLectivos', getCiclosLectivos()),
+        cargar('estadosAsistencia', getEstadosAsistencia()),
+        cargar('notificaciones', getNotificaciones()),
         Promise.resolve([]),
-        getPadresTutores().catch(() => []),
-        getPeriodos().catch(() => []),
-        getComunicados().catch(() => []),
-        getDiagnosticosGrupales().catch(() => []),
-        getPlanificaciones().catch(() => []),
-        getDirectivos().catch(() => []),
-        getSuplencias().catch(() => []),
+        cargar('padresTutores', getPadresTutores()),
+        cargar('periodos', getPeriodos()),
+        cargar('comunicados', getComunicados()),
+        cargar('diagnosticosGrupales', getDiagnosticosGrupales()),
+        cargar('planificaciones', getPlanificaciones()),
+        cargar('directivos', getDirectivos()),
+        cargar('suplencias', getSuplencias()),
         Promise.resolve([]),
       ]);
 
       if (!esGeneracionActual()) return;
+      setError(fallos.length > 0 ? `No se pudieron cargar: ${fallos.join(', ')}.` : null);
 
       const estudiantesPreCurso = (Array.isArray(estudiantesRaw) ? estudiantesRaw : []).map((a) => ({
         id: a.id_alumno,
@@ -552,7 +542,7 @@ export function DataProvider({ children }) {
         if (cm) {
           const mod = modulosPorId[h.id_modulo];
           if (mod) {
-            horariosClase[cm.materia_nombre] = `${String(mod.hora_inicio).slice(0, 5)} - ${String(mod.hora_fin).slice(0, 5)}`;
+            horariosClase[String(cm.id)] = `${String(mod.hora_inicio).slice(0, 5)} - ${String(mod.hora_fin).slice(0, 5)}`;
           }
         }
       });
@@ -830,7 +820,7 @@ export function DataProvider({ children }) {
       }));
       const mapSuplencias = suplenciasActivasEnFecha(suplencias);
 
-      const eventosInstitucionales = [];
+      const eventosInstitucionales = construirEventosInstitucionales(eventosInstitucionalesRaw);
 
       const notificaciones = (Array.isArray(notificacionesRaw) ? notificacionesRaw : []).map(normalizarNotificacion);
 
@@ -891,12 +881,11 @@ export function DataProvider({ children }) {
         },
         getEstudiantesByCurso: (curso) => estudiantes.filter((a) => a.curso === curso),
         getMateriasByCurso: (curso) => materiasPorCurso[curso] ?? [],
-        getHorarioClase: (materia) => horariosClase[materia] ?? '—',
+        getHorarioClase: (idCursoMateria) => horariosClase[String(idCursoMateria)] ?? '—',
         getActasByEstudianteId: (alumnoId) =>
           actasEstudiante
             .filter((a) => a.alumnoId === alumnoId)
             .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
-        refreshData: null,
       };
       dataRef.current = datos;
       setData(datos);
@@ -930,6 +919,9 @@ export function DataProvider({ children }) {
         })
         .catch((err) => {
           console.error(`Error al cargar ${clave}:`, err);
+          if (generacion === generacionRef.current) {
+            setError(`No se pudo cargar ${clave}.`);
+          }
         })
         .finally(() => {
           enCursoRef.current.delete(clave);
@@ -947,7 +939,9 @@ export function DataProvider({ children }) {
 
   const refreshAdminCursos = useCallback(async (incluirInactivos = false) => {
     const params = incluirInactivos ? { incluir_inactivos: 1 } : {};
-    const raw = await getCursos(params).catch(() => []);
+    const fallos = [];
+    const raw = await getCursos(params).catch((err) => registrarFallo(fallos, 'cursos', err));
+    setError(fallos.length > 0 ? `No se pudieron cargar: ${fallos.join(', ')}.` : null);
     const cursos = Array.isArray(raw) ? raw : [];
     
     // Ordenar cursos: 1°1, 1°2, 1°3, 2°1, 2°2, etc. (punto 4.2)
@@ -968,7 +962,9 @@ export function DataProvider({ children }) {
 
   const refreshAdminMaterias = useCallback(async (incluirInactivos = false) => {
     const params = incluirInactivos ? { incluir_inactivos: 1 } : {};
-    const raw = await getMaterias(params).catch(() => []);
+    const fallos = [];
+    const raw = await getMaterias(params).catch((err) => registrarFallo(fallos, 'materias', err));
+    setError(fallos.length > 0 ? `No se pudieron cargar: ${fallos.join(', ')}.` : null);
     setAdminMaterias(Array.isArray(raw) ? raw : []);
   }, []);
 
@@ -976,7 +972,9 @@ export function DataProvider({ children }) {
     if (!idCurso) { setAdminCursoMateria([]); return; }
     const params = { curso: idCurso };
     if (incluirInactivos) params.incluir_inactivos = 1;
-    const raw = await getCursoMateria(params).catch(() => []);
+    const fallos = [];
+    const raw = await getCursoMateria(params).catch((err) => registrarFallo(fallos, 'cursoMateria', err));
+    setError(fallos.length > 0 ? `No se pudieron cargar: ${fallos.join(', ')}.` : null);
     setAdminCursoMateria(Array.isArray(raw) ? raw : []);
   }, []);
 
@@ -993,12 +991,19 @@ export function DataProvider({ children }) {
      `horariosClase` y `notasDocenteAdmin` también dependen de catálogos, así que
      se recalculan para que no queden desactualizadas. */
   const refreshCatalogosMaestros = useCallback(async () => {
+    const fallos = [];
+    const cargarCatalogo = (clave, promesa) => promesa.catch((err) => {
+      registrarFallo(fallos, clave, err);
+      return null;
+    });
     const [ciclosRaw, modulosRaw, estadosRaw, periodosRaw] = await Promise.all([
-      getCiclosLectivos().catch(() => null),
-      getModulos().catch(() => null),
-      getEstadosAsistencia().catch(() => null),
-      getPeriodos().catch(() => null),
+      cargarCatalogo('ciclosLectivos', getCiclosLectivos()),
+      cargarCatalogo('modulos', getModulos()),
+      cargarCatalogo('estadosAsistencia', getEstadosAsistencia()),
+      cargarCatalogo('periodos', getPeriodos()),
     ]);
+
+    setError(fallos.length > 0 ? `No se pudieron actualizar: ${fallos.join(', ')}.` : null);
 
     // Un catálogo que falló se conserva tal como estaba: un error transitorio
     // no debe vaciar los selects de toda la aplicación.
@@ -1024,15 +1029,13 @@ export function DataProvider({ children }) {
           .sort((a, b) => (a.hora_inicio || '').localeCompare(b.hora_inicio || ''));
         siguiente.modulos = modulos;
 
-        // `horariosClase` mapea materia -> franja horaria; depende de los
-        // módulos, así que se recalcula con los nuevos.
         const modulosPorId = {};
         modulos.forEach((m) => { modulosPorId[m.id_modulo] = m; });
         const horariosClase = {};
         (prev.horarios || []).forEach((h) => {
           const mod = modulosPorId[h.id_modulo];
-          if (mod && h.materia_nombre) {
-            horariosClase[h.materia_nombre] =
+          if (mod && h.id_curso_materia !== null && h.id_curso_materia !== undefined) {
+            horariosClase[String(h.id_curso_materia)] =
               `${String(mod.hora_inicio).slice(0, 5)} - ${String(mod.hora_fin).slice(0, 5)}`;
           }
         });
@@ -1161,10 +1164,6 @@ export function DataProvider({ children }) {
     return () => clearInterval(intervalo);
   }, [actualizarData]);
 
-  if (data) {
-    data.refreshData = fetchData;
-  }
-
   return (
     <DataContext.Provider value={{
       data, loading, refreshing, error, refreshData: fetchData,
@@ -1179,15 +1178,12 @@ export function DataProvider({ children }) {
       nuevasNotificaciones,
       descartarNueva,
       campanaPulse,
-      // Eventos institucionales (para suspensión de clases)
-      eventosInstitucionales,
       // Selector global curso/materia
       selectedCursoId,
       selectedMateria,
       selectedCursoMateriaId,
       setSeleccionCursoMateria,
       clearSeleccionCursoMateria,
-      // 5.6 — Multiselección de cursos
       selectedCursos,
       selectedCursoIds,
       setSeleccionCursos,
@@ -1280,8 +1276,9 @@ export function useData() {
     };
   }
   return {
-    loading: false, refreshing: ctx.refreshing || false, error: null,
+    loading: false, refreshing: ctx.refreshing || false, error: ctx.error,
     ...ctx.data,
+    eventosInstitucionales: ctx.data.eventosInstitucionales ?? [],
     refreshData: ctx.refreshData,
     adminCursos: ctx.adminCursos,
     adminMaterias: ctx.adminMaterias,

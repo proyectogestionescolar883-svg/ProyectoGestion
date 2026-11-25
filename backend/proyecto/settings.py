@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'escuela',
 ]
@@ -63,8 +64,8 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'escuela.middleware.RolActivoMiddleware',
     'escuela.middleware.UsuarioEstadoProgramadoMiddleware',
+    'escuela.middleware.RolActivoMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -87,6 +88,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'proyecto.wsgi.application'
+ASGI_APPLICATION = 'proyecto.asgi.application'
 
 
 # Database
@@ -100,13 +102,17 @@ if not DB_PASSWORD:
     )
 
 DB_ENGINE = os.environ.get('DB_ENGINE', 'django.db.backends.mysql')
+ES_POSTGRES = DB_ENGINE == 'django.db.backends.postgresql'
 
-if DB_ENGINE == 'django.db.backends.postgresql':
+if ES_POSTGRES:
     DB_OPTIONS = {'sslmode': os.environ.get('DB_SSLMODE', 'require')}
     DB_DEFAULT_PORT = '5432'
 else:
     DB_OPTIONS = {'charset': 'utf8mb4'}
     DB_DEFAULT_PORT = '3306'
+
+DB_PORT = os.environ.get('DB_PORT', DB_DEFAULT_PORT)
+USA_POOLER = ES_POSTGRES and str(DB_PORT) == '6543'
 
 DATABASES = {
     'default': {
@@ -115,11 +121,11 @@ DATABASES = {
         'USER': os.environ.get('DB_USER', 'root'),
         'PASSWORD': DB_PASSWORD,
         'HOST': os.environ.get('DB_HOST', 'localhost'),
-        'PORT': os.environ.get('DB_PORT', DB_DEFAULT_PORT),
+        'PORT': DB_PORT,
         'OPTIONS': DB_OPTIONS,
         # Supabase expone el pooler en modo transacción (puerto 6543), que no
         # soporta cursores server-side entre sentencias: hay que desactivarlos.
-        **({'DISABLE_SERVER_SIDE_CURSORS': True} if DB_ENGINE == 'django.db.backends.postgresql' else {}),
+        **({'DISABLE_SERVER_SIDE_CURSORS': True} if USA_POOLER else {}),
         # Los modelos de `escuela` son managed=False y no tienen migraciones
         # que creen tablas: el test DB se llena de estructura con el runner
         # `escuela.test_runner.EscuelaDiscoverRunner`.
@@ -223,13 +229,28 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 # Cloudflare -> Nginx -> Gunicorn/Django
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+TRUST_X_FORWARDED_PROTO = os.environ.get('DJANGO_TRUST_X_FORWARDED_PROTO', 'false').strip().lower() == 'true'
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') if TRUST_X_FORWARDED_PROTO else None
 
 if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = 'DENY'
+    SECURE_SSL_REDIRECT = (
+        os.environ.get('DJANGO_SECURE_SSL_REDIRECT', 'true').strip().lower() == 'true'
+        and TRUST_X_FORWARDED_PROTO
+    )
+    SECURE_HSTS_SECONDS = int(
+        os.environ.get('DJANGO_HSTS_SECONDS', '31536000' if SECURE_SSL_REDIRECT else '0')
+    )
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = os.environ.get('DJANGO_HSTS_INCLUDE_SUBDOMAINS', 'false').strip().lower() == 'true'
+    SECURE_HSTS_PRELOAD = os.environ.get('DJANGO_HSTS_PRELOAD', 'false').strip().lower() == 'true'
+else:
+    SECURE_SSL_REDIRECT = False
+    SECURE_HSTS_SECONDS = 0
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
 
 # Django REST Framework
 REST_FRAMEWORK = {
@@ -239,6 +260,14 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'escuela.middleware.LoginRateThrottle',
+        'escuela.middleware.TokenRefreshRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'login': '5/min',
+        'refresh': '30/min',
+    },
 }
 
 
@@ -246,19 +275,20 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
 }
 
 
 # Backend de autenticación custom
-AUTHENTICATION_BACKENDS = [
-    'escuela.auth_backend.UsuarioBackend',
-    'django.contrib.auth.backends.ModelBackend',
-]
+AUTHENTICATION_BACKENDS = ['escuela.auth_backend.UsuarioBackend']
+if os.environ.get('DJANGO_ALLOW_MODEL_BACKEND', 'false').strip().lower() == 'true':
+    AUTHENTICATION_BACKENDS.append('django.contrib.auth.backends.ModelBackend')
 
 
 # El modelo UsuarioRol mapea la PK compuesta real (id_usuario, id_rol) de la
 # tabla `usuario_roles` (managed=False). Django la modela con primary_key=True
 # en una FK, lo que activa W342; es un falso positivo, por eso se silencia.
-SILENCED_SYSTEM_CHECKS = [
-    'fields.W342',
-]
+SILENCED_SYSTEM_CHECKS = []
+if os.environ.get('DJANGO_SILENCE_FIELDS_W342', 'false').strip().lower() == 'true':
+    SILENCED_SYSTEM_CHECKS.append('fields.W342')

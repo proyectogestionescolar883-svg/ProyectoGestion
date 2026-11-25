@@ -29,8 +29,6 @@ const PESTANAS = [
   { id: 'tipos-acta', etiqueta: 'Tipos de acta', Componente: TiposActa },
 ];
 
-export { PESTANAS };
-
 export default function Configuracion({ pestana, onPestanaChange }) {
   const activa = PESTANAS.find((p) => p.id === pestana) || PESTANAS[0];
   const Componente = activa.Componente;

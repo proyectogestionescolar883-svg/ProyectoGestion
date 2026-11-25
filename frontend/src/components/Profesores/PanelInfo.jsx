@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createDiagnosticoGrupal } from '../../services/api';
 import { hoy } from '../../utils/fechas';
 import { useData } from '../../context/DataContext';
@@ -10,18 +10,21 @@ function PanelInfo({ cursoId, docenteId, cursoNombre, puedeEditar = true }) {
   const toast = useToast();
   const [diagnostico, setDiagnostico] = useState('');
   const [guardando, setGuardando] = useState(false);
-  const [mensaje, setMensaje] = useState('');
+
+  useEffect(() => {
+    if (!puedeEditar) setDiagnostico('');
+  }, [puedeEditar]);
 
   const handleSubir = async () => {
+    if (!puedeEditar) return;
     if (!diagnostico.trim()) {
       toast.warning('Escribí un diagnóstico antes de guardar.');
       return;
     }
     setGuardando(true);
-    setMensaje('');
     try {
       await createDiagnosticoGrupal({
-        id_curso: cursoId,
+        id_curso: Number(cursoId),
         id_docente: docenteId,
         descripcion: diagnostico,
         fecha: hoy(),
@@ -56,12 +59,6 @@ function PanelInfo({ cursoId, docenteId, cursoNombre, puedeEditar = true }) {
         >
           <i className="fas fa-lock" style={{ marginRight: '8px' }} aria-hidden="true" />
           El diagnóstico del grupo es de solo lectura mientras exista una suplencia activa en las materias de este curso.
-        </p>
-      )}
-
-      {mensaje && (
-        <p style={{ color: mensaje.startsWith('Error') ? 'red' : 'green', margin: '8px 0' }}>
-          {mensaje}
         </p>
       )}
 

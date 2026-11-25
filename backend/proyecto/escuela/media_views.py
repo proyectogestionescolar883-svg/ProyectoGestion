@@ -4,6 +4,7 @@ from django.core.files.storage import default_storage
 from django.http import FileResponse, HttpResponse
 
 from escuela.storage import (
+    PROPOSITO_MEDIA,
     es_mime_adjunto,
     es_mime_inline,
     normalizar_ruta,
@@ -13,8 +14,18 @@ from escuela.storage import (
 
 
 def media_proxy(request, ruta):
-    if not verificar_firma(ruta, request.GET.get('exp'), request.GET.get('sig')):
+    usuario = request.GET.get('usr', '')
+    proposito = request.GET.get('fin') or PROPOSITO_MEDIA
+    if not usuario or not verificar_firma(
+        ruta,
+        request.GET.get('exp'),
+        request.GET.get('sig'),
+        usuario,
+        proposito,
+    ):
         return HttpResponse('Enlace inválido o expirado', status=403)
+    if not request.user.is_authenticated or getattr(request.user, 'username', None) != usuario:
+        return HttpResponse('Enlace inválido para este usuario', status=403)
     nombre = normalizar_ruta(ruta)
     if not nombre or not default_storage.exists(nombre):
         return HttpResponse('Archivo no encontrado', status=404)

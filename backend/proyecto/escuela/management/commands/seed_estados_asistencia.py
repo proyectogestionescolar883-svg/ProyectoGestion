@@ -13,9 +13,11 @@ Uso:
     python manage.py seed_estados_asistencia
 
 Es idempotente: se puede ejecutar tantas veces como haga falta. No duplica
-los estados que ya existen ni modifica los que ya estaban cargados. Además,
-la migración ``0008_seed_estados_asistencia`` ejecuta el mismo helper, de modo
-que un `migrate` normal también garantiza su existencia.
+los estados que ya existen ni modifica los que ya estaban cargados.
+
+Con `MIGRATION_MODULES={'escuela': None}`, `migrate` NO ejecuta la migración
+histórica 0008: la existencia de estos estados se garantiza ejecutando este
+comando explícitamente (o un receptor `post_migrate` que lo invoque).
 """
 
 from django.core.management.base import BaseCommand
@@ -35,7 +37,6 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self.stdout.write('Verificando estados de asistencia base...\n')
 
-        existentes_antes = self._nombres_existentes()
         creados = seed_estados_asistencia_base()
 
         faltan = [n for n in ESTADOS_ASISTENCIA_BASE if n not in self._nombres_existentes()]
@@ -55,7 +56,7 @@ class Command(BaseCommand):
         else:
             self.stdout.write('  No hizo falta crear nada: ya existían todos.')
 
-        self.stdout.write('\nEstados de asistencia base (total %d):' % len(existentes_antes))
+        self.stdout.write('\nEstados de asistencia base (total %d):' % len(self._nombres_existentes()))
         for nombre in ESTADOS_ASISTENCIA_BASE:
             self.stdout.write('  - %s' % nombre)
         self.stdout.write(self.style.SUCCESS('\nListo.'))

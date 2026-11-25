@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getRiteAcademico } from '../services/api';
+import { setRiteImpresionBloqueada } from '../utils/rite';
 
 // Obtiene las secciones adicionales del rite desde
 // /api/boletin-academico/<alumnoId>/.
@@ -17,8 +18,10 @@ export function useRiteAcademico(alumnoId) {
   const [recursadas, setRecursadas] = useState([]);
   const [previas, setPrevias] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
+    const clave = String(alumnoId || '');
     if (!alumnoId) {
       setIntensificaciones1c({});
       setBloqueos({});
@@ -26,10 +29,14 @@ export function useRiteAcademico(alumnoId) {
       setRecursadas([]);
       setPrevias([]);
       setLoading(false);
+      setError(null);
+      setRiteImpresionBloqueada(clave, false);
       return undefined;
     }
     let cancel = false;
     setLoading(true);
+    setError(null);
+    setRiteImpresionBloqueada(clave, false);
     getRiteAcademico(alumnoId)
       .then((res) => {
         if (cancel) return;
@@ -42,17 +49,15 @@ export function useRiteAcademico(alumnoId) {
       })
       .catch(() => {
         if (cancel) return;
-        setIntensificaciones1c({});
-        setBloqueos({});
-        setPosteriores([]);
-        setRecursadas([]);
-        setPrevias([]);
+        setError('No se pudieron cargar los datos académicos del RITE.');
+        setRiteImpresionBloqueada(clave, true);
       })
       .finally(() => {
         if (!cancel) setLoading(false);
       });
     return () => {
       cancel = true;
+      setRiteImpresionBloqueada(clave, false);
     };
   }, [alumnoId]);
 
@@ -63,5 +68,7 @@ export function useRiteAcademico(alumnoId) {
     recursadas,
     previas,
     loading,
+    error,
+    puedeImprimir: !error,
   };
 }

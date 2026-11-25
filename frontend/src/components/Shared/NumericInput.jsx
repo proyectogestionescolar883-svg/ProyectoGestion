@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { soloNumeros, validarNumero, formatearNumero } from '../../utils/numericValidation';
 
 export default function NumericInput({
@@ -22,6 +22,9 @@ export default function NumericInput({
   const [valorLocal, setValorLocal] = useState(() => formatearNumero(value));
   const [touched, setTouched] = useState(false);
   const [errorValidacion, setErrorValidacion] = useState(null);
+  const idGenerado = useId();
+  const inputId = id || idGenerado;
+  const errorId = `${inputId}-error`;
 
   // `valorLocal` se sembraba una sola vez, así que si el padre reseteaba el
   // formulario (cerrar y reabrir un modal) el input seguía mostrando el valor
@@ -54,12 +57,16 @@ export default function NumericInput({
   };
 
   const errorFinal = error || (touched ? errorValidacion : null);
+  const descritoPor = [rest['aria-describedby'], errorFinal ? errorId : null]
+    .filter(Boolean)
+    .join(' ') || undefined;
 
   return (
     <div className={`form-group-filter ${className}`}>
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={inputId}>{label}</label>
       <input
-        id={id}
+        {...rest}
+        id={inputId}
         type={type}
         inputMode={inputMode}
         value={valorLocal}
@@ -68,11 +75,10 @@ export default function NumericInput({
         disabled={disabled}
         placeholder={placeholder}
         aria-invalid={errorFinal ? 'true' : 'false'}
-        aria-describedby={errorFinal ? `${id}-error` : undefined}
-        {...rest}
+        aria-describedby={descritoPor}
       />
       {errorFinal && (
-        <span id={`${id}-error`} className="form-error-text" role="alert">
+        <span id={errorId} className="form-error-text" role="alert">
           {errorFinal}
         </span>
       )}

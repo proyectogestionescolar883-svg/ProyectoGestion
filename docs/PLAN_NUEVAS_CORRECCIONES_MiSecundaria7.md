@@ -1,5 +1,9 @@
 # PLAN DE NUEVAS CORRECCIONES — MiSecundaria7
 
+> **DOCUMENTO HISTÓRICO.** Registro de correcciones ya tratadas; no representa el
+> estado vigente del sistema. La documentación actual es `DOCUMENTACION_TECNICA.md`
+> y `REGLAS_DESARROLLO.md`.
+
 ## Reglas generales
 - No modificar la base de datos.
 - No ejecutar SQL.

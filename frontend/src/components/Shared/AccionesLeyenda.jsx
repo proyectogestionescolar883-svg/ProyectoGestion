@@ -1,13 +1,15 @@
+import { iconoAccion, nombreAccion } from './AccionesCelda';
+
 const ACCIONES = [
-  { id: 'editar', emoji: '✏️', label: 'Editar' },
-  { id: 'deshabilitar', emoji: '🚫', label: 'Deshabilitar' },
-  { id: 'programar', emoji: '🗓️', label: 'Programar' },
-  { id: 'eliminar', emoji: '🗑️', label: 'Eliminar' },
-  { id: 'habilitar', emoji: '✅', label: 'Habilitar' },
-  { id: 'finalizar', emoji: '🏁', label: 'Finalizar' },
-  { id: 'ver', emoji: '👁️', label: 'Ver' },
-  { id: 'descargar', emoji: '⬇️', label: 'Descargar' },
-  { id: 'verificar', emoji: '🔎', label: 'Verificar' },
+  { id: 'editar', emoji: '✏️' },
+  { id: 'deshabilitar', emoji: '🚫' },
+  { id: 'programar', emoji: '🗓️' },
+  { id: 'eliminar', emoji: '🗑️' },
+  { id: 'habilitar', emoji: '✅' },
+  { id: 'finalizar', emoji: '🏁' },
+  { id: 'ver', emoji: '👁️' },
+  { id: 'ddjj-descargar', emoji: '⬇️' },
+  { id: 'ddjj-verificar', emoji: '🔎' },
 ];
 
 function AccionesLeyenda({ acciones = [] }) {
@@ -18,7 +20,10 @@ function AccionesLeyenda({ acciones = [] }) {
     <div className="acciones-leyenda" aria-label="Leyenda de acciones">
       {items.map((item) => (
         <span key={item.id} className="acciones-leyenda-item">
-          <span className="acciones-leyenda-emoji" aria-hidden="true">{item.emoji}</span> {item.label}
+          <span className="acciones-leyenda-emoji" aria-hidden="true">
+            <i className={iconoAccion(item.id) || item.emoji} />
+          </span>{' '}
+          {nombreAccion(item.id)}
         </span>
       ))}
     </div>

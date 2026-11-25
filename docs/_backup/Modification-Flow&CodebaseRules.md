@@ -1,5 +1,7 @@
 # Modification Flow & Codebase Rules — MiSecundaria7
 
+> **DOCUMENTO HISTÓRICO (backup).** Reglas originales con MySQL; hoy rige `docs/REGLAS_DESARROLLO.md` (PostgreSQL/Supabase).
+
 > **Aplicación:** Monolito Django + React (Vite) · MySQL externo · `managed=False`
 > **Autoridad:** Este documento reemplaza cualquier supuesto previo. Seguir al pie de la letra.
 

@@ -1,5 +1,8 @@
 # AUDITORÍA — Base de Datos y Backend
 
+> **DOCUMENTO HISTÓRICO (backup).** Auditoría original sobre MySQL; hoy la
+> producción corre en PostgreSQL/Supabase. No es fuente de verdad vigente.
+
 > **Propósito:** Documento de auditoría completo del backend Django y la base de datos MySQL del sistema MiSecundaria 7. Cubre: reverse-engineering de la base de datos con `managed = False`, revisión de lógica de negocio en la capa backend, auditoría de permisos RBAC, y verificación de generación de PDFs con ReportLab.
 >
 > **Estado:** Análisis de código estático completado. Ejecución de auditoría (fases de testing) pendiente.

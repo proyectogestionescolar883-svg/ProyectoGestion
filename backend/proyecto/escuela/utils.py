@@ -277,18 +277,25 @@ def activar_o_crear(model_class, lookup, defaults):
     final reventaba con
     `TypeError: got multiple values for keyword argument 'activo'` (HTTP 500).
     """
+    manager = getattr(model_class, 'all_objects', model_class.objects)
     defaults = {k: v for k, v in defaults.items() if k != 'activo'}
     try:
-        existing = model_class.objects.filter(**lookup, activo=False).first()
+        existing = manager.filter(**lookup, activo=False).first()
         if existing:
             for k, v in defaults.items():
                 setattr(existing, k, v)
+            if hasattr(existing, 'estado'):
+                existing.estado = True
+            if hasattr(existing, 'eliminado'):
+                existing.eliminado = False
+            if hasattr(existing, 'fecha_eliminacion'):
+                existing.fecha_eliminacion = None
             existing.activo = True
             existing.save()
             return existing, True
     except AttributeError:
         pass
-    return model_class.objects.create(**lookup, **defaults, activo=True), False
+    return manager.create(**lookup, **defaults, activo=True), False
 
 
 def _deshabilita_tambien(instance):

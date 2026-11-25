@@ -9,7 +9,7 @@ function inicialesDesdeNombre(nombreCompleto, user) {
     const ini = `${(nombre || '').charAt(0)}${(apellido || '').charAt(0)}`.toUpperCase();
     if (ini.trim()) return ini;
   }
-  return user.username ? user.username.charAt(0).toUpperCase() : 'U';
+  return user?.username ? user.username.charAt(0).toUpperCase() : 'U';
 }
 
 function Header({
@@ -24,8 +24,8 @@ function Header({
   const { cursosObj, aniosLectivos } = useData();
 
   const iniciales = inicialesDesdeNombre(nombreCompleto, user);
-  const nombreMostrar = nombreCompleto || user.username || 'Usuario';
-  const rol = (user.role || 'ADMIN').toUpperCase();
+  const nombreMostrar = nombreCompleto || user?.username || 'Usuario';
+  const rol = (user?.role || 'ADMIN').toUpperCase();
 
   const anioLectivoLocal = anioLectivo || '';
   const cursoLocal = curso || '';
@@ -110,7 +110,7 @@ function Header({
               <option value="" disabled hidden>
                 Seleccioná año
               </option>
-              {aniosLectivos.map((anio) => (
+              {(aniosLectivos || []).map((anio) => (
                 <option key={anio} value={anio}>
                   {anio}
                 </option>

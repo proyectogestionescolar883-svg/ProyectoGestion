@@ -19,16 +19,22 @@ existentes con el valor por defecto del modelo (``estado = 1``). El relleno es
 clave: ``ActivoManager`` filtra ``estado=True``, así que sin él los registros
 ya cargados desaparecerían de los listados.
 
-``migrate escuela 0008`` la revierte (baja solo las columnas que agregó esta
-migración); en una base de producción es preferible dejar la migración
-aplicada.
+La reversión es no-op: esas columnas son parte del esquema soportado y bajarlas
+rompería los managers con borrado lógico.
 """
 from django.db import migrations
 
 from escuela import schema
 
-# Tablas que esta migración incorpora al borrado lógico.
 _TABLAS_NUEVAS = ('calificaciones', 'horarios', 'horarios_especiales')
+
+INVENTARIO = {
+    'columnas': tuple(
+        (tabla, columna)
+        for tabla, columna, *_ in schema.COLUMNAS
+        if tabla in _TABLAS_NUEVAS
+    ),
+}
 
 
 def _aplicar(apps, schema_editor):
@@ -38,24 +44,6 @@ def _aplicar(apps, schema_editor):
     )
 
 
-def _revertir(apps, schema_editor):
-    """Elimina SOLO las columnas que agregó esta migración.
-
-    Es la operación inversa simétrica y existe para poder deshacer la
-    migración en un entorno de pruebas. En producción es preferible dejar la
-    migración aplicada: perder columnas implicaría perder datos.
-    """
-    connection = schema_editor.connection
-    with connection.cursor() as cursor:
-        existentes = schema.tablas_de(cursor)
-        for tabla, columna, *_ in reversed(schema.COLUMNAS):
-            if tabla not in _TABLAS_NUEVAS or tabla not in existentes:
-                continue
-            if columna not in schema.columnas_de(cursor, tabla):
-                continue
-            cursor.execute(f'ALTER TABLE `{tabla}` DROP COLUMN `{columna}`')
-
-
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -63,5 +51,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(_aplicar, _revertir),
+        migrations.RunPython(_aplicar, migrations.RunPython.noop),
     ]

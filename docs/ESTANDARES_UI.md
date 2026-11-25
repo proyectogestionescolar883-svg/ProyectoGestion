@@ -1,8 +1,12 @@
-  # ESTÁNDARES UI — Guía oficial de diseño y desarrollo visual
+# ESTÁNDARES UI — Guía oficial de diseño y desarrollo visual
 
-  Este documento define el estándar exacto para toda la interfaz del proyecto. Cualquier IA o desarrollador que trabaje en el frontend debe seguirlo estrictamente para mantener la consistencia visual en todos los módulos y roles.
+> **Fuente de verdad visual:** `docs/VISUAL_STANDARD.md` (contratos de color,
+> tipografía, componentes y layout). Este documento es el detalle operativo
+> complementario; ante cualquier divergencia prevalece `VISUAL_STANDARD.md`.
 
-  ---
+Este documento define el estándar exacto para toda la interfaz del proyecto. Cualquier IA o desarrollador que trabaje en el frontend debe seguirlo estrictamente para mantener la consistencia visual en todos los módulos y roles.
+
+---
 
   ## Filosofía general del diseño
 

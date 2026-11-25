@@ -179,12 +179,20 @@ export default function RiteExtras({
   recursadas = [],
   previas = [],
   intensificaciones_posteriores = [],
-  loading,
+  loading = false,
 }) {
+  const tienePosteriores = Array.isArray(intensificaciones_posteriores) && intensificaciones_posteriores.length > 0;
+
   return (
     <div className="rite-extras mt-16">
       <SeccionPrevias previas={previas} />
       <SeccionRecursadas recursadas={recursadas} />
+      {loading && <p className="text-muted text-small mt-12">Cargando intensificaciones posteriores…</p>}
+      {tienePosteriores && (
+        <p className="text-muted text-small mt-12">
+          Intensificaciones posteriores registradas: {intensificaciones_posteriores.length}.
+        </p>
+      )}
 
       <p className="rite-nota">Prenota = 1.ª y 2.ª Valoración Preliminar</p>
     </div>

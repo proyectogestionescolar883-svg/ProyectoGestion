@@ -2,6 +2,8 @@
 .env.*
 !.env.example
 
+.venv/
+venv/
 __pycache__/
 *.py[cod]
 *.log
@@ -13,6 +15,8 @@ media/
 staticfiles/
 
 scripts_dev/
+*.sqlite3
+*.db
 
 .git/
 .gitignore

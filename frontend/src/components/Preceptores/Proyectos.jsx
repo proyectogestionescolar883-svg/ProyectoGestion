@@ -3,9 +3,6 @@ import { useData } from '../../context/DataContext';
 import EmptyFiltros from './EmptyFiltros';
 import { filtrosCompletos } from './preceptorUtils';
 import { buildMediaUrl } from '../../utils/medios';
-import { BASE_URL } from '../../services/api';
-
-const API_BASE = BASE_URL;
 
 function formatFecha(value) {
   if (!value) return '—';
@@ -29,10 +26,12 @@ function Proyectos({ anioLectivo, curso }) {
   const filtrosOk = filtrosCompletos(anioLectivo, curso);
 
   const cursoId = useMemo(() => {
-    if (!curso) return null;
-    const c = (cursosObj || []).find((x) => x.nombre_curso === curso);
+    if (!curso || !anioLectivo) return null;
+    const c = (cursosObj || []).find(
+      (x) => x.nombre_curso === curso && Number(x.ciclo_anio) === Number(anioLectivo),
+    );
     return c?.id_curso || null;
-  }, [curso, cursosObj]);
+  }, [curso, anioLectivo, cursosObj]);
 
   const docentesPorId = useMemo(() => {
     const mapa = {};

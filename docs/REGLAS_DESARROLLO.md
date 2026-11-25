@@ -14,11 +14,13 @@
 
 1.1. **El frontend es una app React con Vite (no CRA).** No migrar a otro framework. No instalar librerías externas de UI (Material UI, Chakra, Bootstrap, Tailwind, etc.). Todo el estilo está en `frontend/src/index.css` (~2350 líneas). No hay CSS modules, styled-components, ni librerías CSS de ningún tipo.
 
-1.2. **La base de datos es preexistente y externa (MySQL 8+).** Todas las tablas tienen `managed = False`. Django NUNCA debe crear, modificar ni eliminar tablas. No ejecutar `makemigrations` ni `migrate`.
+1.2. **La base de datos es externa y corre en PostgreSQL (Supabase).** El volcado MySQL/MariaDB es histórico. Todas las tablas tienen `managed = False` y `MIGRATION_MODULES` desactiva las migraciones de `escuela`: Django NUNCA debe crear, modificar ni eliminar tablas con `makemigrations`/`migrate`. El esquema se declara en `escuela/schema.py` y se aplica con `verificar_esquema --aplicar`.
 
 1.3. **El proyecto usa español en TODO el código.** Nombres de componentes, variables, endpoints, strings visibles, comentarios, nombres de archivos — siempre en español. No mezclar inglés y español.
 
-1.4. **La BD real tiene prioridad absoluta sobre cualquier archivo SQL de referencia.** El archivo `estructura base de datos/sistema_escolar.sql` es solo una referencia visual, NO es la fuente de verdad. La fuente de verdad es la base de datos MySQL en ejecución. Nunca asumir que un campo existe porque aparece en el SQL de referencia; siempre verificar contra MySQL.
+1.4. **La BD real + `escuela/schema.py` tienen prioridad absoluta sobre cualquier volcado SQL histórico.** `estructura base de datos/sistema_escolar.sql` y `deploy/sql/sistema_escolar.mariadb.sql` son referencias visuales, NO la fuente de verdad. Nunca asumir que un campo existe porque aparece en ellos; verificar con `verificar_esquema` o contra la BD de Supabase.
+
+1.5. **Estado actual verificado (2026-11-24):** 57 modelos en `models.py` (1708 líneas), 58 serializers en `serializers.py` (3627 líneas), 53 ViewSets en `views.py` (8689 líneas) y 53 `router.register` en `urls.py`. Son 7 roles: `admin`, `director`, `docente`, `preceptor`, `jefe_preceptores`, `alumno`, `familia`. El selector global es de **un solo curso** (Año lectivo → Año → División); no reintroducir multiselección ni selectores propios por vista.
 
 ---
 
@@ -203,7 +205,7 @@ Cada paso debe completarse antes de pasar al siguiente. No saltar pasos.
 
 3.3.1. **No modificar código que funciona.** Si el código cumple su función y no hay bug reportado, no refactorizar. No "mejorar" código que ya funciona correctamente.
 
-3.3.2. **Verificar la estructura real de MySQL antes de modificar modelos.** La BD real es la fuente de verdad. No confiar en el SQL de referencia ni asumir campos.
+3.3.2. **Verificar la estructura real de PostgreSQL/Supabase antes de modificar modelos.** La BD real y `schema.py` son la fuente de verdad. No confiar en el SQL histórico ni asumir campos.
 
 3.3.3. **Verificar que el sidebar filtre correctamente por rol.** No mostrar opciones que el rol no pueda usar.
 
@@ -406,10 +408,10 @@ Si durante una modificación se detecta que una palabra en inglés es **técnica
 ### 10.1. Estructura general
 
 10.1.1. El backend es un proyecto Django con una sola app (`escuela`). Los archivos clave son:
-  - `models.py` — 21 modelos Django (~647 líneas)
-  - `serializers.py` — Todos los serializers (~1540 líneas)
-  - `views.py` — Todos los viewsets y vistas (~1881 líneas)
-  - `urls.py` — Rutas (usa DefaultRouter)
+  - `models.py` — 57 modelos Django, `managed=False` (1708 líneas)
+  - `serializers.py` — 58 serializers (3627 líneas)
+  - `views.py` — 53 ViewSets y funciones auxiliares (8689 líneas)
+  - `urls.py` — 53 rutas `router.register` + endpoints sueltos (usa DefaultRouter)
   - `permissions.py` — Lógica de permisos por rol
   - `auth_backend.py` — Backend de autenticación custom para tabla `usuarios`
 
@@ -443,7 +445,7 @@ Si durante una modificación se detecta que una palabra en inglés es **técnica
 
   Antes de agregar, modificar o eliminar un campo en un modelo, verificar TODAS estas capas:
 
-  1. **Base de datos real (MySQL):** Verificar que la columna existe en la tabla real. `DESCRIBE <tabla>;` o `SHOW COLUMNS FROM <tabla>;`. El SQL de referencia en `/estructura base de datos/` puede estar desactualizado. La BD real es la fuente de verdad.
+  1. **Base de datos real (PostgreSQL/Supabase):** Verificar que la columna existe con `\d+ <tabla>`, `information_schema.columns` o `verificar_esquema`. Los volcados en `/estructura base de datos/` y `deploy/sql/` son históricos. La BD real y `schema.py` son la fuente de verdad.
 
   2. **Serializer:** Actualizar `Meta.fields` y `SerializerMethodField` si es necesario. Verificar que el serializer de lectura y el de escritura estén sincronizados.
 
@@ -459,7 +461,7 @@ Si durante una modificación se detecta que una palabra en inglés es **técnica
 
   8. **api.js:** Si el cambio afecta la estructura de respuesta, actualizar la función correspondiente.
 
-10.2.9. **Nunca agregar nuevos modelos sin verificar que la tabla ya existe en la BD real MySQL.** Si la tabla no existe, no se puede agregar sin coordinación con el administrador de la BD.
+10.2.9. **Nunca agregar nuevos modelos sin verificar que la tabla ya existe en la BD real PostgreSQL/Supabase.** Si la tabla no existe, no se puede agregar sin coordinación con el administrador de la BD y sin declararla en `schema.py`.
 
 ### 10.3. Serializers (`serializers.py`)
 
@@ -502,7 +504,7 @@ Si durante una modificación se detecta que una palabra en inglés es **técnica
 
 10.4.8. Para obtener el usuario/rol actual se usa `request.user` y el helper `get_role_or_none(request)`.
 
-10.4.9. Roles: `admin` = 1, `director` = 1, `preceptor` = 2, `docente` = 3, `alumno` = 4, `familia` = 5.
+10.4.9. Roles (IDs de la tabla `roles`, ver `REFERENCIA_BD.md` §2): `admin` = 1, `docente` = 2, `preceptor` = 3, `familia` = 4, `alumno` = 5, `director` = 6, `jefe_preceptores` = 7.
 
 10.4.10. Los viewsets de administración suelen tener permisos `IsAdminOrDirector`. Los de preceptores `IsPreceptorOrAdmin`. Los de docentes `IsDocenteOrAdmin`. Los de estudiantes/familia suelen tener permisos más restrictivos.
 
@@ -624,7 +626,7 @@ Si durante una modificación se detecta que una palabra en inglés es **técnica
 
 11.4.3. El rol del usuario se determina del objeto `user` retornado por la API (`user.role` o `user.roles[0]`).
 
-11.4.4. Roles: `admin`/`director`, `preceptor`, `docente`, `alumno`, `familia`.
+11.4.4. Roles: `admin`, `director`, `preceptor`, `jefe_preceptores`, `docente`, `alumno`, `familia`.
 
 11.4.5. **No modificar la estructura del `user` en AuthContext sin actualizar todos los dashboards que lo consumen.**
 
@@ -685,7 +687,7 @@ Si durante una modificación se detecta que una palabra en inglés es **técnica
 
 ### 12.1. `managed = False` en TODOS los modelos
 
-12.1.1. El esquema de la BD se gestiona externamente (por DBA o por migraciones manuales en MySQL). Django nunca debe crear, modificar ni eliminar tablas.
+12.1.1. El esquema de la BD se gestiona externamente (por DBA) y se declara en `escuela/schema.py`; Django nunca debe crear, modificar ni eliminar tablas con `migrate`.
 
 12.1.2. **No ejecutar `python manage.py makemigrations` ni `python manage.py migrate`.** No tienen efecto (por `managed=False`) pero podrían causar conflictos o crear archivos de migración que no deben existir.
 
@@ -693,15 +695,15 @@ Si durante una modificación se detecta que una palabra en inglés es **técnica
 
 12.2.1. **🔥 REGLA ABSOLUTA:** El archivo `estructura base de datos/sistema_escolar.sql` es solo una referencia visual. Puede estar desactualizado, incompleto o ser incorrecto.
 
-12.2.2. **Nunca asumir que un campo existe porque aparece en el SQL de referencia.** Siempre verificar contra la base de datos real MySQL.
+12.2.2. **Nunca asumir que un campo existe porque aparece en el SQL histórico.** Siempre verificar con `verificar_esquema` o contra la base PostgreSQL/Supabase real.
 
-12.2.3. **Antes de modificar un modelo Django, verificar la estructura real de MySQL primero.** Usar `DESCRIBE <tabla>;` o `SHOW COLUMNS FROM <tabla>;`.
+12.2.3. **Antes de modificar un modelo Django, verificar la estructura real de PostgreSQL primero.** Usar `\d+ <tabla>`, `information_schema.columns` o `verificar_esquema`.
 
 12.2.4. **Si hay discrepancia entre el modelo Django y la BD real, la BD real tiene razón.** Actualizar el modelo Django para reflejar la BD real.
 
 ### 12.3. Para agregar un nuevo modelo
 
-12.3.1. Verificar que la tabla ya existe en la base de datos MySQL externa.
+12.3.1. Verificar que la tabla ya existe en la base de datos PostgreSQL/Supabase externa y que su columna esté declarada en `schema.py`.
 
 12.3.2. Si la tabla no existe, no se puede agregar sin coordinación con el administrador de la BD. No crear tablas desde Django.
 
@@ -721,7 +723,7 @@ Si durante una modificación se detecta que una palabra en inglés es **técnica
 
 ### 13.1. Backend (orden estricto)
 
-1. **Verificar que la tabla existe** en la BD externa MySQL (no confiar en el SQL de referencia).
+1. **Verificar que la tabla existe** en la BD externa PostgreSQL/Supabase (no confiar en el SQL histórico).
 2. **Agregar el modelo** en `models.py`:
    - `managed = False`
    - `db_table = '<tabla_existente>'`
@@ -926,10 +928,11 @@ Esto incluye:
 
 | Rol | Sidebar items | Acciones de escritura |
 |-----|--------------|----------------------|
-| Admin/Director | Todos | CRUD completo en todo |
+| Admin / Director | Todos | CRUD completo en todo |
+| Jefe de Preceptores | Supervisión y administración de preceptores | Gestión de preceptores; sin Asignación de Cursos |
 | Preceptor | Perfil, Estudiantes, Docentes, Horarios, Asistencias, Notas, Actas, Comunicados | Gestión de cursos asignados |
 | Docente | Perfil, Estudiantes, Info, Proyectos, Actividades, Asistencia, Comunicados | Solo de sus materias |
-| Estudiante | Perfil, Calificaciones, Asistencias, Actividades, Horarios, Comunicados | Solo lectura |
+| Alumno | Perfil, Calificaciones, Asistencias, Actividades, Horarios, Comunicados | Solo lectura |
 | Familia | Perfil, Resumen, Calificaciones, Asistencias, Actas, Horarios, Actividades, Comunicados | Solo lectura de datos de sus hijos |
 
 ---
@@ -1068,7 +1071,7 @@ fix(login): corregir mensaje de error cuando usuario está inhabilitado
 | 11 | Poner `<select>` sin value inicial controlado | Olvido | Siempre usar `value={state} onChange={handler}` |
 | 12 | Hacer fetch en un componente en lugar de DataContext | Desconocimiento | DataContext carga todo al inicio |
 | 13 | **Duplicar funciones en api.js** | No buscar antes de crear | Buscar función existente antes de agregar |
-| 14 | **Modificar modelos sin verificar MySQL** | Confiar en SQL de referencia | Verificar estructura real con `DESCRIBE tabla;` |
+| 14 | **Modificar modelos sin verificar PostgreSQL/Supabase** | Confiar en volcados históricos | Verificar con `verificar_esquema` o `\d+ tabla` |
 | 15 | **Asumir columnas que no existen en ciertos modelos** | Confundir campos entre modelos | Verificar el modelo exacto (`correo` no existe en Estudiante) |
 | 16 | **Romper DataContext al cambiar estructura de respuesta** | No actualizar la transformación | Si cambia el backend, actualizar `fetchData()` |
 | 17 | **Cambiar endpoints innecesariamente** | "Mejorar" sin razón | No cambiar lo que funciona |
@@ -1096,7 +1099,7 @@ fix(login): corregir mensaje de error cuando usuario está inhabilitado
 ### Backend
 - [ ] **No estoy creando** un nuevo archivo Python donde no debe ir.
 - [ ] **No estoy agregando** un nuevo modelo sin `managed=False`.
-- [ ] **Verifiqué la estructura real de MySQL** antes de modificar un modelo (no confiar en SQL de referencia).
+- [ ] **Verifiqué la estructura real de PostgreSQL/Supabase** antes de modificar un modelo (no confiar en volcados históricos).
 - [ ] **Verifiqué campos de cada modelo** (`correo` no existe en Estudiante, `fecha_nacimiento` solo en Estudiante, etc.).
 - [ ] **Actualicé serializer, viewset, y urls** si modifiqué el modelo.
 
@@ -1137,7 +1140,7 @@ fix(login): corregir mensaje de error cuando usuario está inhabilitado
 - [ ] Probé los endpoints modificados con curl, Postman, o directamente desde el frontend.
 - [ ] No hay errores 500 ni 400 inesperados en las respuestas.
 - [ ] Los permisos funcionan correctamente para cada rol que usa el endpoint.
-- [ ] Si modifiqué modelos: la estructura coincide con MySQL real (`DESCRIBE <tabla>;`).
+- [ ] Si modifiqué modelos: la estructura coincide con PostgreSQL/Supabase real (`verificar_esquema` / `\d+ <tabla>`).
 - [ ] Si modifiqué serializers: los campos devueltos coinciden con lo que espera el frontend.
 - [ ] Si modifiqué la generación de PDF: el PDF se genera correctamente y se puede descargar.
 
@@ -1172,11 +1175,13 @@ fix(login): corregir mensaje de error cuando usuario está inhabilitado
 
 | Rol | Backend ID | Nivel | Permisos |
 |-----|-----------|-------|----------|
-| Admin / Director | 1 | Total | Acceso total a todo. CRUD completo en todas las entidades. |
-| Preceptor | 2 | Medio-Alto | Gestión de cursos asignados, asistencias, actas, comunicados, calificaciones. |
-| Docente | 3 | Medio | Gestión de calificaciones, asistencias, planificaciones, diagnósticos — solo de sus materias asignadas. |
-| Estudiante | 4 | Bajo (solo lectura) | Vista de sus propias calificaciones, asistencias, horarios, comunicados, actividades. |
-| Familia | 5 | Bajo (solo lectura) | Vista de datos de sus hijos (estudiantes asociados al tutor). Misma información que Estudiante pero agrupada por hijo. |
+| Admin | 1 | Total | Acceso total a todo. CRUD completo en todas las entidades. |
+| Docente | 2 | Medio | Gestión de calificaciones, asistencias, planificaciones, diagnósticos — solo de sus materias asignadas. |
+| Preceptor | 3 | Medio-Alto | Gestión de cursos asignados, asistencias, actas, comunicados, calificaciones. |
+| Familia | 4 | Bajo (solo lectura) | Vista de datos de sus hijos (alumnos asociados al tutor), agrupada por hijo. |
+| Alumno | 5 | Bajo (solo lectura) | Vista de sus propias calificaciones, asistencias, horarios, comunicados, actividades. |
+| Director | 6 | Total | Acceso total a todo, como Admin. |
+| Jefe de Preceptores | 7 | Medio-Alto | Supervisión y administración de preceptores; sin asignación de cursos. |
 
 ---
 
@@ -1200,8 +1205,8 @@ fix(login): corregir mensaje de error cuando usuario está inhabilitado
 ### "La BD real no coincide con el modelo Django"
 → La BD real tiene razón. Actualizar el modelo Django para reflejar la BD real. La BD es la fuente de verdad absoluta.
 
-### "El SQL de referencia dice una cosa pero MySQL dice otra"
-→ MySQL tiene razón. El SQL de referencia puede estar desactualizado. Ignorar el SQL de referencia y usar la estructura real de MySQL.
+### "El volcado histórico dice una cosa pero PostgreSQL/Supabase dice otra"
+→ La BD real y `escuela/schema.py` tienen razón. Los volcados MySQL/MariaDB son históricos: ignorarlos y usar `verificar_esquema`.
 
 ---
 
@@ -1209,11 +1214,11 @@ fix(login): corregir mensaje de error cuando usuario está inhabilitado
 
 | Archivo | Líneas | Propósito |
 |---------|--------|-----------|
-| `backend/proyecto/escuela/models.py` | ~647 | 21 modelos Django (managed=False) |
-| `backend/proyecto/escuela/serializers.py` | ~1540 | Serializers DRF (~40 serializers) |
-| `backend/proyecto/escuela/views.py` | ~1881 | Viewsets DRF (~19 ViewSets + funciones) |
-| `backend/proyecto/escuela/urls.py` | ~60 | Rutas API (DefaultRouter + urlpatterns) |
-| `backend/proyecto/escuela/permissions.py` | ~150 | Permisos por rol (5 clases) |
+| `backend/proyecto/escuela/models.py` | 1708 | 57 modelos Django (managed=False) |
+| `backend/proyecto/escuela/serializers.py` | 3627 | 58 serializers DRF |
+| `backend/proyecto/escuela/views.py` | 8689 | 53 ViewSets + funciones auxiliares |
+| `backend/proyecto/escuela/urls.py` | ~75 | 53 rutas `router.register` + endpoints sueltos |
+| `backend/proyecto/escuela/permissions.py` | ~150 | Permisos por rol (7 roles) |
 | `backend/proyecto/escuela/auth_backend.py` | ~80 | Backend de autenticación custom |
 | `frontend/src/services/api.js` | ~519 | Funciones API (~50 funciones) |
 | `frontend/src/context/DataContext.jsx` | ~702 | Estado global (26 llamadas paralelas) |

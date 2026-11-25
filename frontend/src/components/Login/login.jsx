@@ -32,6 +32,7 @@ function Login() {
         err.response?.data?.error ||
         err.response?.data?.detail ||
         'Credenciales incorrectas.';
+      setError(msg);
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -52,7 +53,7 @@ function Login() {
         <p>Ingresa tus credenciales para acceder</p>
 
         {error && (
-          <div className="error-message">
+          <div className="error-message" role="alert">
             {error}
           </div>
         )}
@@ -63,7 +64,8 @@ function Login() {
             <input
               id="username"
               type="text"
-              placeholder="Ej: admin_test"
+              autoComplete="username"
+              placeholder="Usuario"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
@@ -76,7 +78,8 @@ function Login() {
               <input
                 id="password"
                 type={mostrarContrasena ? 'text' : 'password'}
-                placeholder="Ingrese su contraseña"
+                autoComplete="current-password"
+                placeholder="Contrasena"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required

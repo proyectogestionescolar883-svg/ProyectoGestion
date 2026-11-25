@@ -15,7 +15,6 @@ import {
   deleteActaCurso,
   getTiposActa,
   uploadFile,
-  BASE_URL,
 } from '../../services/api';
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import FormModal from '../Shared/FormModal';
@@ -23,20 +22,17 @@ import FilePicker from '../Shared/FilePicker';
 import { useToast } from '../../context/ToastContext';
 import { mensajeErrorAmigable } from '../../utils/errores';
 
-const API_BASE = BASE_URL;
-
 async function resolverTipoActa() {
-  try {
-    const tipos = await getTiposActa();
-    const porNombre = (tipos || []).find(
-      (t) => (t.nombre_tipo || '').toLowerCase().includes('evaluaci'),
-    );
-    const tipo = porNombre || (tipos || [])[0];
-    if (tipo && tipo.id_tipo_acta != null) return tipo.id_tipo_acta;
-  } catch {
-    // fallback: mantiene el comportamiento previo
+  const tipos = await getTiposActa();
+  const lista = Array.isArray(tipos) ? tipos : [];
+  const porNombre = lista.find(
+    (t) => (t.nombre_tipo || '').toLowerCase().includes('evaluaci'),
+  );
+  const tipo = porNombre || lista[0];
+  if (!tipo || tipo.id_tipo_acta == null) {
+    throw new Error('No hay tipos de acta registrados. No se puede guardar el acta.');
   }
-  return 1;
+  return tipo.id_tipo_acta;
 }
 
 const formVacio = { tipo: '', titulo: '', fecha: '', descripcion: '', alumnoId: '', docenteId: '' };
@@ -174,7 +170,8 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
 
   const canEditActa = (acta) => {
     if (esAdminODirector) return true;
-    return acta.id_usuario_creador != null && acta.id_usuario_creador === user?.id;
+    return acta.id_usuario_creador != null && user?.id != null
+      && String(acta.id_usuario_creador) === String(user.id);
   };
 
   const [showNewForm, setShowNewForm] = useState(false);
@@ -209,45 +206,59 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
 
   // Actas de docentes cargadas hacia este docente (él es el sujeto del acta)
   const misActasDeDocente = useMemo(() => {
+    if (docenteId == null) return [];
     return (Array.isArray(actasDocente) ? actasDocente : []).filter(
-      (a) => Number(a.docenteId) === Number(docenteId),
+      (a) => a.docenteId != null && String(a.docenteId) === String(docenteId),
     );
   }, [actasDocente, docenteId]);
 
   // Filtrar actas creadas por este docente
-  const misActasEstudiante = useMemo(() => 
-    actasEstudiante.filter((a) => a.id_usuario_creador === user?.id),
-  [actasEstudiante, user]);
+  const misActasEstudiante = useMemo(() => {
+    if (user?.id == null) return [];
+    return (Array.isArray(actasEstudiante) ? actasEstudiante : []).filter(
+      (a) => a.id_usuario_creador != null && String(a.id_usuario_creador) === String(user.id),
+    );
+  }, [actasEstudiante, user]);
 
-  const misActasCurso = useMemo(() => 
-    actasCurso.filter((a) => a.id_usuario_creador === user?.id),
-  [actasCurso, user]);
+  const misActasCurso = useMemo(() => {
+    if (user?.id == null) return [];
+    return (Array.isArray(actasCurso) ? actasCurso : []).filter(
+      (a) => a.id_usuario_creador != null && String(a.id_usuario_creador) === String(user.id),
+    );
+  }, [actasCurso, user]);
 
   // Estudiantes de los cursos del docente
   const listaEstudiantes = useMemo(() => {
-    if (!cursoId) return [];
-    return estudiantes.filter((a) => Number(a.id_curso) === Number(cursoId));
+    if (cursoId == null) return [];
+    return (Array.isArray(estudiantes) ? estudiantes : []).filter(
+      (a) => a.id_curso != null && String(a.id_curso) === String(cursoId),
+    );
   }, [estudiantes, cursoId]);
 
   const estudianteActas = useMemo(() => {
     const map = {};
     misActasEstudiante.forEach((a) => {
-      const estudiante = listaEstudiantes.find((al) => al.id === a.alumnoId);
+      const estudiante = listaEstudiantes.find(
+        (al) => al.id != null && a.alumnoId != null && String(al.id) === String(a.alumnoId),
+      );
       if (estudiante) {
-        if (!map[a.alumnoId]) map[a.alumnoId] = [];
-        map[a.alumnoId].push(a);
+        const clave = String(a.alumnoId);
+        if (!map[clave]) map[clave] = [];
+        map[clave].push(a);
       }
     });
     return map;
   }, [misActasEstudiante, listaEstudiantes]);
 
   const actasDelCurso = useMemo(() => {
-    if (!cursoId) return [];
-    const estudianteActaIds = new Set(misActasEstudiante.map((a) => a.actaId));
+    if (cursoId == null) return [];
+    const estudianteActaIds = new Set(misActasEstudiante.map((a) => String(a.actaId)));
     return misActasCurso.filter((a) => {
-      if (estudianteActaIds.has(a.actaId)) return false;
-      const cursoObj = cursosObj.find((c) => c.id_curso === Number(cursoId));
-      return cursoObj && a.curso === cursoObj.nombre_curso;
+      if (estudianteActaIds.has(String(a.actaId))) return false;
+      const cursoObj = cursosObj.find(
+        (c) => c.id_curso != null && String(c.id_curso) === String(cursoId),
+      );
+      return cursoObj && String(a.curso) === String(cursoObj.nombre_curso);
     });
   }, [misActasCurso, misActasEstudiante, cursosObj, cursoId]);
 
@@ -258,6 +269,7 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
     setArchivo(null);
     setRemoveArchivo(false);
     setMensaje('');
+    setActaResaltada(null);
   };
 
   const abrirNuevo = () => {
@@ -274,13 +286,15 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
   };
 
   const guardarActa = async (payload) => {
-    const cObj = cursosObj.find((c) => c.id_curso === Number(cursoId));
+    const cObj = cursosObj.find(
+      (c) => c.id_curso != null && String(c.id_curso) === String(cursoId),
+    );
+    const idTipoActa = await resolverTipoActa();
     let rutaArchivo;
     if (archivo) {
       const uploaded = await uploadFile(archivo, 'actas');
       rutaArchivo = uploaded.url;
     }
-    const idTipoActa = await resolverTipoActa();
     const actaPayload = {
       titulo: payload.titulo,
       fecha: payload.fecha,
@@ -292,6 +306,9 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
     const acta = await createActa(actaPayload);
     if (acta?.id_acta && cObj) {
       if (payload.tipo === 'alumno') {
+        if (payload.alumnoId == null || payload.alumnoId === '') {
+          throw new Error('No se pudo identificar el estudiante del acta.');
+        }
         await createActaEstudiante({ id_acta: acta.id_acta, id_alumno: Number(payload.alumnoId) });
       } else if (payload.tipo === 'curso') {
         await createActaCurso({ id_acta: acta.id_acta, id_curso: cObj.id_curso });
@@ -366,6 +383,12 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
     }
   }, [navIntent, misActasEstudiante, misActasCurso, misActasDeDocente, startEdit]);
 
+  useEffect(() => {
+    if (!actaResaltada) return undefined;
+    const timer = setTimeout(() => setActaResaltada(null), 8000);
+    return () => clearTimeout(timer);
+  }, [actaResaltada]);
+
   const handleUpdate = async (e) => {
     e.preventDefault();
     if (!formData.titulo || !formData.fecha) {
@@ -419,7 +442,9 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
     });
   };
 
-  const cursoObj = cursosObj.find((c) => c.id_curso === Number(cursoId));
+  const cursoObj = cursosObj.find(
+    (c) => c.id_curso != null && String(c.id_curso) === String(cursoId),
+  );
   const cursoNombre = cursoObj?.nombre_curso || '';
 
   return (
@@ -448,12 +473,6 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
         />
       )}
 
-      {mensaje && !editando && !showNewForm && (
-        <div className={`alert ${mensaje.startsWith('Error') ? 'alert-danger' : 'alert-success'}`}>
-          {mensaje}
-        </div>
-      )}
-
       {showNewForm && cursoId && (
         <FormActa
           formData={formData}
@@ -469,6 +488,7 @@ function ActasDocente({ docenteId, cursoId, materiaSeleccionada, misAsignaciones
           removeArchivo={removeArchivo}
           setRemoveArchivo={setRemoveArchivo}
           mensaje={!editando ? mensaje : ''}
+          setMensaje={setMensaje}
         />
       )}
 

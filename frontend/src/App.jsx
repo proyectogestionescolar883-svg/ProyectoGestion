@@ -11,6 +11,25 @@ import { useAuth } from './context/AuthContext';
 import { DataProvider, useData } from './context/DataContext';
 import NotificacionToast from './components/Shared/NotificacionToast';
 
+function RolDesconocido({ rolActivo, onLogout }) {
+  return (
+    <div className="card" style={{ maxWidth: 560, margin: '48px auto' }}>
+      <div className="card-header-flex">
+        <h3><i className="fas fa-triangle-exclamation" aria-hidden="true" /> Rol no reconocido</h3>
+      </div>
+      <p className="card-description">
+        El rol activo no tiene un panel asignado. Cerra sesion y volve a ingresar.
+      </p>
+      {rolActivo && <p className="text-muted text-small">Rol recibido: {rolActivo}</p>}
+      <div className="mt-16">
+        <button type="button" className="btn btn-primary" onClick={onLogout}>
+          Cerrar sesion
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({ user, rolActivo, logout }) {
   switch (rolActivo) {
     case 'preceptor':
@@ -27,7 +46,7 @@ function Dashboard({ user, rolActivo, logout }) {
     case 'alumno':
       return <EstudianteDashboard user={user} onLogout={logout} />;
     default:
-      return null;
+      return <RolDesconocido rolActivo={rolActivo} onLogout={logout} />;
   }
 }
 

@@ -3,22 +3,18 @@ import { buildMediaUrl } from '../../utils/medios';
 import { useToast } from '../../context/ToastContext';
 import FormModal from '../../components/Shared/FormModal';
 import FilePicker from '../Shared/FilePicker';
-import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import {
   createComunicado,
   createComunicadoArchivo,
   deleteComunicado,
   uploadFile,
-  BASE_URL,
 } from '../../services/api';
 import { cursoConOrientacion, parseCurso } from '../../utils/orientacion';
 import { findCursoObj } from '../Shared/cursoFilters';
 import { aListaCursos } from '../Preceptores/preceptorUtils';
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import { mensajeErrorAmigable } from '../../utils/errores';
-
-const API_BASE = BASE_URL;
 
 function getDestinoKey(destino) {
   if (!destino) return '';
@@ -44,7 +40,6 @@ function Comunicados({ anioLectivo: anioGlobal = '', curso: cursoGlobal = '', cu
     refreshData,
     navIntent,
   } = useData();
-  const { user } = useAuth();
   const toast = useToast();
 
   const [form, setForm] = useState({
@@ -228,13 +223,13 @@ function Comunicados({ anioLectivo: anioGlobal = '', curso: cursoGlobal = '', cu
 
     setGuardando(true);
     setMensaje('');
+    let comunicadoCreadoId = null;
 
     try {
       const comunicado = await createComunicado({
         titulo: form.titulo,
         cuerpo: form.cuerpo,
         fecha: new Date().toISOString(),
-        id_usuario_creador: user?.id_usuario || user?.id || null,
         id_curso: null,
         id_materia: null,
         alcances: destinosSeleccionados.map((destino) => ({
@@ -245,12 +240,13 @@ function Comunicados({ anioLectivo: anioGlobal = '', curso: cursoGlobal = '', cu
         })),
       });
 
+      comunicadoCreadoId = comunicado?.id_comunicado ?? comunicado?.id ?? null;
       const files = archivos;
-      if (comunicado?.id_comunicado && files.length > 0) {
+      if (comunicadoCreadoId && files.length > 0) {
         for (const file of files) {
           const uploaded = await uploadFile(file, 'comunicados');
           await createComunicadoArchivo({
-            id_comunicado: comunicado.id_comunicado,
+            id_comunicado: comunicadoCreadoId,
             ruta_archivo: uploaded.url,
           });
         }
@@ -269,7 +265,16 @@ function Comunicados({ anioLectivo: anioGlobal = '', curso: cursoGlobal = '', cu
       await refreshData();
       setTimeout(() => setMensaje(''), 3000);
     } catch (err) {
-      console.error('Error al crear comunicado:', err);
+      let avisoRollback = '';
+      if (comunicadoCreadoId) {
+        try {
+          await deleteComunicado(comunicadoCreadoId);
+          avisoRollback = ' Se quitó el comunicado creado parcialmente.';
+        } catch (errRollback) {
+          avisoRollback = ` No se pudo quitar el comunicado parcial (ID ${comunicadoCreadoId}).`;
+        }
+      }
+      setMensaje(`Error al crear comunicado: ${mensajeErrorAmigable(err)}${avisoRollback}`);
       toast.error(mensajeErrorAmigable(err));
     } finally {
       setGuardando(false);

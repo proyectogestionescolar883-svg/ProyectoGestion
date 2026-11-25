@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import AdminPreceptores from './AdminPreceptores';
 
 function AdministracionPreceptores() {

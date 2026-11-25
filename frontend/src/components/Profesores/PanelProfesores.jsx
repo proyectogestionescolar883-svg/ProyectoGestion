@@ -14,8 +14,6 @@ import DiagnosticosView from '../Shared/DiagnosticosView';
 import CalendarioInstitucional from '../Administracion/CalendarioInstitucional';
 import ActasDocente from './ActasDocente';
 import { useData } from '../../context/DataContext';
-import { getSuplencias } from '../../services/api';
-import { suplenciasActivasEnFecha } from '../../utils/suplencias';
 import { viewDesdeDestino } from '../../utils/navDestinos';
 
 function PanelProfesores({ user, onLogout }) {
@@ -27,23 +25,11 @@ function PanelProfesores({ user, onLogout }) {
     selectedCursoId,
     selectedMateria,
     selectedCursoMateriaId,
-    setSeleccionCursoMateria,
-    clearSeleccionCursoMateria,
+    mapSuplencias,
   } = useData();
   const [seccionActiva, setSeccionActiva] = useState('docente');
-  const [suplencias, setSuplencias] = useState([]);
 
-  // Usar estado global para curso y materia
   const cursoId = selectedCursoId;
-  const materiaSeleccionada = selectedMateria;
-  
-  const handleCursoChange = (nuevoId) => {
-    setSeleccionCursoMateria(nuevoId, '', '');
-  };
-  
-  const handleMateriaChange = (materia, cursoMateriaId) => {
-    setSeleccionCursoMateria(cursoId, materia, cursoMateriaId);
-  };
 
   // Parte 8: manejar navegación desde notificaciones.
   // Traduce el destino semántico a una sección válida del panel docente.
@@ -54,46 +40,29 @@ function PanelProfesores({ user, onLogout }) {
     }
   }, [navIntent]);
 
-  useEffect(() => {
-    let activo = true;
-    getSuplencias()
-      .then((data) => {
-        if (activo) setSuplencias(Array.isArray(data) ? data : []);
-      })
-      .catch(() => {
-        if (activo) setSuplencias([]);
-      });
-    return () => {
-      activo = false;
-    };
-  }, []);
-
   const userId = user?.id_usuario ?? user?.id ?? null;
   // Comparación por string: con `===` un id numérico de la API contra un id
   // string del login dejaba al docente sin perfil y sin cursos en el selector.
   const miDocente = useMemo(
-    () => docentes.find((d) => d.id_usuario != null && userId != null && String(d.id_usuario) === String(userId)) || null,
+    () => (Array.isArray(docentes) ? docentes : []).find(
+      (d) => d.id_usuario != null && userId != null && String(d.id_usuario) === String(userId),
+    ) || null,
     [docentes, userId],
   );
   const miDocenteId = miDocente?.id ?? null;
   const nombreCompletoDocente = miDocente ? `${miDocente.apellido}, ${miDocente.nombre}` : null;
 
-  const mapSuplencias = useMemo(
-    () => suplenciasActivasEnFecha(suplencias),
-    [suplencias],
-  );
-
   const misAsignaciones = useMemo(() => {
     if (miDocenteId == null) return [];
     const esTitular = (cm) => cm.id_docente != null && String(cm.id_docente) === String(miDocenteId);
     const esSuplente = (cm) => {
-      const s = mapSuplencias[cm.id];
+      const s = mapSuplencias?.[String(cm.id)];
       return Boolean(s && s.id_docente_suplente != null && String(s.id_docente_suplente) === String(miDocenteId));
     };
-    return cursoMateria
+    return (Array.isArray(cursoMateria) ? cursoMateria : [])
       .filter((cm) => esTitular(cm) || esSuplente(cm))
       .map((cm) => {
-        const s = mapSuplencias[cm.id] || null;
+        const s = mapSuplencias?.[String(cm.id)] || null;
         const suplenteActivo = Boolean(s);
         return {
           ...cm,
@@ -108,7 +77,7 @@ function PanelProfesores({ user, onLogout }) {
   const cursosEditables = useMemo(() => {
     const set = new Set();
     misAsignaciones.forEach((cm) => {
-      if (cm.puedeEditar) set.add(Number(cm.id_curso));
+      if (cm.puedeEditar && cm.id_curso != null) set.add(String(cm.id_curso));
     });
     return set;
   }, [misAsignaciones]);
@@ -117,7 +86,9 @@ function PanelProfesores({ user, onLogout }) {
     const map = new Map();
     misAsignaciones.forEach((cm) => {
       if (!map.has(cm.id_curso)) {
-        const cObj = cursosObj.find((c) => String(c.id_curso) === String(cm.id_curso));
+        const cObj = (Array.isArray(cursosObj) ? cursosObj : []).find(
+          (c) => c.id_curso != null && String(c.id_curso) === String(cm.id_curso),
+        );
         map.set(cm.id_curso, {
           id_curso: cm.id_curso,
           nombre: cm.curso_nombre || '',
@@ -130,23 +101,19 @@ function PanelProfesores({ user, onLogout }) {
     );
   }, [misAsignaciones, cursosObj]);
 
-  const materiasCurso = useMemo(
-    () =>
-      misAsignaciones
-        .filter((cm) => String(cm.id_curso) === cursoId)
-        .map((cm) => ({ id: cm.id, materia: cm.materia_nombre, esSuplente: cm.esSuplente, suplenciaActiva: cm.suplenciaActiva, suplenteNombre: cm.suplenteNombre, puedeEditar: cm.puedeEditar })),
-    [misAsignaciones, cursoId],
-  );
+  const cursoMateriaActivo = useMemo(() => {
+    if (cursoId === '' || cursoId == null) return null;
+    return misAsignaciones.find((cm) => {
+      if (String(cm.id_curso) !== String(cursoId)) return false;
+      if (selectedCursoMateriaId !== '' && selectedCursoMateriaId != null) {
+        return String(cm.id) === String(selectedCursoMateriaId);
+      }
+      return cm.materia_nombre === selectedMateria;
+    }) || null;
+  }, [misAsignaciones, cursoId, selectedCursoMateriaId, selectedMateria]);
 
-  const cursoMateriaActivo = useMemo(
-    () =>
-      misAsignaciones.find(
-        (cm) => String(cm.id_curso) === cursoId && cm.materia_nombre === materiaSeleccionada,
-      ) || null,
-    [misAsignaciones, cursoId, materiaSeleccionada],
-  );
-
-  const cursoNombre = misCursos.find((c) => String(c.id_curso) === cursoId)?.nombre || '';
+  const materiaSeleccionada = cursoMateriaActivo?.materia_nombre || selectedMateria;
+  const cursoNombre = misCursos.find((c) => String(c.id_curso) === String(cursoId))?.nombre || '';
 
   return (
     <div className="dashboard-layout">
@@ -160,7 +127,6 @@ function PanelProfesores({ user, onLogout }) {
         <TopHeader
           user={user}
           nombreCompleto={nombreCompletoDocente}
-          onLogout={onLogout}
         />
 
         {seccionActiva !== 'docente' && seccionActiva !== 'notificaciones' && seccionActiva !== 'comunicados' && seccionActiva !== 'calendario' && seccionActiva !== 'actas' && seccionActiva !== 'diagnosticos-historial' && (
@@ -214,7 +180,7 @@ function PanelProfesores({ user, onLogout }) {
           </div>
         ) : seccionActiva === 'docente' ? (
           <div className="view-section active">
-            <PanelDocente miDocente={miDocente} mapSuplencias={mapSuplencias} />
+            <PanelDocente miDocente={miDocente} mapSuplencias={mapSuplencias} puedeEditar />
           </div>
         ) : seccionActiva === 'actas' ? (
           <div className="view-section active">
@@ -246,7 +212,7 @@ function PanelProfesores({ user, onLogout }) {
                   cursoId={Number(cursoId)}
                   docenteId={miDocente?.id}
                   cursoNombre={cursoNombre}
-                  puedeEditar={cursosEditables.has(Number(cursoId))}
+                  puedeEditar={cursosEditables.has(String(cursoId))}
                 />
               )}
             </div>
@@ -278,8 +244,6 @@ function PanelProfesores({ user, onLogout }) {
                 <PanelActividades
                   cursoMateriaId={cursoMateriaActivo.id}
                   docenteId={miDocente?.id}
-                  materiaNombre={materiaSeleccionada}
-                  cursoNombre={cursoNombre}
                   puedeEditar={cursoMateriaActivo.puedeEditar}
                   misAsignaciones={misAsignaciones}
                   misCursos={misCursos}

@@ -7,7 +7,9 @@ import sys
 def main():
     """Run administrative tasks."""
     # Agrega backend/proyecto/ al path para que Python encuentre el paquete 'proyecto'
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'proyecto'))
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.join(base_dir, 'proyecto'))
+    sys.path.insert(0, base_dir)
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'proyecto.settings')
     try:
         from django.core.management import execute_from_command_line

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useToast } from '../../context/ToastContext';
 import { useData } from '../../context/DataContext';
 import FormModal from '../../components/Shared/FormModal';
@@ -6,8 +6,8 @@ import AgregarRolModal from '../../components/Shared/AgregarRolModal';
 import QuitarRolModal from '../../components/Shared/QuitarRolModal';
 import AccionesCelda from '../../components/Shared/AccionesCelda';
 import NumericInput from '../../components/Shared/NumericInput';
-import { createUsuario, deleteUsuario, getUsuarios, updateUsuario, getDocentes, getPreceptores, getDirectivos, getUsuariosConRol, getUsuariosSinRol, quitarRolUsuario } from '../../services/api';
-import { formatDNI, cleanDNI } from '../../utils/dni';
+import { createUsuario, getUsuarios, updateUsuario, getUsuariosConRol, getUsuariosSinRol, quitarRolUsuario } from '../../services/api';
+import { formatDNI } from '../../utils/dni';
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import LoadingScreen from '../Shared/LoadingScreen';
 import AccionesLeyenda from '../Shared/AccionesLeyenda';
@@ -89,74 +89,14 @@ function Administradores() {
     modo_creacion: 'nuevo', // 'nuevo' | 'existente'
   });
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [mostrarAgregarRol, setMostrarAgregarRol] = useState(false);
   const [rolParaAgregar, setRolParaAgregar] = useState('admin');
   const [guardandoAgregarRol, setGuardandoAgregarRol] = useState(false);
   const [mostrarQuitarRol, setMostrarQuitarRol] = useState(false);
+  const [rolParaQuitar, setRolParaQuitar] = useState('admin');
   const [quitandoRol, setQuitandoRol] = useState(false);
   const [guardandoUsuario, setGuardandoUsuario] = useState(false);
   const [personasConRol, setPersonasConRol] = useState([]);
-
-  // Fetch personas disponibles para Admin (Docentes, Preceptores, Directivos)
-  const [personasDisponibles, setPersonasDisponibles] = useState([]);
-
-  const cargarPersonas = async () => {
-    try {
-      const [docentesData, preceptoresData, directivosData] = await Promise.all([
-        getDocentes(),
-        getPreceptores(),
-        getDirectivos(),
-      ]);
-      const personas = [];
-      (docentesData || []).forEach((d) => {
-        personas.push({
-          id: d.id_usuario,
-          tipo: 'docente',
-          label: `${d.apellido}, ${d.nombre} (Docente)`,
-          dni: d.dni,
-          nombre: d.nombre,
-          apellido: d.apellido,
-          correo: d.correo,
-          telefono: d.telefono,
-          usuario: d.usuario || '',
-        });
-      });
-      (preceptoresData || []).forEach((p) => {
-        if (p.id_usuario && p.usuario) {
-          personas.push({
-            id: p.id_usuario,
-            tipo: 'preceptor',
-            label: `${p.apellido}, ${p.nombre} (Preceptor)`,
-            dni: p.dni,
-            nombre: p.nombre,
-            apellido: p.apellido,
-            correo: p.correo,
-            telefono: p.telefono,
-            usuario: p.usuario || '',
-          });
-        }
-      });
-      (directivosData || []).forEach((a) => {
-        if (a.id_usuario) {
-          personas.push({
-            id: a.id_usuario,
-            tipo: 'administrador',
-            label: `${a.apellido}, ${a.nombre} (Administrador)`,
-            dni: a.dni,
-            nombre: a.nombre,
-            apellido: a.apellido,
-            correo: a.correo,
-            telefono: a.telefono,
-            usuario: a.usuario || '',
-          });
-        }
-      });
-      setPersonasDisponibles(personas);
-    } catch (err) {
-      console.error('Error cargando personas:', err);
-    }
-  };
 
   const [personasParaAgregarRol, setPersonasParaAgregarRol] = useState([]);
   const [cargandoPersonasSinRol, setCargandoPersonasSinRol] = useState(false);
@@ -217,7 +157,7 @@ function Administradores() {
       try {
         await refreshData();
       } catch {
-        /* el refresco global nunca debe romper la operación ya guardada */
+        toast.warning('El cambio se guardó, pero no se pudo actualizar el resumen global.');
       }
     }
   };
@@ -236,8 +176,6 @@ function Administradores() {
     setEditingUsuario(null);
     setFormData(resetForm());
     setError('');
-    setSuccess('');
-    cargarPersonas();
     setShowModal(true);
   };
 
@@ -259,7 +197,6 @@ function Administradores() {
       modo_creacion: 'nuevo',
     });
     setError('');
-    setSuccess('');
     setShowModal(true);
   };
 
@@ -280,7 +217,6 @@ function Administradores() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setSuccess();
     setGuardandoUsuario(true);
 
     // 5.9 — si se cargan las dos fechas, la primera de la línea de tiempo tiene
@@ -299,8 +235,8 @@ function Administradores() {
     }
 
     try {
-      const { id_usuario_existente, ...formDataCopy } = formData;
-      const idExists = id_usuario_existente != null;
+      const formDataCopy = { ...formData };
+      delete formDataCopy.id_usuario_existente;
 
       const normalisedPayload = {
         ...formDataCopy,
@@ -367,9 +303,9 @@ function Administradores() {
     }
   };
 
-  const cargarPersonasConRol = async () => {
+  const cargarPersonasConRol = async (rol = rolParaQuitar) => {
     try {
-      const data = await getUsuariosConRol('admin');
+      const data = await getUsuariosConRol(rol);
       setPersonasConRol(Array.isArray(data) ? data : []);
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al cargar administradores');
@@ -379,8 +315,9 @@ function Administradores() {
   const handleQuitarRol = async (persona) => {
     setQuitandoRol(true);
     try {
-      await quitarRolUsuario(Number(persona.id_usuario), 'admin');
-      toast.success('Rol "Administrador" quitado correctamente.');
+      await quitarRolUsuario(Number(persona.id_usuario), rolParaQuitar);
+      const etiquetaRol = ROLES_DIRECTIVOS.find((opcion) => opcion.value === rolParaQuitar)?.label || 'Administrador';
+      toast.success(`Rol "${etiquetaRol}" quitado correctamente.`);
       setMostrarQuitarRol(false);
       await refrescar();
     } catch (err) {
@@ -582,18 +519,26 @@ function Administradores() {
           <button
             type="button"
             className="btn btn-outline-primary"
-            onClick={() => {
-              cargarPersonas();
-              setMostrarAgregarRol(true);
-            }}
+            onClick={() => setMostrarAgregarRol(true)}
           >
             <i className="fas fa-user-tag" aria-hidden="true" /> Agregar rol
           </button>
+          <select
+            aria-label="Rol a quitar"
+            value={rolParaQuitar}
+            onChange={(e) => setRolParaQuitar(e.target.value)}
+            disabled={quitandoRol}
+            style={{ minWidth: 150 }}
+          >
+            {ROLES_DIRECTIVOS.map((opcion) => (
+              <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
+            ))}
+          </select>
           <button
             type="button"
             className="btn btn-outline-danger"
             onClick={() => {
-              cargarPersonasConRol();
+              cargarPersonasConRol(rolParaQuitar);
               setMostrarQuitarRol(true);
             }}
           >
@@ -607,8 +552,6 @@ function Administradores() {
       </div>
 
       <AccionesLeyenda acciones={['editar', 'habilitar', 'deshabilitar']} />
-
-      {success && <div className="alert alert-success">{success}</div>}
 
       <div className="table-responsive">
         <table>
@@ -681,8 +624,8 @@ function Administradores() {
 
       {mostrarQuitarRol && (
         <QuitarRolModal
-          titulo="Quitar rol: administrador"
-          subtitulo="Seleccioná una persona para quitarle el rol. Se eliminará únicamente la asignación de este rol; el usuario, la persona y sus otros roles permanecerán intactos."
+          titulo={`Quitar rol: ${ROLES_DIRECTIVOS.find((opcion) => opcion.value === rolParaQuitar)?.label || 'Administrador'}`}
+          subtitulo={`Seleccioná una persona para quitarle el rol "${ROLES_DIRECTIVOS.find((opcion) => opcion.value === rolParaQuitar)?.label || 'Administrador'}". Se eliminará únicamente la asignación de este rol; el usuario, la persona y sus otros roles permanecerán intactos.`}
           personas={personasConRol}
           onClose={() => setMostrarQuitarRol(false)}
           onQuitar={handleQuitarRol}

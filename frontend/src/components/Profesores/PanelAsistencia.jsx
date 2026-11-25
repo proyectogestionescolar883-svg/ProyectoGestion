@@ -30,19 +30,19 @@ function PanelAsistencia({ cursoMateriaId, cursoId, cursoNombre, puedeEditar = t
   const [cargando, setCargando] = useState(true);
   const [filas, setFilas] = useState([]);
   const [guardando, setGuardando] = useState(false);
-  const [mensaje, setMensaje] = useState('');
   const [fechaSeleccionada, setFechaSeleccionada] = useState('');
   const [cargaUnica, setCargaUnica] = useState(null);
   const [, setSegundoTick] = useState(0);
 
-  const estudiantesCurso = useMemo(
-    () => estudiantes.filter((a) => a.id_curso === cursoId),
-    [estudiantes, cursoId],
-  );
+  const estudiantesCurso = useMemo(() => {
+    if (cursoId == null) return [];
+    return (Array.isArray(estudiantes) ? estudiantes : []).filter(
+      (a) => a.id_curso != null && String(a.id_curso) === String(cursoId),
+    );
+  }, [estudiantes, cursoId]);
 
   const cargarServerTime = useCallback(async () => {
     setCargando(true);
-    setMensaje('');
     try {
       const info = await getServerTime(cursoMateriaId);
       setServerInfo(info);
@@ -113,8 +113,8 @@ function PanelAsistencia({ cursoMateriaId, cursoId, cursoNombre, puedeEditar = t
           const estadoNombre = a.estado_nombre
             || a.id_estado_asistencia?.nombre_estado
             || (typeof a.id_estado_asistencia === 'object' ? a.id_estado_asistencia?.nombre_estado : null);
-          if (alumnoId && estadoNombre) {
-            asistenciaMap[alumnoId] = estadoNombre;
+          if (alumnoId != null && estadoNombre) {
+            asistenciaMap[String(alumnoId)] = estadoNombre;
           }
         });
       }
@@ -122,7 +122,7 @@ function PanelAsistencia({ cursoMateriaId, cursoId, cursoNombre, puedeEditar = t
       setFilas(
         filasBase.map((fila) => ({
           ...fila,
-          estado: asistenciaMap[fila.id] || '',
+          estado: asistenciaMap[String(fila.id)] || '',
         })),
       );
     } catch {
@@ -140,6 +140,10 @@ function PanelAsistencia({ cursoMateriaId, cursoId, cursoNombre, puedeEditar = t
     };
   }, [cargarAsistencias]);
 
+  useEffect(() => {
+    if (!puedeEditar) cargarAsistencias();
+  }, [puedeEditar, cargarAsistencias]);
+
   // Carga única de 20 minutos otorgada por el preceptor: la ventana activa
   // autoriza cargar aunque no se esté en horario; al cargar (o vencer) el
   // panel queda de solo lectura.
@@ -154,8 +158,9 @@ function PanelAsistencia({ cursoMateriaId, cursoId, cursoNombre, puedeEditar = t
   const enHorarioEfectivo = enHorario || ventanaActiva;
 
   const handleEstadoChange = (id, nuevoEstado) => {
+    if (!puedeEditar) return;
     setFilas((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, estado: nuevoEstado } : a)),
+      prev.map((a) => (a.id != null && String(a.id) === String(id) ? { ...a, estado: nuevoEstado } : a)),
     );
   };
 
@@ -164,7 +169,7 @@ function PanelAsistencia({ cursoMateriaId, cursoId, cursoNombre, puedeEditar = t
   };
 
   const handleGuardar = async () => {
-    if (!enHorarioEfectivo) return;
+    if (!puedeEditar || !enHorarioEfectivo) return;
     if (!esFechaHoy) {
       toast.warning('Solo puede guardar asistencias para la fecha de hoy.');
       return;
@@ -175,7 +180,6 @@ function PanelAsistencia({ cursoMateriaId, cursoId, cursoNombre, puedeEditar = t
       return;
     }
     setGuardando(true);
-    setMensaje('');
     try {
       const estadoMap = {};
       estadosAsistencia.forEach((e) => {
@@ -308,12 +312,6 @@ function PanelAsistencia({ cursoMateriaId, cursoId, cursoNombre, puedeEditar = t
         >
           <i className="fas fa-lock" style={{ marginRight: '8px' }} aria-hidden="true" />
           Esta materia está asignada temporalmente a un docente suplente. La asistencia es de solo lectura hasta que finalice la suplencia.
-        </p>
-      )}
-
-      {mensaje && (
-        <p style={{ color: mensaje.startsWith('Error') ? 'red' : 'green', margin: '8px 0' }}>
-          {mensaje}
         </p>
       )}
 

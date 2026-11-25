@@ -6,11 +6,16 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from escuela.media_views import media_proxy
 
+
+class TokenRefreshThrottledView(TokenRefreshView):
+    throttle_scope = 'refresh'
+
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/media/<path:ruta>', media_proxy, name='media_proxy'),
     path('api/', include('escuela.urls')),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/token/refresh/', TokenRefreshThrottledView.as_view(), name='token_refresh'),
 ]
 
 if settings.DEBUG:

@@ -6,7 +6,9 @@ function Asistencias({ hijo }) {
   const { estudiantes, cursoMateria } = useData();
 
   const estudiante = useMemo(
-    () => estudiantes.find((a) => a.id === hijo.alumnoId) || null,
+    () => (Array.isArray(estudiantes) ? estudiantes : []).find(
+      (a) => a.id != null && hijo?.alumnoId != null && String(a.id) === String(hijo.alumnoId),
+    ) || null,
     [estudiantes, hijo.alumnoId],
   );
 

@@ -136,7 +136,6 @@ export default function CiclosLectivos() {
       alGuardar={async (item, payload) => {
         if (payload?.__desactivar) return deleteCicloLectivo(item.id_ciclo);
         if (payload?.__reactivar) return updateCicloLectivo(item.id_ciclo, { estado: true });
-        if (payload?.__eliminar) return deleteCicloLectivo(item.id_ciclo);
         if (item) return updateCicloLectivo(item.id_ciclo, payload);
         return createCicloLectivo(payload);
       }}

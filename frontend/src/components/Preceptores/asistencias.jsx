@@ -3,12 +3,10 @@ import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
 import LoadingSpinner from '../Shared/LoadingSpinner';
 import AvisoDatosMaestros from '../Shared/AvisoDatosMaestros';
-import {
+import api, {
   createAsistencia,
   getAsistenciasPreceptorMateria,
   patchJustificar,
-  getAsistenciaDiaria,
-  getRegistroDiario,
   getDocentesDisponibles,
   registrarAsistenciaDocente,
   getServerTime,
@@ -105,6 +103,12 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
     [cursoMateria, cursoObjSel],
   );
 
+  const paramsCurso = useMemo(() => ({
+    curso: cursoObjSel?.nombre_curso || curso,
+    id_curso: cursoObjSel?.id_curso ?? undefined,
+    ciclo_anio: anioLectivo ? Number(anioLectivo) : undefined,
+  }), [cursoObjSel, curso, anioLectivo]);
+
   const getEstudianteReg = (id) => asistEstudiantes[id] ?? estadoInicial();
   const updateEstudiante = (id, patch) => {
     setAsistEstudiantes((prev) => ({
@@ -116,11 +120,13 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
   const cargarDiaria = useCallback(() => {
     if (!curso || !filtrosCompletos(anioLectivo, curso)) return;
     setCargandoDiaria(true);
-    getAsistenciaDiaria(curso, fechaHoy())
-      .then(setDataDiaria)
+    api.get('/asistencias/asistencia-diaria/', {
+      params: { ...paramsCurso, fecha: fechaHoy() },
+    })
+      .then(({ data }) => setDataDiaria(data))
       .catch(() => setDataDiaria([]))
       .finally(() => setCargandoDiaria(false));
-  }, [curso, anioLectivo]);
+  }, [paramsCurso]);
 
   useEffect(() => {
     if (tab === 'dia') cargarDiaria();
@@ -145,12 +151,14 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
       const params = {};
       if (regFecha) params.fecha = regFecha;
       if (regEstudiante) params.alumno = regEstudiante;
-      getRegistroDiario(curso, params)
-        .then(setDataRegistro)
+      api.get('/asistencias/registro-diario/', {
+        params: { ...paramsCurso, ...params },
+      })
+        .then(({ data }) => setDataRegistro(data))
         .catch(() => setDataRegistro([]))
         .finally(() => setCargandoRegistro(false));
     }
-  }, [tab, curso, regFecha, regEstudiante]);
+  }, [tab, paramsCurso, regFecha, regEstudiante]);
 
   const cargarDocentes = useCallback(() => {
     setCargandoDocentes(true);
@@ -672,7 +680,8 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
                 </thead>
                 <tbody>
                   {docentesDisponibles.map((doc) => {
-                    const esAnticipado = fechaDocentes && fechaDocentes > (serverInfo?.fecha || '');
+                    const fechaServidor = serverInfo?.fecha ? String(serverInfo.fecha).slice(0, 10) : '';
+                    const esAnticipado = /^\d{4}-\d{2}-\d{2}$/.test(fechaServidor) && fechaDocentes > fechaServidor;
                     const estadosPosibles = esAnticipado ? ['Ausente'] : ['Presente', 'Ausente', 'Tarde'];
                     return (
                     <tr key={`${doc.docente_id}-${doc.cm_id}-${doc.fecha}-${doc.horario}`}>

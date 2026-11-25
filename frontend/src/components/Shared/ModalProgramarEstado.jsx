@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import FormModal from './FormModal';
 import { aInputDateTime, errorProgramacion } from '../../utils/programacionEstado';
 
@@ -31,9 +31,15 @@ export default function ModalProgramarEstado({
 }) {
   const [form, setForm] = useState({ fecha_deshabilitacion_programada: '', fecha_habilitacion_programada: '' });
   const [error, setError] = useState('');
+  const abiertoAntesRef = useRef(false);
 
   useEffect(() => {
-    if (!abierto) return;
+    if (!abierto) {
+      abiertoAntesRef.current = false;
+      return;
+    }
+    if (abiertoAntesRef.current) return;
+    abiertoAntesRef.current = true;
     setForm({
       fecha_deshabilitacion_programada: aInputDateTime(fechaDeshabilitacion),
       fecha_habilitacion_programada: aInputDateTime(fechaHabilitacion),

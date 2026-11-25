@@ -89,7 +89,7 @@ function Notificaciones({ userRole, selectedChild }) {
     const alumnoId = selectedChild?.alumnoId ?? selectedChild?.id_alumno ?? selectedChild?.idAlumno;
     if (!alumnoId) return [];
     return notificaciones.filter((n) => {
-      const nId = n.id_alumno ?? n.idAlumno ?? n.id_alumno;
+      const nId = n.id_alumno ?? n.idAlumno;
       return nId != null && Number(nId) === Number(alumnoId);
     });
   }, [esFamilia, activeTab, notificaciones, selectedChild]);
@@ -97,7 +97,9 @@ function Notificaciones({ userRole, selectedChild }) {
   const noLeidasCount = notificacionesActivas.filter((n) => !n.leida).length;
 
   const marcarTodas = async () => {
-    await marcarTodasNotificacionesLeidas(notificacionesActivas.map((n) => n.id));
+    const ids = notificacionesActivas.filter((n) => !n.leida).map((n) => n.id);
+    if (ids.length === 0) return;
+    await marcarTodasNotificacionesLeidas(ids);
   };
 
   // Parte 8: manejo de click en notificación para navegación.

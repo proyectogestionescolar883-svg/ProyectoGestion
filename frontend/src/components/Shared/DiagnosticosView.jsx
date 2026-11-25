@@ -34,7 +34,6 @@ function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEd
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newDiagnostico, setNewDiagnostico] = useState({ id_curso: '', descripcion: '' });
   const [guardando, setGuardando] = useState(false);
-  const [saveError, setSaveError] = useState('');
 
   const diagnosticosFiltrados = useMemo(() => {
     if (!user || !diagnosticos) return [];
@@ -145,14 +144,12 @@ function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEd
       String(cursoSeleccionado || '') ||
       String(misCursos.find((c) => cursoEsEditable(c.id_curso))?.id_curso || '');
     setNewDiagnostico({ id_curso: cursoInicial, descripcion: '' });
-    setSaveError('');
     setShowCreateForm(true);
   };
 
   const handleCreate = async (e) => {
     e.preventDefault();
     setGuardando(true);
-    setSaveError('');
 
     try {
       if (!miDocente) {
@@ -162,6 +159,16 @@ function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEd
       }
       if (!newDiagnostico.id_curso) {
         toast.warning('No se pudo identificar el curso para el diagnóstico.');
+        setGuardando(false);
+        return;
+      }
+      if (!newDiagnostico.descripcion.trim()) {
+        toast.warning('La descripción del diagnóstico es obligatoria.');
+        setGuardando(false);
+        return;
+      }
+      if (!cursoEsEditable(newDiagnostico.id_curso)) {
+        toast.warning('No podés crear diagnósticos para ese curso.');
         setGuardando(false);
         return;
       }
@@ -224,7 +231,6 @@ function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEd
         <FormModal title="Nuevo Diagnóstico Grupal" onClose={() => {
           setShowCreateForm(false);
           setNewDiagnostico({ id_curso: '', descripcion: '' });
-          setSaveError('');
         }}>
           <form onSubmit={handleCreate} className="standard-modal-body" style={{ display: 'grid', gap: '14px' }}>
             <div className="form-group">
@@ -238,12 +244,6 @@ function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEd
                 style={{ width: '100%', resize: 'vertical' }}
               />
             </div>
-
-            {saveError && (
-              <div className="mb-12" style={{ color: '#dc3545', fontSize: '14px' }}>
-                {saveError}
-              </div>
-            )}
 
             <div className="flex-row">
               <button
@@ -259,7 +259,6 @@ function DiagnosticosView({ userRole, selectedChild, cursoSeleccionado, cursosEd
                 onClick={() => {
                   setShowCreateForm(false);
                   setNewDiagnostico({ id_curso: '', descripcion: '' });
-                  setSaveError('');
                 }}
                 disabled={guardando}
               >

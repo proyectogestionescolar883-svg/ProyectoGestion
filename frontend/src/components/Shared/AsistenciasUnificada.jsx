@@ -38,6 +38,14 @@ function esHoy(isoStr) {
   return hoy.getFullYear() === y && hoy.getMonth() + 1 === m && hoy.getDate() === d;
 }
 
+function fechaHaceDias(isoStr, dias) {
+  const [y, m, d] = String(isoStr || '').split('-').map(Number);
+  if (!y || !m || !d) return '';
+  const fecha = new Date(y, m - 1, d);
+  fecha.setDate(fecha.getDate() - dias);
+  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
+}
+
 // Lógica de combinación de estados (misma que backend, en orden cronológico):
 //   Faltó + Faltó      -> Ausente
 //   Presente + Presente -> Presente
@@ -65,8 +73,10 @@ export default function AsistenciasUnificada({ alumnoId, cursoMateria, idCurso, 
   const [cargando, setCargando] = useState(false);
   const [resumenReciente, setResumenReciente] = useState({ presente: 0, ausente: 0, tarde: 0, pendiente: 0 });
   const [resumenPorMateria, setResumenPorMateria] = useState([]);
-  const [estadoHoy, setEstadoHoy] = useState('Pendiente');
+  const [estadoHoy, setEstadoHoy] = useState('');
   const [estadosHoy, setEstadosHoy] = useState([]);
+  const resumenSeq = useRef(0);
+  const detalleSeq = useRef(0);
 
   // Materias del curso del alumno. Antes la lista se armaba acá con
   // `cm.id_curso === idCurso`: si los tipos no coincidían (p. ej. "3" vs 3) el
@@ -95,29 +105,43 @@ export default function AsistenciasUnificada({ alumnoId, cursoMateria, idCurso, 
   const materiasRef = useRef(materias);
   useEffect(() => { materiasRef.current = materias; }, [materias]);
 
+  useEffect(() => {
+    resumenSeq.current += 1;
+    detalleSeq.current += 1;
+    setMateriaId('');
+    setAsistencias([]);
+    setEstadoHoy('');
+    setEstadosHoy([]);
+    setResumenReciente({ presente: 0, ausente: 0, tarde: 0, pendiente: 0 });
+    setResumenPorMateria([]);
+  }, [alumnoId]);
+
   const cargarResumen = useCallback(async () => {
     if (!alumnoId) return;
+    const seq = resumenSeq.current;
     try {
       const data = await getAsistenciasEstudianteDetalle('', alumnoId);
+      if (seq !== resumenSeq.current) return;
       const todas = Array.isArray(data) ? data : data.results || [];
 
       // Fecha local, no UTC. Con `toISOString()` en Argentina (UTC-3) después de
       // las 21:00 la fecha caía en el día siguiente y el estado de "Hoy" se
       // calculaba sobre un día que todavía no había empezado.
       const hoy = hoyLocal();
+      const limite = fechaHaceDias(hoy, 6);
       // Orden cronológico: el backend devuelve por -fecha, -hora, por eso se
       // reordena ascendente por hora antes de combinar.
       const estadosHoy = todas
         .filter(r => r.fecha === hoy && r.estado_nombre)
         .sort((a, b) => (a.hora || '00:00').localeCompare(b.hora || '00:00'))
         .map(r => r.estado_nombre);
-      
+
       // Calcular estado combinado para hoy (misma lógica que backend)
       const estadoCombinado = combinarEstados(estadosHoy);
-      setEstadoHoy(estadoCombinado);
-      setEstadosHoy(estadosHoy);
 
-      const ultimas = [...todas].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')).slice(0, 7);
+      const ultimas = todas.filter(
+        (r) => r.fecha && r.fecha >= limite && r.fecha <= hoy,
+      );
       const resumen = ultimas.reduce((acc, r) => {
         const est = r.estado_nombre;
         if (est === 'Presente') acc.presente++;
@@ -127,7 +151,6 @@ export default function AsistenciasUnificada({ alumnoId, cursoMateria, idCurso, 
         else acc.pendiente++;
         return acc;
       }, { presente: 0, ausente: 0, tarde: 0, pendiente: 0 });
-      setResumenReciente(resumen);
 
       // Resumen por materia: últimas asistencias de cada materia.
       const mapa = {};
@@ -169,10 +192,16 @@ export default function AsistenciasUnificada({ alumnoId, cursoMateria, idCurso, 
         // fila se lista pero sin id en vez de mandar un valor inválido como filtro.
         filas.set(nombre, { nombre, id: cmPorMateria[nombre] ?? '', ...mapa[nombre] });
       });
+
+      if (seq !== resumenSeq.current) return;
+      setEstadoHoy(estadoCombinado);
+      setEstadosHoy(estadosHoy);
+      setResumenReciente(resumen);
       setResumenPorMateria(
         [...filas.values()].sort((a, b) => a.nombre.localeCompare(b.nombre))
       );
     } catch {
+      if (seq !== resumenSeq.current) return;
       setEstadoHoy('Pendiente');
       setEstadosHoy([]);
       setResumenReciente({ presente: 0, ausente: 0, tarde: 0, pendiente: 0 });
@@ -184,21 +213,19 @@ export default function AsistenciasUnificada({ alumnoId, cursoMateria, idCurso, 
     cargarResumen();
   }, [cargarResumen]);
 
-  useEffect(() => {
-    setMateriaId('');
-    setAsistencias([]);
-  }, [alumnoId]);
-
   const cargar = useCallback(async (cmId) => {
     if (!cmId) { setAsistencias([]); return; }
+    const seq = detalleSeq.current;
     setCargando(true);
     try {
       const data = await getAsistenciasEstudianteDetalle(cmId, alumnoId);
+      if (seq !== detalleSeq.current) return;
       setAsistencias(Array.isArray(data) ? data : (data?.results || []));
     } catch {
+      if (seq !== detalleSeq.current) return;
       setAsistencias([]);
     } finally {
-      setCargando(false);
+      if (seq === detalleSeq.current) setCargando(false);
     }
   }, [alumnoId]);
 
@@ -217,20 +244,24 @@ export default function AsistenciasUnificada({ alumnoId, cursoMateria, idCurso, 
         <div className="card-header-flex">
           <h4><i className="fas fa-chart-line icon-muted" aria-hidden="true" /> Resumen reciente (últimos 7 días)</h4>
           <div className="flex-row">
-            <span className={`badge ${ESTADO_BADGES[estadoHoy] || 'badge-pendiente'}`}>
-              <i className={`fas ${
-                estadoHoy === 'Presente' ? 'fa-check-circle' :
-                estadoHoy === 'Ausente' ? 'fa-times-circle' :
-                estadoHoy === 'Tarde' ? 'fa-clock' :
-                estadoHoy === 'Retirado' ? 'fa-sign-out-alt' : 'fa-clock'
-              }`} aria-hidden="true" />
-              Hoy: {estadoHoy}
-              {estadosHoy.length > 1 && (
-                <span className="badge badge-pendiente" style={{ marginLeft: '8px', fontSize: '0.7rem' }}>
-                  ({estadosHoy.join(', ')})
-                </span>
-              )}
-            </span>
+            {!estadoHoy ? (
+              <span className="badge badge-neutral">Cargando...</span>
+            ) : (
+              <span className={`badge ${ESTADO_BADGES[estadoHoy] || 'badge-pendiente'}`}>
+                <i className={`fas ${
+                  estadoHoy === 'Presente' ? 'fa-check-circle' :
+                  estadoHoy === 'Ausente' ? 'fa-times-circle' :
+                  estadoHoy === 'Tarde' ? 'fa-clock' :
+                  estadoHoy === 'Retirado' ? 'fa-sign-out-alt' : 'fa-clock'
+                }`} aria-hidden="true" />
+                Hoy: {estadoHoy}
+                {estadosHoy.length > 1 && (
+                  <span className="badge badge-pendiente" style={{ marginLeft: '8px', fontSize: '0.7rem' }}>
+                    ({estadosHoy.join(', ')})
+                  </span>
+                )}
+              </span>
+            )}
           </div>
         </div>
 
@@ -273,8 +304,17 @@ export default function AsistenciasUnificada({ alumnoId, cursoMateria, idCurso, 
                 {resumenPorMateria.map((m) => (
                   <tr
                     key={m.nombre}
+                    role="button"
+                    tabIndex={0}
                     style={{ cursor: 'pointer' }}
                     onClick={() => setMateriaId(String(m.id))}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setMateriaId(String(m.id));
+                      }
+                    }}
                     title={`Ver detalle de ${m.nombre}`}
                   >
                     <td>{m.nombre}</td>

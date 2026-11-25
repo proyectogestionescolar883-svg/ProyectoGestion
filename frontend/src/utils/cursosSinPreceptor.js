@@ -28,12 +28,13 @@ export function idsCursosAsignados(preceptores) {
 export function cursosSinPreceptor(cursosObj, preceptores) {
   const lista = (cursosObj || []).filter(Boolean);
   if (lista.length === 0) return [];
-  const traeFk = lista.some((c) => 'id_preceptor' in c);
-  if (traeFk) {
-    return lista.filter((c) => c.id_preceptor === null || c.id_preceptor === undefined);
-  }
   const asignados = idsCursosAsignados(preceptores);
-  return lista.filter((c) => !asignados.has(c.id_curso));
+  return lista.filter((c) => {
+    if ('id_preceptor' in c) {
+      return c.id_preceptor === null || c.id_preceptor === undefined;
+    }
+    return !asignados.has(c.id_curso);
+  });
 }
 
 export function etiquetaCursosSinPreceptor(cursos, maximo = 8) {

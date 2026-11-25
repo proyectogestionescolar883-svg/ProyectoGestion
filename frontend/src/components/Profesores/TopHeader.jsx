@@ -3,15 +3,13 @@ import { useMemo, useCallback, useEffect, useRef } from 'react';
 import SidebarToggle from '../Shared/SidebarToggle';
 import Logo from '../Shared/Logo';
 
-function TopHeader({ user, nombreCompleto, onLogout }) {
+function TopHeader({ user, nombreCompleto }) {
   const { 
     docentes,
     cursoMateria,
     cursosObj,
-    suplencias,
     mapSuplencias,
     selectedCursoId,
-    selectedMateria,
     selectedCursoMateriaId,
     setSeleccionCursoMateria,
     clearSeleccionCursoMateria,
@@ -32,7 +30,7 @@ function TopHeader({ user, nombreCompleto, onLogout }) {
   );
   const esSuplente = useCallback(
     (cm) => {
-      const s = mapSuplencias?.[cm?.id];
+      const s = mapSuplencias?.[String(cm?.id)];
       return Boolean(s && miDocenteId != null && s.id_docente_suplente != null && String(s.id_docente_suplente) === String(miDocenteId));
     },
     [mapSuplencias, miDocenteId],
@@ -41,7 +39,7 @@ function TopHeader({ user, nombreCompleto, onLogout }) {
   const misCursos = useMemo(() => {
     if (miDocenteId == null) return [];
     const map = new Map();
-    cursoMateria.forEach((cm) => {
+    (Array.isArray(cursoMateria) ? cursoMateria : []).forEach((cm) => {
       if (!esTitular(cm) && !esSuplente(cm)) return;
       if (!map.has(cm.id_curso)) {
         const cObj = cursosObj.find((c) => String(c.id_curso) === String(cm.id_curso));
@@ -69,7 +67,7 @@ function TopHeader({ user, nombreCompleto, onLogout }) {
   // Materias disponibles para el curso seleccionado (incluye suplencias)
   const materiasDelCurso = useMemo(() => {
     if (!selectedCursoId || miDocenteId == null) return [];
-    return cursoMateria
+    return (Array.isArray(cursoMateria) ? cursoMateria : [])
       .filter((cm) => String(cm.id_curso) === String(selectedCursoId) && (esTitular(cm) || esSuplente(cm)))
       .map((cm) => ({
         id: cm.id,
@@ -95,9 +93,11 @@ function TopHeader({ user, nombreCompleto, onLogout }) {
   };
 
   const handleMateriaChange = (e) => {
-    const materia = e.target.value;
-    const cm = cursoMateria.find((c) => c.materia_nombre === materia && String(c.id_curso) === String(selectedCursoId));
-    setSeleccionCursoMateria(selectedCursoId, materia, cm?.id || '');
+    const cursoMateriaId = e.target.value;
+    const cm = (Array.isArray(cursoMateria) ? cursoMateria : []).find(
+      (c) => String(c.id) === String(cursoMateriaId) && String(c.id_curso) === String(selectedCursoId),
+    );
+    setSeleccionCursoMateria(selectedCursoId, cm?.materia_nombre || '', cursoMateriaId);
   };
 
   return (
@@ -144,15 +144,15 @@ function TopHeader({ user, nombreCompleto, onLogout }) {
               <select
                 id="global-materia-select"
                 className="global-select"
-                value={selectedMateria}
-                onChange={handleMateriaChange}
+              value={selectedCursoMateriaId}
+              onChange={handleMateriaChange}
                 disabled={materiasDelCurso.length === 0}
               >
                 <option value="" disabled hidden>
                   Seleccioná una materia
                 </option>
                 {materiasDelCurso.map((m) => (
-                  <option key={m.id} value={m.nombre}>
+                  <option key={m.id} value={String(m.id)}>
                     {m.nombre}{m.esSuplente ? ' (Suplencia)' : ''}
                   </option>
                 ))}
@@ -160,7 +160,7 @@ function TopHeader({ user, nombreCompleto, onLogout }) {
             </div>
           )}
 
-          {(selectedCursoId || selectedMateria) && (
+          {(selectedCursoId || selectedCursoMateriaId) && (
             <button
               type="button"
               className="btn-clear-selection"

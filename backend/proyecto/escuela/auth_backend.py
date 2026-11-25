@@ -99,17 +99,26 @@ def get_roles_for_usuario(username):
     """
     roles = get_roles_reales(username)
     rol = getattr(_rol_activo, 'rol', None)
-    if rol and rol in roles:
+    rol_usuario = getattr(_rol_activo, 'username', None)
+    if rol and rol_usuario == username and rol in roles:
         return [rol]
     return roles
 
 
+def get_usuario_activo_local():
+    return getattr(_rol_activo, 'username', None)
+
+
 def establecer_rol_activo(username, rol):
-    if not username or not rol:
-        _rol_activo.rol = None
+    if not username:
+        limpiar_rol_activo()
         return
-    _rol_activo.rol = rol if rol in get_roles_reales(username) else None
+    _rol_activo.username = username
+    _rol_activo.rol = None
+    if rol and rol in get_roles_reales(username):
+        _rol_activo.rol = rol
 
 
 def limpiar_rol_activo():
+    _rol_activo.username = None
     _rol_activo.rol = None

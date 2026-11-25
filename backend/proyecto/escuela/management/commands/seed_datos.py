@@ -2,8 +2,10 @@
 Comando para crear datos de prueba en todas las tablas principales.
 
 Uso:
-    python manage.py seed_datos
+    python manage.py seed_datos --confirmar
 
+Sólo corre con `DEBUG=True` o con `--confirmar`, para no ensuciar una base real
+por accidente. Busca con `all_objects` y reactiva lo que estaba dado de baja.
 Crea datos realistas de prueba para: ciclos lectivos, cursos, materias,
 docentes, preceptores, alumnos, padres/tutores, curso-materia, horarios,
 inscripciones, periodos de evaluación, calificaciones, estados de asistencia,
@@ -11,10 +13,10 @@ asistencias, tipos de acta, actas, acta-alumno, acta-curso y notificaciones.
 """
 
 from datetime import date, time, datetime
-from django.core.management.base import BaseCommand
-from django.db import connection
 
-from escuela.utils import activar_o_crear
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
+
 from escuela.models import (
     Acta,
     ActaAlumno,
@@ -39,18 +41,69 @@ from escuela.models import (
 )
 
 
+def _mgr(modelo):
+    return getattr(modelo, 'all_objects', modelo.objects)
+
+
+def _asegurar_activo(modelo, lookup, defaults):
+    manager = _mgr(modelo)
+    valores = {clave: valor for clave, valor in defaults.items() if clave != 'activo'}
+    instancia = manager.filter(**lookup).first()
+    if instancia is None:
+        campos = dict(lookup)
+        campos.update(valores)
+        campos['activo'] = True
+        return manager.create(**campos), False
+
+    inactivo = (
+        (hasattr(instancia, 'activo') and not instancia.activo)
+        or (hasattr(instancia, 'estado') and instancia.estado is False)
+        or getattr(instancia, 'eliminado', False)
+        or bool(getattr(instancia, 'fecha_eliminacion', None))
+    )
+    if not inactivo:
+        return instancia, True
+
+    cambios = False
+    for campo, valor in valores.items():
+        if hasattr(instancia, campo) and getattr(instancia, campo) != valor:
+            setattr(instancia, campo, valor)
+            cambios = True
+    for campo in ('activo', 'estado', 'eliminado'):
+        actual = getattr(instancia, campo, None)
+        if isinstance(actual, bool) and not actual:
+            setattr(instancia, campo, True)
+            cambios = True
+    if getattr(instancia, 'fecha_eliminacion', None):
+        instancia.fecha_eliminacion = None
+        cambios = True
+    if cambios:
+        instancia.save()
+    return instancia, True
+
+
 class Command(BaseCommand):
     help = 'Crea datos de prueba en todas las tablas principales'
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--confirmar', action='store_true',
+            help='Confirma la carga de datos de prueba fuera de DEBUG.',
+        )
+
     def handle(self, *args, **options):
+        if not settings.DEBUG and not options['confirmar']:
+            raise CommandError(
+                'seed_datos sólo corre con DEBUG=True o con --confirmar.'
+            )
         self.stdout.write('Creando datos de prueba...\n')
 
         # --- Ciclos lectivos ---
-        ciclo25, _ = CicloLectivo.objects.get_or_create(
+        ciclo25, _ = _mgr(CicloLectivo).get_or_create(
             anio=2025,
             defaults={'fecha_inicio': date(2025, 3, 1), 'fecha_fin': date(2025, 12, 15), 'estado': False},
         )
-        ciclo26, _ = CicloLectivo.objects.get_or_create(
+        ciclo26, _ = _mgr(CicloLectivo).get_or_create(
             anio=2026,
             defaults={'fecha_inicio': date(2026, 3, 2), 'fecha_fin': date(2026, 12, 14), 'estado': True},
         )
@@ -58,7 +111,7 @@ class Command(BaseCommand):
 
         # --- Preceptores ---
         preceptor_user = Usuario.objects.filter(usuario='preceptor_test').first()
-        preceptor1, _ = Preceptor.objects.get_or_create(
+        preceptor1, _ = _mgr(Preceptor).get_or_create(
             dni='32.456.789',
             defaults={
                 'nombre': 'María',
@@ -68,7 +121,7 @@ class Command(BaseCommand):
                 'id_usuario': preceptor_user,
             },
         )
-        preceptor2, _ = Preceptor.objects.get_or_create(
+        preceptor2, _ = _mgr(Preceptor).get_or_create(
             dni='31.789.012',
             defaults={
                 'nombre': 'Roberto',
@@ -86,14 +139,14 @@ class Command(BaseCommand):
             for div in range(1, 4):
                 nombre = f'{anio}°{div}'
                 prec = preceptores_rr[(anio + div) % 2]
-                c, _ = activar_o_crear(
+                c, _ = _asegurar_activo(
                     Curso,
                     {'nombre_curso': nombre, 'id_ciclo': ciclo26},
                     {'orientacion': 'Mañana', 'id_preceptor': prec},
                 )
                 cursos[f'{nombre}-{ciclo26.anio}'] = c
         # Curso histórico 2025 para datos de prueba
-        c25, _ = activar_o_crear(
+        c25, _ = _asegurar_activo(
             Curso,
             {'nombre_curso': '1°1', 'id_ciclo': ciclo25},
             {'orientacion': 'Mañana', 'id_preceptor': preceptor1},
@@ -105,7 +158,7 @@ class Command(BaseCommand):
         materias_nombres = ['Matemática', 'Lengua y Lit.', 'Física', 'Química', 'Historia', 'Geografía']
         materias = {}
         for nombre in materias_nombres:
-            m, _ = Materia.objects.get_or_create(
+            m, _ = _mgr(Materia).get_or_create(
                 nombre_materia=nombre,
                 defaults={'descripcion': f'Materia de {nombre}'},
             )
@@ -121,7 +174,7 @@ class Command(BaseCommand):
         ]
         docentes = []
         for nombre, apellido, dni, correo, user in docentes_data:
-            d, _ = Docente.objects.get_or_create(
+            d, _ = _mgr(Docente).get_or_create(
                 dni=dni,
                 defaults={
                     'nombre': nombre,
@@ -143,7 +196,7 @@ class Command(BaseCommand):
         ]
         tutores = []
         for nombre, apellido, dni, tel, user in tutores_data:
-            t, _ = PadreTutor.objects.get_or_create(
+            t, _ = _mgr(PadreTutor).get_or_create(
                 dni=dni,
                 defaults={
                     'nombre': nombre,
@@ -173,7 +226,7 @@ class Command(BaseCommand):
         ]
         alumnos = []
         for nombre, apellido, dni, fecha_nac, curso, tutor, usr in alumnos_data:
-            a, _ = Alumno.objects.get_or_create(
+            a, _ = _mgr(Alumno).get_or_create(
                 dni=dni,
                 defaults={
                     'nombre': nombre,
@@ -209,7 +262,7 @@ class Command(BaseCommand):
         for curso, materia, docente in cm_data:
             if not curso:
                 continue
-            cm, _ = CursoMateria.objects.get_or_create(
+            cm, _ = _mgr(CursoMateria).get_or_create(
                 id_curso=curso,
                 id_materia=materia,
                 defaults={'id_docente': docente},
@@ -238,7 +291,7 @@ class Command(BaseCommand):
         from escuela.models import Modulos
         modulos_creados = []
         for md in modulos_data:
-            mod, created = Modulos.objects.get_or_create(
+            mod, created = _mgr(Modulos).get_or_create(
                 nombre=md['nombre'],
                 defaults={'hora_inicio': md['hora_inicio'], 'hora_fin': md['hora_fin']},
             )
@@ -250,7 +303,7 @@ class Command(BaseCommand):
         for i, cm in enumerate(cms):
             dia = dias[i % len(dias)]
             mod = modulos_creados[i % len(modulos_creados)]
-            _, created = Horario.objects.get_or_create(
+            _, created = _mgr(Horario).get_or_create(
                 id_curso_materia=cm,
                 dia_semana=dia,
                 id_modulo=mod,
@@ -267,7 +320,7 @@ class Command(BaseCommand):
                 continue
             alumno_cms = [cm for cm in cms if cm.id_curso_id == alumno.id_curso_id]
             for cm in alumno_cms:
-                _, created = InscripcionMateria.objects.get_or_create(
+                _, created = _mgr(InscripcionMateria).get_or_create(
                     id_alumno=alumno,
                     id_curso_materia=cm,
                     defaults={
@@ -287,7 +340,7 @@ class Command(BaseCommand):
         ]
         periodos = []
         for nombre, orden in periodos_data:
-            p, _ = PeriodoEvaluacion.objects.get_or_create(
+            p, _ = _mgr(PeriodoEvaluacion).get_or_create(
                 nombre_periodo=nombre,
                 defaults={'orden_periodo': orden},
             )
@@ -298,7 +351,7 @@ class Command(BaseCommand):
         estados_data = ['Presente', 'Ausente', 'Tarde', 'Justificado']
         estados = {}
         for nombre in estados_data:
-            e, _ = EstadoAsistencia.objects.get_or_create(nombre_estado=nombre)
+            e, _ = _mgr(EstadoAsistencia).get_or_create(nombre_estado=nombre)
             estados[nombre] = e
         self.stdout.write(self.style.SUCCESS(f'  Estados asistencia: {len(estados)} creados'))
 
@@ -348,7 +401,7 @@ class Command(BaseCommand):
                 cm = alumno_cms[0]
                 estado_nombre = patrones[(i + fechas_asist.index(fecha)) % len(patrones)]
                 estado = estados[estado_nombre]
-                _, creada = Asistencia.objects.get_or_create(
+                _, creada = _mgr(Asistencia).get_or_create(
                     id_alumno=alumno,
                     id_curso_materia=cm,
                     fecha=fecha,
@@ -365,7 +418,7 @@ class Command(BaseCommand):
         tipos_acta_data = ['Informe parcial', 'Acta de evaluación', 'Informe de conducta', 'Acta reunión']
         tipos_acta = {}
         for nombre in tipos_acta_data:
-            t, _ = TipoActa.objects.get_or_create(nombre_tipo=nombre)
+            t, _ = _mgr(TipoActa).get_or_create(nombre_tipo=nombre)
             tipos_acta[nombre] = t
         self.stdout.write(self.style.SUCCESS(f'  Tipos de acta: {len(tipos_acta)} creados'))
 
@@ -381,7 +434,7 @@ class Command(BaseCommand):
         ]
         actas = []
         for titulo, desc, fecha, tipo in actas_data:
-            a, _ = Acta.objects.get_or_create(
+            a, _ = _mgr(Acta).get_or_create(
                 titulo=titulo,
                 defaults={
                     'descripcion': desc,
@@ -404,7 +457,7 @@ class Command(BaseCommand):
         ]
         aa_count = 0
         for acta, alumno in acta_alumno_data:
-            _, created = ActaAlumno.objects.get_or_create(
+            _, created = _mgr(ActaAlumno).get_or_create(
                 id_acta=acta,
                 id_alumno=alumno,
             )
@@ -421,7 +474,7 @@ class Command(BaseCommand):
         for acta, curso in ac_data:
             if not curso:
                 continue
-            _, created = ActaCurso.objects.get_or_create(
+            _, created = _mgr(ActaCurso).get_or_create(
                 id_acta=acta,
                 id_curso=curso,
             )
@@ -437,7 +490,7 @@ class Command(BaseCommand):
         ]
         notif_count = 0
         for titulo, mensaje, fecha in notif_data:
-            _, created = Notificacion.objects.get_or_create(
+            _, created = _mgr(Notificacion).get_or_create(
                 titulo=titulo,
                 defaults={
                     'mensaje': mensaje,
@@ -452,14 +505,21 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS('\nDatos de prueba creados exitosamente.'))
         self.stdout.write('\nResumen:')
-        self.stdout.write(f'  - 2 ciclos lectivos (2025, 2026)')
-        self.stdout.write(f'  - 4 cursos (1°1, 1°2, 2°1 para 2026 + 1°1 para 2025)')
-        self.stdout.write(f'  - 6 materias')
-        self.stdout.write(f'  - 3 docentes')
-        self.stdout.write(f'  - 2 preceptores')
-        self.stdout.write(f'  - 6 estudiantes')
-        self.stdout.write(f'  - 3 padres/tutores/familias')
+        self.stdout.write(f'  - 2 ciclos lectivos ({ciclo25.anio}, {ciclo26.anio})')
+        self.stdout.write(f'  - {len(cursos)} cursos asegurados')
+        self.stdout.write(f'  - {len(materias)} materias')
+        self.stdout.write(f'  - {len(docentes)} docentes')
+        self.stdout.write(f'  - {len(preceptores_rr)} preceptores')
+        self.stdout.write(f'  - {len(alumnos)} estudiantes')
+        self.stdout.write(f'  - {len(tutores)} padres/tutores/familias')
         self.stdout.write(f'  - {len(cms)} asignaciones curso-materia')
-        self.stdout.write(f'  - 3 periodos de evaluación')
-        self.stdout.write(f'  - 4 estados de asistencia')
-        self.stdout.write(f'  - Calificaciones, asistencias, actas y notificaciones de prueba')
+        self.stdout.write(f'  - {horarios_count} horarios')
+        self.stdout.write(f'  - {insc_count} inscripciones')
+        self.stdout.write(f'  - {len(periodos)} periodos de evaluación')
+        self.stdout.write(f'  - {len(estados)} estados de asistencia')
+        self.stdout.write(f'  - {cal_count} calificaciones')
+        self.stdout.write(f'  - {asist_count} asistencias')
+        self.stdout.write(f'  - {len(actas)} actas')
+        self.stdout.write(f'  - {aa_count} acta-estudiante')
+        self.stdout.write(f'  - {ac_count} acta-curso')
+        self.stdout.write(f'  - {notif_count} notificaciones')

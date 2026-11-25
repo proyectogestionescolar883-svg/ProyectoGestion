@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import PersonaSelector from './PersonaSelector';
 
 function ModoCreacionPersona({ 
@@ -9,40 +9,42 @@ function ModoCreacionPersona({
   label = '¿Cómo desea crear el perfil?',
   onPersonaChange 
 }) {
-  const [modo, setModo] = useState(() => {
-    if (editing) return 'nuevo';
-    return formData?.modo_creacion === 'existente' ? 'existente' : 'nuevo';
-  });
+  const modo = editing
+    ? 'nuevo'
+    : (formData?.modo_creacion === 'existente' ? 'existente' : 'nuevo');
 
   useEffect(() => {
-    if (editing) {
-      setModo('nuevo');
+    if (editing && formData?.modo_creacion !== 'nuevo') {
       setFormData((prev) => ({ ...prev, modo_creacion: 'nuevo', id_usuario_existente: '' }));
     }
-  }, [editing, setFormData]);
+  }, [editing, formData?.modo_creacion, setFormData]);
 
   const handleModoChange = (nuevoModo) => {
-    setModo(nuevoModo);
     setFormData((prev) => ({ ...prev, modo_creacion: nuevoModo, id_usuario_existente: '' }));
     if (onPersonaChange) onPersonaChange(nuevoModo, '');
   };
 
   const handlePersonaSelect = (id) => {
-    const persona = (personas || []).find((p) => String(p.id_usuario || p.id) === String(id));
-    if (persona) {
-      setFormData((prev) => ({
-        ...prev,
-        id_usuario_existente: id,
-        nombre: persona.nombre || '',
-        apellido: persona.apellido || '',
-        dni: persona.dni || '',
-        correo: persona.correo || '',
-        telefono: persona.telefono || '',
-        usuario_nombre: persona.usuario || '',
-        usuario: persona.usuario || '',
-      }));
-      if (onPersonaChange) onPersonaChange('existente', id);
+    const persona = (Array.isArray(personas) ? personas : [])
+      .find((p) => String(p.id_usuario ?? p.id) === String(id));
+    if (!persona) {
+      setFormData((prev) => ({ ...prev, id_usuario_existente: '' }));
+      if (onPersonaChange) onPersonaChange('existente', '');
+      return;
     }
+    setFormData((prev) => ({
+      ...prev,
+      id_usuario_existente: id,
+      modo_creacion: 'existente',
+      nombre: persona.nombre || '',
+      apellido: persona.apellido || '',
+      dni: persona.dni || '',
+      correo: persona.correo || '',
+      telefono: persona.telefono || '',
+      usuario_nombre: persona.usuario || '',
+      usuario: persona.usuario || '',
+    }));
+    if (onPersonaChange) onPersonaChange('existente', id);
   };
 
   const isExisting = modo === 'existente';

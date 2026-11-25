@@ -1,16 +1,16 @@
 import { useData } from '../../context/DataContext';
 import { riteHTML, exportarRitePDF } from '../../utils/rite';
-import { useMemo } from 'react';
 import { useRiteAcademico } from '../../hooks/useRiteAcademico';
 import { useAsistenciasAlumno } from '../../hooks/useAsistenciasAlumno';
 import RiteExtras from '../RiteExtras';
 import RiteTablaPrincipal from '../RiteTablaPrincipal';
 
 function Calificaciones({ hijo }) {
-  const { calificacionesFamilia, materiasPorCurso, cursoMateria, periodos, estudiantes } = useData();
+  const { calificacionesFamilia, materiasPorCurso, cursoMateria, estudiantes } = useData();
 
-  // Obtener el objeto real del estudiante
-  const estudiante = estudiantes.find((a) => a.id === hijo.alumnoId);
+  const estudiante = (Array.isArray(estudiantes) ? estudiantes : []).find(
+    (a) => a.id != null && hijo?.alumnoId != null && String(a.id) === String(hijo.alumnoId),
+  );
   const {
     intensificaciones_1c,
     bloqueos_por_materia,
@@ -18,19 +18,20 @@ function Calificaciones({ hijo }) {
     recursadas,
     previas,
     loading,
-  } = useRiteAcademico(hijo.alumnoId);
+  } = useRiteAcademico(estudiante?.id ?? hijo?.alumnoId);
 
   // Obtener todas las materias del curso del hijo
   const cursoNombre = hijo.curso;
   const materiasDelCurso = materiasPorCurso[cursoNombre] || [];
 
   // Filtrar calificaciones para este hijo por alumnoId (no hijoId)
-  const calificacionesHijo = calificacionesFamilia.filter((c) => c.alumnoId === hijo.alumnoId);
+  const calificacionesHijo = (Array.isArray(calificacionesFamilia) ? calificacionesFamilia : [])
+    .filter((c) => c.alumnoId != null && hijo?.alumnoId != null && String(c.alumnoId) === String(hijo.alumnoId));
 
   // Construir un mapa de calificaciones existentes por ID de curso_materia
   const gradesMap = {};
   calificacionesHijo.forEach((c) => {
-    const key = c.id_curso_materia;
+    const key = String(c.id_curso_materia);
     if (!gradesMap[key]) {
       gradesMap[key] = {
         materia: c.materia || 'Sin materia',
@@ -49,13 +50,17 @@ function Calificaciones({ hijo }) {
   // Construir la lista final desde todas las materias del curso
   const calificacionesDisplay = materiasDelCurso.map((materiaNombre) => {
     // Buscar si hay una calificación para esta materia
-    const cursoMateriaEntry = cursoMateria.find(
-      (cm) => cm.curso_nombre === cursoNombre && cm.materia_nombre === materiaNombre
+    const cursoMateriaEntry = (Array.isArray(cursoMateria) ? cursoMateria : []).find(
+      (cm) =>
+        cm.id_curso != null &&
+        estudiante?.id_curso != null &&
+        String(cm.id_curso) === String(estudiante.id_curso) &&
+        cm.materia_nombre === materiaNombre,
     );
 
-    if (cursoMateriaEntry && gradesMap[cursoMateriaEntry.id]) {
+    if (cursoMateriaEntry && gradesMap[String(cursoMateriaEntry.id)]) {
       // Tiene calificaciones
-      return gradesMap[cursoMateriaEntry.id];
+        return gradesMap[String(cursoMateriaEntry.id)];
     } else {
       // Sin calificaciones - mostrar "Sin calificaciones"
       return {

@@ -3,6 +3,7 @@ from rest_framework import permissions
 
 from escuela.auth_backend import get_roles_for_usuario
 from escuela.models import Usuario, Alumno, Docente, PadreTutor, CursoMateria, SuplenciaDocente, TutorAlumno
+from escuela.utils import obtener_docente_activo
 
 
 # ---------------------------------------------------------------------------
@@ -104,23 +105,22 @@ def materias_docente_ids_para(docente, fecha=None):
         return set()
     if fecha is None:
         fecha = timezone.localdate()
+    docente_id = getattr(docente, 'pk', docente)
     cm_ids = set(
-        CursoMateria.objects.filter(id_docente=docente).values_list(
+        CursoMateria.objects.filter(id_docente_id=docente_id).values_list(
             'id_curso_materia', flat=True,
         )
     )
-    ganadoras = {}
-    suplencias = SuplenciaDocente.objects.filter(
+    suplencia_ids = SuplenciaDocente.objects.filter(
+        id_docente_suplente_id=docente_id,
         estado=True,
         fecha_inicio__lte=fecha,
         fecha_fin__gte=fecha,
-    )
-    for suplencia in suplencias:
-        actual = ganadoras.get(suplencia.id_curso_materia_id)
-        if actual is None or suplencia.nivel > actual.nivel:
-            ganadoras[suplencia.id_curso_materia_id] = suplencia
-    for suplencia in ganadoras.values():
-        cm_ids.add(suplencia.id_curso_materia_id)
+    ).values_list('id_curso_materia_id', flat=True)
+    for cm_id in set(suplencia_ids):
+        activo = obtener_docente_activo(cm_id, fecha)
+        if getattr(activo.docente, 'pk', activo.docente) == docente_id:
+            cm_ids.add(cm_id)
     return cm_ids
 
 

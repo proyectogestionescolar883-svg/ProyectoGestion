@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import {
@@ -39,6 +39,12 @@ function timeStr(value) {
   return s.slice(0, 5);
 }
 
+function sanitizarTexto(value) {
+  return String(value ?? '')
+    .replace(/[\u0000-\u001F<>]/g, '')
+    .trim();
+}
+
 const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegisterSave, soloLectura = false }) {
   const { modulos, refreshData } = useData() || {};
   const toast = useToast();
@@ -54,6 +60,8 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
     if (!cursoSeleccionado) return;
     setGuardando(true);
     setMensaje('');
+    const celdasSiguientes = { ...celdas };
+    const operaciones = [];
     try {
       // La clave de cada celda es `${dia_semana}_${id_modulo}` (ver cargarGrilla).
       const clavesNuevas = Object.keys(celdas).filter((k) => !(k in originalCeldas));
@@ -63,43 +71,98 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
           && celdas[k].id_curso_materia !== originalCeldas[k].id_curso_materia,
       );
 
-      const celdasSiguientes = { ...celdas };
+      clavesEliminadas.forEach((key) => {
+        delete celdasSiguientes[key];
+      });
 
-      await Promise.all([
-        ...clavesNuevas.map(async (key) => {
-          const [dia, moduloId] = key.split('_');
-          const creado = await createHorario({
-            id_curso_materia: celdas[key].id_curso_materia,
-            id_modulo: Number(moduloId),
-            dia_semana: dia,
-          });
-          if (creado && creado.id_horario != null) {
-            celdasSiguientes[key] = {
-              ...celdasSiguientes[key],
-              id_horario: creado.id_horario,
-            };
-          }
-        }),
-        ...clavesActualizadas.map((key) => (
-          updateHorario(celdas[key].id_horario, {
-            id_curso_materia: celdas[key].id_curso_materia,
-          })
-        )),
-        ...clavesEliminadas.map((key) => deleteHorario(originalCeldas[key].id_horario)),
-      ]);
+      for (const key of clavesNuevas) {
+        const [dia, moduloId] = key.split('_');
+        const creado = await createHorario({
+          id_curso_materia: celdas[key].id_curso_materia,
+          id_modulo: Number(moduloId),
+          dia_semana: dia,
+        });
+        if (creado && creado.id_horario != null) {
+          celdasSiguientes[key] = {
+            ...celdasSiguientes[key],
+            id_horario: creado.id_horario,
+          };
+        }
+        operaciones.push({
+          revertir: async () => {
+            if (creado && creado.id_horario != null) {
+              await deleteHorario(creado.id_horario);
+            }
+            delete celdasSiguientes[key];
+          },
+        });
+      }
+
+      for (const key of clavesActualizadas) {
+        const anterior = originalCeldas[key];
+        await updateHorario(celdas[key].id_horario, {
+          id_curso_materia: celdas[key].id_curso_materia,
+        });
+        operaciones.push({
+          revertir: async () => {
+            await updateHorario(celdas[key].id_horario, {
+              id_curso_materia: anterior.id_curso_materia,
+            });
+            celdasSiguientes[key] = anterior;
+          },
+        });
+      }
+
+      for (const key of clavesEliminadas) {
+        const anterior = originalCeldas[key];
+        await deleteHorario(anterior.id_horario);
+        operaciones.push({
+          revertir: async () => {
+            const [dia, moduloId] = key.split('_');
+            const recreado = await createHorario({
+              id_curso_materia: anterior.id_curso_materia,
+              id_modulo: Number(moduloId),
+              dia_semana: dia,
+            });
+            if (recreado && recreado.id_horario != null) {
+              celdasSiguientes[key] = {
+                ...anterior,
+                id_horario: recreado.id_horario,
+              };
+            }
+          },
+        });
+      }
 
       setCeldas(celdasSiguientes);
       setOriginalCeldas(JSON.parse(JSON.stringify(celdasSiguientes)));
       setMensaje('Horarios guardados correctamente.');
       if (typeof refreshData === 'function') {
-        try { await refreshData(); } catch { /* best-effort */ }
+        try {
+          await refreshData();
+        } catch {
+          toast.warning('Los horarios se guardaron, pero no se pudo actualizar el resto de los datos.');
+        }
       }
     } catch (err) {
-      setMensaje(`Error al guardar horarios: ${mensajeErrorAmigable(err)}`);
+      const erroresReversion = [];
+      for (const operacion of operaciones.reverse()) {
+        try {
+          await operacion.revertir();
+        } catch (errReversion) {
+          erroresReversion.push(mensajeErrorAmigable(errReversion));
+        }
+      }
+      setCeldas(celdasSiguientes);
+      setOriginalCeldas(JSON.parse(JSON.stringify(celdasSiguientes)));
+      const avisoReversion = erroresReversion.length
+        ? ` No se pudo revertir todo: ${erroresReversion.join('; ')}`
+        : ' Se revirtieron los cambios parciales.';
+      setMensaje(`Error al guardar horarios: ${mensajeErrorAmigable(err)}.${avisoReversion}`);
     } finally {
       setGuardando(false);
     }
-  }, [celdas, originalCeldas, cursoSeleccionado, refreshData]);
+  }, [celdas, originalCeldas, cursoSeleccionado, refreshData, toast]);
 
   useEffect(() => {
     if (onRegisterSave) onRegisterSave(handleGuardar);
@@ -327,7 +390,7 @@ function EducacionFisica({ cursoIdExterno = '', soloLectura = false }) {
         dia_semana: form.dia_semana,
         hora_inicio: form.hora_inicio,
         hora_fin: form.hora_fin,
-        aula: form.aula || null,
+        aula: sanitizarTexto(form.aula) || null,
       };
       if (form.id) {
         await updateHorarioEspecial(form.id, payload);
@@ -339,7 +402,7 @@ function EducacionFisica({ cursoIdExterno = '', soloLectura = false }) {
         try {
           await refreshData();
         } catch {
-          /* el guardado ya quedó confirmado; el refresco global es best-effort */
+          toast.warning('El horario se guardó, pero no se pudo actualizar el resumen global.');
         }
       }
       const [heData] = await Promise.all([
@@ -366,7 +429,7 @@ function EducacionFisica({ cursoIdExterno = '', soloLectura = false }) {
       dia_semana: h.dia_semana,
       hora_inicio: timeStr(h.hora_inicio),
       hora_fin: timeStr(h.hora_fin),
-      aula: h.aula || '',
+      aula: sanitizarTexto(h.aula),
     });
     setMensaje('');
   };
@@ -395,7 +458,10 @@ function EducacionFisica({ cursoIdExterno = '', soloLectura = false }) {
   };
 
   const handleChange = (campo, valor) => {
-    setForm((prev) => ({ ...prev, [campo]: valor }));
+    setForm((prev) => ({
+      ...prev,
+      [campo]: campo === 'aula' ? sanitizarTexto(valor) : valor,
+    }));
   };
 
   return (

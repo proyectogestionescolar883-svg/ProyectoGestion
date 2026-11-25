@@ -53,6 +53,10 @@ export function nombreAccion(accion) {
   return DEFINICION[accion]?.nombre || accion;
 }
 
+export function iconoAccion(accion) {
+  return DEFINICION[accion]?.icono || '';
+}
+
 export function BotonAccion({ accion, onClick, disabled = false, entidad, conTexto = false, className = '', title }) {
   const def = DEFINICION[accion];
   if (!def) return null;

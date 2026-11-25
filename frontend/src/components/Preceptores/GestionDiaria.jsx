@@ -69,7 +69,7 @@ function hhmmAhora() {
 }
 
 function GestionDiaria({ anioLectivo, curso, onNavigate }) {
-  const { cursosObj, cursoMateria, calificacionesCompletas, horarios, preceptores } = useData();
+  const { cursosObj, cursoMateria, calificacionesCompletas, horarios } = useData();
   const toast = useToast();
   const [libroTemas, setLibroTemas] = useState([]);
   const [asistenciasHoy, setAsistenciasHoy] = useState([]);
@@ -80,10 +80,12 @@ function GestionDiaria({ anioLectivo, curso, onNavigate }) {
   const filtrosOk = filtrosCompletos(anioLectivo, curso);
 
   const cursoId = useMemo(() => {
-    if (!curso) return null;
-    const c = (cursosObj || []).find((x) => x.nombre_curso === curso);
+    if (!curso || !anioLectivo) return null;
+    const c = (cursosObj || []).find(
+      (x) => x.nombre_curso === curso && Number(x.ciclo_anio) === Number(anioLectivo),
+    );
     return c?.id_curso || null;
-  }, [curso, cursosObj]);
+  }, [curso, anioLectivo, cursosObj]);
 
   const diaHoy = DIAS_SEMANA[new Date().getDay()];
 
@@ -248,13 +250,6 @@ function GestionDiaria({ anioLectivo, curso, onNavigate }) {
             </thead>
             <tbody>
               {materiasCurso.map((cm) => {
-                const asigs = asistenciasDe(cm.id);
-                const ultAsig = ultimaFecha(asigs, 'fecha');
-                const ultLibro = libroPorMateria[cm.id] || null;
-                const cals = calificacionesDe(cm.id);
-                const ultCal = ultimaFecha(cals, 'fecha_carga');
-                const librosMateria = (libroTemas || []).filter((lt) => lt.id_curso_materia === cm.id);
-
                 const { texto: txtAsist, hayCarga: haAsist } = (() => {
                   const asigs = asistenciasDe(cm.id);
                   if (asigs.length > 0) {

@@ -1,42 +1,16 @@
-"""DDJJ por ciclo lectivo (R13).
+"""DDJJ por ciclo lectivo (R13; registro histórico con `managed=False`).
 
-La DDJJ pasa de ser única por docente a única por docente y ciclo. La columna
-se crea nullable para no romper filas históricas; el serializer y la vista
-siempre la cargan con el ciclo activo.
+La columna y el backfill portable del ciclo activo más reciente están en
+`escuela/schema.py`. Esta migración delega en esa declaración, que es
+idempotente y respeta MySQL y Postgres. La reversión es no-op.
 """
 from django.db import migrations
 
-
-SQL_AGREGAR = """
-ALTER TABLE ddjj_docente
-    ADD COLUMN id_ciclo INTEGER NULL
-"""
-
-SQL_RELLENAR = """
-UPDATE ddjj_docente
-SET id_ciclo = (
-    SELECT id_ciclo FROM ciclos_lectivos
-    WHERE estado = TRUE
-    ORDER BY anio DESC
-    LIMIT 1
-)
-"""
-
-SQL_QUITAR = """
-ALTER TABLE ddjj_docente
-    DROP COLUMN id_ciclo
-"""
+from escuela import schema
 
 
 def _aplicar(apps, schema_editor):
-    with schema_editor.connection.cursor() as cursor:
-        cursor.execute(SQL_AGREGAR)
-        cursor.execute(SQL_RELLENAR)
-
-
-def _revertir(apps, schema_editor):
-    with schema_editor.connection.cursor() as cursor:
-        cursor.execute(SQL_QUITAR)
+    schema.aplicar_esquema(schema_editor.connection, log=lambda msg: None)
 
 
 class Migration(migrations.Migration):
@@ -46,5 +20,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(_aplicar, _revertir),
+        migrations.RunPython(_aplicar, migrations.RunPython.noop),
     ]

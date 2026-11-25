@@ -34,13 +34,22 @@ declarativa `escuela/schema.py` y ejecuta solo el DDL que falta. Es:
   ni ALTER destructivo; los datos existentes se conservan y se rellenan con
   el valor por defecto del modelo.
 
-`migrate escuela 0006` la revierte (baja las columnas que agregó esta
-migración); en una base de producción es preferible dejar la migración
-aplicada.
+La reversión es no-op: el DDL es parte del esquema soportado declarado en
+`schema.py` y bajarlo dejaría la base fuera de servicio. `INVENTARIO` deja
+explícito qué cubre esta migración dentro de esa declaración.
 """
 from django.db import migrations
 
 from escuela import schema
+
+INVENTARIO = {
+    'tablas': tuple(schema.TABLAS_NUEVAS),
+    'columnas': tuple(
+        (tabla, columna) for tabla, columna, *_ in schema.COLUMNAS
+    ),
+    'indices': tuple(spec['indice'] for spec in schema.INDICES),
+    'unicos': tuple(spec['indice'] for spec in schema.UNICOS),
+}
 
 
 def _aplicar(apps, schema_editor):
@@ -50,36 +59,6 @@ def _aplicar(apps, schema_editor):
     )
 
 
-def _revertir(apps, schema_editor):
-    """Elimina SOLO las columnas que agregó esta migración.
-
-    Es la operación inversa simétrica y existe para poder deshacer la
-    migración en un entorno de pruebas. En producción es preferible dejar la
-    migración aplicada: perder columnas implicaría perder datos.
-    """
-    connection = schema_editor.connection
-    with connection.cursor() as cursor:
-        existentes = schema.tablas_de(cursor)
-
-        # Primero las FK: MariaDB no deja soltar una columna referenciada por
-        # una constraint todavía viva. El índice asociado se cae solo.
-        for spec in schema.INDICES:
-            tabla = spec['tabla']
-            if tabla not in existentes:
-                continue
-            if spec['fk_nombre'] in schema.constraints_de(cursor, tabla):
-                cursor.execute(
-                    f'ALTER TABLE `{tabla}` DROP FOREIGN KEY `{spec["fk_nombre"]}`'
-                )
-
-        for tabla, columna, ddl, relleno, nota in reversed(schema.COLUMNAS):
-            if tabla not in existentes:
-                continue
-            if columna not in schema.columnas_de(cursor, tabla):
-                continue
-            cursor.execute(f'ALTER TABLE `{tabla}` DROP COLUMN `{columna}`')
-
-
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -87,5 +66,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(_aplicar, _revertir),
+        migrations.RunPython(_aplicar, migrations.RunPython.noop),
     ]

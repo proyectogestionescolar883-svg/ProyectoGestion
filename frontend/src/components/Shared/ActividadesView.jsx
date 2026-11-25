@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
 import { getActividades, getActividadesMateriasAdeudadas, BASE_URL } from '../../services/api';
@@ -52,7 +52,7 @@ function separarDocente(completo = '') {
 }
 
 function ActividadesView({ userRole, selectedChild, cursoId: cursoIdOverride = null, cursoNombre: cursoNombreOverride = null, initialTab = 'actividades' }) {
-  const { estudiantes, cursosObj, cursoMateria } = useData();
+  const { estudiantes, cursosObj, cursoMateria, navIntent } = useData();
   const { user } = useAuth();
   const [actividades, setActividades] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +62,11 @@ function ActividadesView({ userRole, selectedChild, cursoId: cursoIdOverride = n
   const [menuAbiertoId, setMenuAbiertoId] = useState(null);
   const [seccionActivas, setSeccionActivas] = useState(initialTab);
   const [actividadesAdeudadas, setActividadesAdeudadas] = useState([]);
+  const [actividadIntent, setActividadIntent] = useState(null);
+  const navActividadAplicado = useRef(null);
+  const actividadesSeq = useRef(0);
+  const adeudadasSeq = useRef(0);
+  const menuRef = useRef(null);
 
   const cursoId = useMemo(() => {
     if (cursoIdOverride) return cursoIdOverride;
@@ -134,6 +139,7 @@ function ActividadesView({ userRole, selectedChild, cursoId: cursoIdOverride = n
   }, [actividades]);
 
   useEffect(() => {
+    const seq = ++actividadesSeq.current;
     if (!cursoId) {
       setActividades([]);
       setLoading(false);
@@ -145,18 +151,23 @@ function ActividadesView({ userRole, selectedChild, cursoId: cursoIdOverride = n
     setMenuAbiertoId(null);
     getActividades({ curso: cursoId })
       .then((data) => {
+        if (seq !== actividadesSeq.current) return;
         const lista = Array.isArray(data) ? data : data.results || [];
         setActividades(lista);
       })
-      .catch(() => setActividades([]))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (seq !== actividadesSeq.current) return;
+        setActividades([]);
+      })
+      .finally(() => {
+        if (seq === actividadesSeq.current) setLoading(false);
+      });
   }, [cursoId]);
 
   useEffect(() => {
-    if (!user || !user.id) {
-      setActividadesAdeudadas([]);
-      return;
-    }
+    const seq = ++adeudadasSeq.current;
+    setActividadesAdeudadas([]);
+    if (!user || !user.id) return;
     const params = {};
     // El filtro global de curso aplica a los roles que navegan por curso
     // (preceptor). Para estudiante/familia el backend ya acota por el propio
@@ -168,11 +179,58 @@ function ActividadesView({ userRole, selectedChild, cursoId: cursoIdOverride = n
     }
     getActividadesMateriasAdeudadas(params)
       .then((data) => {
+        if (seq !== adeudadasSeq.current) return;
         const lista = Array.isArray(data) ? data : data.results || [];
         setActividadesAdeudadas(lista);
       })
-      .catch(() => setActividadesAdeudadas([]));
+      .catch(() => {
+        if (seq !== adeudadasSeq.current) return;
+        setActividadesAdeudadas([]);
+      });
   }, [user, cursoId, userRole, selectedChild]);
+
+  useEffect(() => {
+    const marca = navIntent?.timestamp;
+    if (!marca || navActividadAplicado.current === marca) return;
+    navActividadAplicado.current = marca;
+    const destino = navIntent?.destino;
+    const id = navIntent?.params?.actividadId ?? navIntent?.params?.id_actividad;
+    if (destino !== 'actividades' && destino !== 'materias_adeudadas') {
+      setActividadIntent(null);
+      return;
+    }
+    setSeccionActivas(destino === 'materias_adeudadas' ? 'adeudadas' : 'actividades');
+    setActividadIntent(id != null && id !== '' ? String(id) : null);
+  }, [navIntent]);
+
+  useEffect(() => {
+    if (!actividadIntent) return;
+    const enAdeudadas = actividadesAdeudadas.find(
+      (act) => String(act.id_actividad) === String(actividadIntent),
+    );
+    const encontrada = enAdeudadas || actividades.find(
+      (act) => String(act.id_actividad) === String(actividadIntent),
+    );
+    if (!encontrada) return;
+    setSeccionActivas(enAdeudadas ? 'adeudadas' : 'actividades');
+    setSelectedActividad(encontrada);
+    setActividadIntent(null);
+  }, [actividadIntent, actividades, actividadesAdeudadas]);
+
+  useEffect(() => {
+    if (menuAbiertoId == null) return;
+    const cerrar = (e) => {
+      if (e.type === 'keydown' && e.key !== 'Escape') return;
+      if (e.type === 'mousedown' && menuRef.current?.contains(e.target)) return;
+      setMenuAbiertoId(null);
+    };
+    document.addEventListener('keydown', cerrar);
+    document.addEventListener('mousedown', cerrar);
+    return () => {
+      document.removeEventListener('keydown', cerrar);
+      document.removeEventListener('mousedown', cerrar);
+    };
+  }, [menuAbiertoId]);
 
   const actividadesAdeudadasPorMateria = useMemo(() => {
     const grupos = {};
@@ -240,8 +298,8 @@ function ActividadesView({ userRole, selectedChild, cursoId: cursoIdOverride = n
             <div className="mt-20">
               <h4>Archivos adjuntos ({archivos.length})</h4>
               <div className="mt-12" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {archivos.map((archivo) => (
-                  <div key={archivo.id_archivo || archivo.nombre_archivo}>
+                {archivos.map((archivo, i) => (
+                  <div key={`${archivo.id_archivo || archivo.nombre_archivo}-${i}`}>
                     <div className="flex-row--between" style={{ padding: '12px', background: '#fff', border: '1px solid #ddd', borderRadius: '4px' }}>
                       <span style={{ fontSize: '14px' }}>
                         <i className="fas fa-paperclip" aria-hidden="true" />{' '}
@@ -350,8 +408,8 @@ function ActividadesView({ userRole, selectedChild, cursoId: cursoIdOverride = n
             Sin actividades para esta materia y docente.
           </p>
         ) : (
-          <div className="actividades-publicaciones">
-            {grupos.map((act) => {
+          <div className="actividades-publicaciones" ref={menuRef}>
+            {grupos.map((act, i) => {
               const archivos = Array.isArray(act.archivos) ? act.archivos : [];
               const esActividad = archivos.length > 0 || Boolean(act.descripcion && act.descripcion.trim());
               const iconoTipo = esActividad ? 'fa-clipboard-list' : 'fa-book-open';
@@ -359,13 +417,24 @@ function ActividadesView({ userRole, selectedChild, cursoId: cursoIdOverride = n
               const nombreDocente = act.docente_apellido
                 ? `${act.docente_apellido}, ${act.docente_nombre}`
                 : (materiaDocenteSeleccionado.docente || 'Docente');
-              const menuAbierto = menuAbiertoId === act.id_actividad;
+              const menuAbierto = String(menuAbiertoId) === String(act.id_actividad);
               const enlaceUnico = act.archivo_url || archivos[0]?.archivo_url || null;
+              const resaltada = String(actividadIntent) === String(act.id_actividad);
               return (
                 <article
-                  key={act.id_actividad}
-                  className="publicacion-box"
+                  key={`${act.id_actividad}-${i}`}
+                  className={`publicacion-box${resaltada ? ' publicacion-box--resaltada' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  style={resaltada ? { outline: '2px solid #4f46e5', background: '#eef2ff' } : undefined}
                   onClick={() => setSelectedActividad(act)}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedActividad(act);
+                    }
+                  }}
                 >
                   <div className="publicacion-icon">
                     <i className={`fas ${iconoTipo}`} aria-hidden="true" />
@@ -465,21 +534,28 @@ function ActividadesView({ userRole, selectedChild, cursoId: cursoIdOverride = n
                     <h4 style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
                       {materia}
                     </h4>
-                    {actividadesAdeudadasPorMateria[materia].map((act) => (
-                      <article
-                        key={act.id_actividad}
-                        className="publicacion-box"
-                        role="button"
-                        tabIndex={0}
-                        style={{ cursor: 'pointer', borderLeft: `4px solid ${act.tipo === 'PREVIA' ? '#e53935' : '#ff9800'}` }}
-                        onClick={() => setSelectedActividad(act)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            setSelectedActividad(act);
-                          }
-                        }}
-                      >
+                {actividadesAdeudadasPorMateria[materia].map((act, i) => (
+                  <article
+                    key={`${act.id_actividad}-${i}`}
+                    className="publicacion-box"
+                    role="button"
+                    tabIndex={0}
+                    style={{
+                      cursor: 'pointer',
+                      borderLeft: `4px solid ${act.tipo === 'PREVIA' ? '#e53935' : '#ff9800'}`,
+                      ...(String(actividadIntent) === String(act.id_actividad)
+                        ? { outline: '2px solid #4f46e5', background: '#eef2ff' }
+                        : {}),
+                    }}
+                    onClick={() => setSelectedActividad(act)}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedActividad(act);
+                      }
+                    }}
+                  >
                         <div className="publicacion-icon">
                           <i className={`fas ${act.tipo === 'PREVIA' ? 'fa-book' : 'fa-book-medical'}`} aria-hidden="true" />
                         </div>

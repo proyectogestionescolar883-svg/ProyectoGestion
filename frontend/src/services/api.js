@@ -3,10 +3,9 @@ import { reportarErrorGlobal } from '../context/ErrorOverlayContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 const TIMEOUT_GLOBAL_MS = 20000;
-const RESPONSE_TYPES_SIN_TIMEOUT = new Set(['blob', 'arraybuffer', 'stream']);
+const TIMEOUT_ARCHIVOS_MS = 60000;
+const RESPONSE_TYPES_ARCHIVO = new Set(['blob', 'arraybuffer', 'stream']);
 
-// Origen del backend sin el sufijo '/api': se usa como base para URLs de
-// archivos/medios (p. ej. '/media/planificaciones/...').
 export const BASE_URL = API_BASE.replace(/\/api\/?$/, '');
 
 const api = axios.create({
@@ -16,8 +15,8 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  if (RESPONSE_TYPES_SIN_TIMEOUT.has(config.responseType)) {
-    config.timeout = 0;
+  if (RESPONSE_TYPES_ARCHIVO.has(config.responseType)) {
+    config.timeout = config.timeout > 0 ? config.timeout : TIMEOUT_ARCHIVOS_MS;
   }
   const token = localStorage.getItem('access_token');
   if (token && !config.url?.endsWith('/login/')) {
@@ -31,6 +30,19 @@ api.interceptors.request.use((config) => {
 });
 
 let refreshEnCurso = null;
+let generacionSesion = 0;
+
+function recargarAplicacion() {
+  window.location.reload();
+}
+
+function limpiarSesion() {
+  generacionSesion += 1;
+  refreshEnCurso = null;
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
+  setRolActivoHeader(null);
+}
 
 export function setRolActivoHeader(rol) {
   if (rol) {
@@ -42,14 +54,18 @@ export function setRolActivoHeader(rol) {
 
 function refrescarAccessToken(refresh) {
   if (!refreshEnCurso) {
+    const generacion = generacionSesion;
     refreshEnCurso = axios
       .post(`${API_BASE}/token/refresh/`, { refresh }, { timeout: TIMEOUT_GLOBAL_MS })
       .then(({ data }) => {
+        if (generacion !== generacionSesion) {
+          throw new Error('Sesión cerrada durante la renovación del token.');
+        }
         localStorage.setItem('access_token', data.access);
         return data.access;
       })
       .finally(() => {
-        refreshEnCurso = null;
+        if (generacion === generacionSesion) refreshEnCurso = null;
       });
   }
   return refreshEnCurso;
@@ -91,16 +107,21 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
       const refresh = localStorage.getItem('refresh_token');
-      if (refresh) {
-        try {
-          const access = await refrescarAccessToken(refresh);
-          original.headers.Authorization = `Bearer ${access}`;
-          return api(original);
-        } catch {
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
-          window.location.reload();
-        }
+      if (!refresh) {
+        limpiarSesion();
+        reportarErrorGlobal('Tu sesión venció. Ingresá nuevamente para continuar.');
+        recargarAplicacion();
+        return Promise.reject(error);
+      }
+      try {
+        const access = await refrescarAccessToken(refresh);
+        original.headers.Authorization = `Bearer ${access}`;
+        return api(original);
+      } catch {
+        limpiarSesion();
+        reportarErrorGlobal('Tu sesión venció. Ingresá nuevamente para continuar.');
+        recargarAplicacion();
+        return Promise.reject(error);
       }
     }
     const mensaje = mensajeErrorGlobal(error);
@@ -111,14 +132,15 @@ api.interceptors.response.use(
 
 export async function login(usuario, contrasena) {
   const { data } = await api.post('/login/', { usuario, contrasena });
+  generacionSesion += 1;
+  refreshEnCurso = null;
   localStorage.setItem('access_token', data.access);
   localStorage.setItem('refresh_token', data.refresh);
   return data;
 }
 
 export function logout() {
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
+  limpiarSesion();
 }
 
 export async function getMe() {

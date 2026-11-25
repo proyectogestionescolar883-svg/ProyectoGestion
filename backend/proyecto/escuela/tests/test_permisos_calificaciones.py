@@ -1,6 +1,7 @@
-﻿"""Permisos de escritura y de lectura de calificaciones y asistencias.
+"""Permisos de escritura y de lectura de calificaciones y asistencias.
 
 Cubre cuatro regresiones:
+
 
 * ``CalificacionViewSet`` y ``AsistenciaViewSet`` no tenian ``perform_create``:
   el alta individual se saltaba la pertenencia del docente a la materia (y, en

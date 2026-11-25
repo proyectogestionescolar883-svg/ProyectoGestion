@@ -20,30 +20,17 @@ function StatCard({ icon, value, label, color }) {
 function PanelAdmin({ miDirectivo, user }) {
   const { estudiantes, docentes, preceptores, padresTutores, cursosObj, materiasObj, planificaciones, comunicados, actas } = useData();
 
-  const systemStats = useMemo(() => {
-    if (!miDirectivo) return null;
-    return {
-      estudiantes: (estudiantes ?? []).length,
-      docentes: (docentes ?? []).length,
-      preceptores: (preceptores ?? []).length,
-      familias: (padresTutores ?? []).length,
-      cursos: (cursosObj ?? []).length,
-      materias: (materiasObj ?? []).length,
-      proyectos: (planificaciones ?? []).length,
-      comunicados: (comunicados ?? []).length,
-      actas: (actas ?? []).length,
-    };
-  }, [miDirectivo, estudiantes, docentes, preceptores, padresTutores, cursosObj, materiasObj, planificaciones, comunicados, actas]);
-
-  if (!miDirectivo) {
-    return (
-      <div className="card">
-        <p className="empty-state-message">
-          No se encontraron datos de perfil para este usuario.
-        </p>
-      </div>
-    );
-  }
+  const systemStats = useMemo(() => ({
+    estudiantes: (estudiantes ?? []).length,
+    docentes: (docentes ?? []).length,
+    preceptores: (preceptores ?? []).length,
+    familias: (padresTutores ?? []).length,
+    cursos: (cursosObj ?? []).length,
+    materias: (materiasObj ?? []).length,
+    proyectos: (planificaciones ?? []).length,
+    comunicados: (comunicados ?? []).length,
+    actas: (actas ?? []).length,
+  }), [estudiantes, docentes, preceptores, padresTutores, cursosObj, materiasObj, planificaciones, comunicados, actas]);
 
   const rolLabel = user?.role === 'director' ? 'Director' : 'Administrador';
 
@@ -51,35 +38,44 @@ function PanelAdmin({ miDirectivo, user }) {
     <div className="card">
       <ProfileBanner
         icon="fa-user-shield"
-        nombre={`${miDirectivo.apellido}, ${miDirectivo.nombre}`}
+        nombre={miDirectivo ? `${miDirectivo.apellido}, ${miDirectivo.nombre}` : (user?.username || 'Administrador')}
         rol={rolLabel}
         estado="Activo"
       />
 
       <div className="profile-grid">
-        <div>
-          <label className="profile-label">Nombre Completo</label>
-          <p className="profile-value">{miDirectivo.apellido}, {miDirectivo.nombre}</p>
-        </div>
-        <div>
-          <label className="profile-label">Documento (DNI)</label>
-          <p className="profile-value">{formatDNI(miDirectivo.dni)}</p>
-        </div>
-        {miDirectivo.telefono && (
+        {miDirectivo ? (
+          <>
+            <div>
+              <label className="profile-label">Nombre Completo</label>
+              <p className="profile-value">{miDirectivo.apellido}, {miDirectivo.nombre}</p>
+            </div>
+            <div>
+              <label className="profile-label">Documento (DNI)</label>
+              <p className="profile-value">{formatDNI(miDirectivo.dni)}</p>
+            </div>
+            {miDirectivo.telefono && (
+              <div>
+                <label className="profile-label">Teléfono de Contacto</label>
+                <p className="profile-value">{miDirectivo.telefono}</p>
+              </div>
+            )}
+            {miDirectivo.cargo && (
+              <div>
+                <label className="profile-label">Cargo</label>
+                <p className="profile-value">{miDirectivo.cargo}</p>
+              </div>
+            )}
+          </>
+        ) : (
           <div>
-            <label className="profile-label">Teléfono de Contacto</label>
-            <p className="profile-value">{miDirectivo.telefono}</p>
-          </div>
-        )}
-        {miDirectivo.cargo && (
-          <div>
-            <label className="profile-label">Cargo</label>
-            <p className="profile-value">{miDirectivo.cargo}</p>
+            <label className="profile-label">Perfil</label>
+            <p className="profile-value">Sin datos de perfil cargados.</p>
           </div>
         )}
         <div>
           <label className="profile-label">Usuario</label>
-          <p className="profile-value">{user?.username || `${miDirectivo.apellido}, ${miDirectivo.nombre}`}</p>
+          <p className="profile-value">{user?.username || (miDirectivo ? `${miDirectivo.apellido}, ${miDirectivo.nombre}` : '—')}</p>
         </div>
         <div>
           <label className="profile-label">Rol</label>

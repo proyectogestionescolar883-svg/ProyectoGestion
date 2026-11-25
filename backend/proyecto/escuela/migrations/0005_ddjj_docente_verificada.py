@@ -1,21 +1,30 @@
-"""
-Agrega la columna `verificada` a `ddjj_docente` (revisión de la DDJJ).
+"""Agrega `ddjj_docente.verificada` (registro histórico; `managed=False`).
 
-La tabla se crea manualmente (managed=False); esta migración ejecuta el DDL
-para que baste con `python manage.py migrate`. El valor indica si el
-admin/director marcó la Declaración Jurada como verificada.
+El DDL y el tipo viven en `escuela/schema.py`. Esta migración sólo agrega la
+columna si falta. La reversión es no-op para no quitar una columna soportada.
 """
 from django.db import migrations
 
-SQL_ALTER = """
-ALTER TABLE ddjj_docente
-    ADD COLUMN verificada TINYINT(1) NOT NULL DEFAULT 0
-"""
+from escuela import schema
 
-SQL_DROP = """
-ALTER TABLE ddjj_docente
-    DROP COLUMN verificada
-"""
+COLUMNAS = tuple(
+    (tabla, columna, ddl)
+    for tabla, columna, ddl, _relleno, _nota in schema.COLUMNAS
+    if tabla == 'ddjj_docente' and columna == 'verificada'
+)
+
+
+def agregar(apps, schema_editor):
+    with schema_editor.connection.cursor() as cursor:
+        existentes = schema.columnas_de(cursor, 'ddjj_docente')
+        for _tabla, columna, ddl in COLUMNAS:
+            if columna in existentes:
+                continue
+            cursor.execute(
+                f'ALTER TABLE {schema._q(cursor, "ddjj_docente")} '
+                f'ADD COLUMN {schema._q(cursor, columna)} '
+                f'{schema._ddl_para(cursor, ddl)}'
+            )
 
 
 class Migration(migrations.Migration):
@@ -25,5 +34,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(SQL_ALTER, reverse_sql=SQL_DROP),
+        migrations.RunPython(agregar, migrations.RunPython.noop),
     ]

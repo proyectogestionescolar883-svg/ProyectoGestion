@@ -7,7 +7,6 @@ function Notas({ navContext }) {
   const {
     cursosObj,
     cursoMateria,
-    docentes,
     getMateriasByCurso,
     selectedCursoId,
   } = useData();
@@ -67,7 +66,7 @@ function Notas({ navContext }) {
       ) || null,
     [cursoMateria, curso, materia],
   );
-  const docenteId = cursoMateriaEntry?.id_docente ?? docentes?.find((d) => d.activo !== false)?.id ?? null;
+  const docenteId = cursoMateriaEntry?.id_docente ?? null;
   const puedeEditarReal = puedeEditar && Boolean(docenteId);
 
   return (

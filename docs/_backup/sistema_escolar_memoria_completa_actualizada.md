@@ -1,5 +1,7 @@
 # Registro general de la base de datos — Sistema Escolar
 
+> **DOCUMENTO HISTÓRICO (backup).** Volcado original MySQL/MariaDB. Hoy rige PostgreSQL/Supabase con `escuela/schema.py`.
+
 Este archivo es la **referencia general y estructurada de la base de datos** del sistema escolar. No es un registro de la conversación. Su objetivo es servir como documento de contexto para futuras cargas SQL, modificaciones, consultas, validaciones y generación de datos.
 
 ## 1. Reglas generales

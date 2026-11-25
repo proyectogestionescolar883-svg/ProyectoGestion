@@ -852,7 +852,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
         # Update Directivo if exists and fields are provided
         if nombre or apellido or dni or telefono or cargo:
-            directivo = Directivo.objects.filter(id_usuario=instance).first()
+            directivo = Directivo.all_objects.filter(id_usuario=instance).first()
             if directivo:
                 if nombre:
                     directivo.nombre = nombre
@@ -864,12 +864,14 @@ class UsuarioSerializer(serializers.ModelSerializer):
                     directivo.telefono = telefono
                 if cargo is not None:
                     directivo.cargo = cargo
+                directivo.estado = True
+                directivo.fecha_eliminacion = None
                 directivo.save()
 
         # Ensure admin users always have a Directivo profile
         admin_rol = Rol.objects.filter(nombre_rol='admin').first()
         if admin_rol and UsuarioRol.objects.filter(id_usuario=instance, id_rol=admin_rol).exists():
-            directivo = Directivo.objects.filter(id_usuario=instance).first()
+            directivo = Directivo.all_objects.filter(id_usuario=instance).first()
             if directivo is None:
                 parts = instance.usuario.replace('_', ' ').split()
                 if len(parts) >= 2:
@@ -887,6 +889,10 @@ class UsuarioSerializer(serializers.ModelSerializer):
                     telefono='',
                     cargo='Administrador'
                 )
+            else:
+                directivo.estado = True
+                directivo.fecha_eliminacion = None
+                directivo.save()
 
         return instance
 
@@ -1358,6 +1364,9 @@ class DdjjDocenteSerializer(serializers.ModelSerializer):
             'presentada',
             'verificada',
         ]
+        extra_kwargs = {
+            'verificada': {'read_only': True},
+        }
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -1398,6 +1407,7 @@ class DdjjDocenteSerializer(serializers.ModelSerializer):
         if not archivo:
             raise serializers.ValidationError({'archivo': 'Debes adjuntar un archivo para la DDJJ.'})
 
+        validated_data['verificada'] = False
         instance = DdjjDocente(**validated_data)
         instance.ruta_archivo = archivo
         instance.save()
@@ -1958,7 +1968,7 @@ class AlumnoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'El DNI del estudiante debe estar entre 30.000.000 y 65.000.000.'
             )
-        qs = Alumno.objects.filter(dni=value)
+        qs = Alumno.all_objects.filter(dni=value)
         if getattr(self.instance, 'id_alumno', None) is not None:
             qs = qs.exclude(id_alumno=self.instance.id_alumno)
         if qs.exists():
@@ -2671,8 +2681,11 @@ class CalificacionSerializer(serializers.ModelSerializer):
                     'id_alumno': 'El estudiante no pertenece al curso de esta materia.'
                 })
         if alumno is not None and cm is not None and periodo is not None:
-            qs = Calificacion.objects.filter(
-                id_alumno=alumno, id_curso_materia=cm, id_periodo=periodo,
+            qs = Calificacion.all_objects.filter(
+                id_alumno=alumno,
+                id_curso_materia=cm,
+                id_periodo=periodo,
+                estado=True,
             )
             if self.instance is not None:
                 qs = qs.exclude(pk=self.instance.pk)
@@ -2681,6 +2694,26 @@ class CalificacionSerializer(serializers.ModelSerializer):
                     'id_periodo': 'Ya existe una calificación de este alumno para esta materia en este período.'
                 })
         return attrs
+
+    def create(self, validated_data):
+        alumno = validated_data.get('id_alumno')
+        cm = validated_data.get('id_curso_materia')
+        periodo = validated_data.get('id_periodo')
+        if alumno is not None and cm is not None and periodo is not None:
+            existente = Calificacion.all_objects.filter(
+                id_alumno=alumno,
+                id_curso_materia=cm,
+                id_periodo=periodo,
+                estado=False,
+            ).first()
+            if existente is not None:
+                for attr, value in validated_data.items():
+                    setattr(existente, attr, value)
+                existente.estado = True
+                existente.fecha_eliminacion = None
+                existente.save()
+                return existente
+        return super().create(validated_data)
 
 
 # ---------- Asistencias ----------
@@ -2868,6 +2901,7 @@ class ComunicadoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comunicado
         fields = '__all__'
+        read_only_fields = ('id_usuario_creador',)
 
     def validate(self, attrs):
         alcances = attrs.get('alcances')
@@ -2924,6 +2958,10 @@ class ComunicadoSerializer(serializers.ModelSerializer):
             alcances_data = [*alcances_data, alcance_data]
         validated_data['id_curso'] = None
         validated_data['id_materia'] = None
+        request = self.context.get('request')
+        username = getattr(getattr(request, 'user', None), 'username', None)
+        if username:
+            validated_data['id_usuario_creador'] = Usuario.objects.filter(usuario=username).first()
         comunicado = Comunicado.objects.create(**validated_data)
         if not alcances_data:
             alcances_data = [{}]

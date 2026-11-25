@@ -2,6 +2,7 @@
 import { cursoConOrientacion } from './orientacion';
 import { formatDNI } from './dni';
 import { NOTA_APROBACION, PERIODOS_RENDICION, PERIODO_LABELS } from './previasRendicion';
+import { reportarErrorGlobal } from '../context/ErrorOverlayContext';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -162,6 +163,27 @@ function seccionPrevias(items) {
     </colgroup><thead><tr><th rowspan="2">Materia</th><th rowspan="2">Año (curso)</th><th colspan="6">Período de intensificación</th><th rowspan="2">Calificación final</th></tr><tr>${headCols}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+function seccionInasistencias(inasistenciasPorMateria) {
+  const entradas = Object.entries(inasistenciasPorMateria || {});
+  const rows = entradas.length
+    ? entradas.map(([materia, conteo]) => `
+        <tr>
+          <td class="mat">${escapeHtml(materia)}</td>
+          <td>${escapeHtml(conteo?.ausencias ?? 0)}</td>
+          <td>${escapeHtml(conteo?.tardanzas ?? 0)}</td>
+          <td>${escapeHtml(conteo?.justificadas ?? 0)}</td>
+        </tr>`).join('')
+    : '<tr><td colspan="4">Sin inasistencias registradas.</td></tr>';
+  return `<div class="rite-seccion rite-seccion-inasistencias"><h3>INASISTENCIAS</h3><table class="rite-tabla-extra"><colgroup>
+      <col style="width:52%" />
+      <col style="width:16%" />
+      <col style="width:16%" />
+      <col style="width:16%" />
+    </colgroup><thead><tr>
+      <th>Materia</th><th>Ausencias</th><th>Tardanzas / Retiros</th><th>Justificadas</th>
+    </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
 export function riteHTML({
   estudianteNombre,
   dni,
@@ -242,6 +264,7 @@ export function riteHTML({
         </div>
       </div>
       <div class="rite-pagina rite-pagina-2">
+        ${seccionInasistencias(inasistenciasPorMateria)}
         ${seccionPrevias(previas)}
         ${seccionRecursadas(recursadas)}
       </div>
@@ -323,16 +346,33 @@ export const RITE_CSS = `
   .rite-seccion-previas .rite-tabla-extra th:nth-child(2), .rite-seccion-previas .rite-tabla-extra td:nth-child(2) { text-align: left; }
   .rite-seccion-recursadas .rite-tabla-extra th:first-child, .rite-seccion-recursadas .rite-tabla-extra td:first-child,
   .rite-seccion-recursadas .rite-tabla-extra th:nth-child(2), .rite-seccion-recursadas .rite-tabla-extra td:nth-child(2) { text-align: left; }
+  .rite-seccion-inasistencias .rite-tabla-extra td:first-child { text-align: left; }
   @media print { button { display: none; } }
 `;
 
+const impresionBloqueada = new Set();
+
+export function setRiteImpresionBloqueada(clave, bloqueada) {
+  const id = String(clave);
+  if (bloqueada) impresionBloqueada.add(id);
+  else impresionBloqueada.delete(id);
+}
+
 export function exportarRitePDF(ritees, titulo) {
+  if (impresionBloqueada.size > 0) {
+    reportarErrorGlobal('No se puede imprimir el RITE: no se pudieron cargar los datos académicos.');
+    return false;
+  }
   const win = window.open('', '_blank');
-  if (!win) return;
+  if (!win) {
+    reportarErrorGlobal('El navegador bloqueó la ventana de impresión. Habilitá las ventanas emergentes para este sitio e intentá de nuevo.');
+    return false;
+  }
   const cuerpo = Array.isArray(ritees) ? ritees.join('') : ritees;
   win.document.write(`
     <html><head><title>${escapeHtml(titulo)}</title><style>${RITE_CSS}</style></head>
     <body>${cuerpo}<script>window.onload = function(){ window.print(); };<\/script></body></html>
   `);
   win.document.close();
+  return true;
 }

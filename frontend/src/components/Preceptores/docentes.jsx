@@ -78,8 +78,6 @@ function Docentes({ readOnly = false, anioLectivo = '', cursos = SIN_CURSOS, cur
   const [modo, setModo] = useState(readOnly ? 'vista' : '');
   const esCrear = modo === 'crear';
   const esModificar = modo === 'modificar';
-  // Año lectivo y curso llegan desde el selector global del dashboard (ver
-  // `cursos`, que es un array en los dashboards con multiselección).
   const cursosKey = (Array.isArray(cursos) && cursos.length > 0 ? cursos : aListaCursos(curso)).join('|');
   const cursosGlobales = useMemo(() => (cursosKey ? cursosKey.split('|') : []), [cursosKey]);
   const [materia, setMateria] = useState('');

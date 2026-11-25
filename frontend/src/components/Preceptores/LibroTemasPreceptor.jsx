@@ -1,12 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { buildMediaUrl } from '../../utils/medios';
-import { getLibroTemas, BASE_URL } from '../../services/api';
+import { getLibroTemas } from '../../services/api';
 import { useData } from '../../context/DataContext';
 import EmptyFiltros from './EmptyFiltros';
 import { filtrosCompletos } from './preceptorUtils';
 import LoadingSpinner from '../Shared/LoadingSpinner';
-
-const API_BASE = BASE_URL;
 
 function formatFecha(value) {
   if (!value) return '—';
@@ -26,10 +24,12 @@ function LibroTemasPreceptor({ anioLectivo, curso }) {
 
   const cursoId = useMemo(
     () =>
-      curso
-        ? (cursosObj || []).find((c) => c.nombre_curso === curso)?.id_curso || null
+      curso && anioLectivo
+        ? (cursosObj || []).find(
+          (c) => c.nombre_curso === curso && Number(c.ciclo_anio) === Number(anioLectivo),
+        )?.id_curso || null
         : null,
-    [curso, cursosObj],
+    [curso, anioLectivo, cursosObj],
   );
 
   const materiasDelCurso = useMemo(

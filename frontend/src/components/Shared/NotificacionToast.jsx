@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useData } from '../../context/DataContext';
 import { tieneVistaParaDestino } from '../../utils/navDestinos';
 
@@ -15,6 +15,7 @@ const SALIDA_MS = 300;
 //   la cola deduplica por id y se descarta al cerrar/ver.
 function ItemToast({ nueva, userRole, onCerrar, onVer }) {
   const [saliendo, setSaliendo] = useState(false);
+  const timerCierreRef = useRef(null);
 
   const puedeNavegar =
     Boolean(nueva.nav_destino) && tieneVistaParaDestino(nueva.nav_destino, userRole);
@@ -29,9 +30,14 @@ function ItemToast({ nueva, userRole, onCerrar, onVer }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => () => {
+    if (timerCierreRef.current) clearTimeout(timerCierreRef.current);
+  }, []);
+
   const cerrar = () => {
     setSaliendo(true);
-    setTimeout(() => onCerrar(nueva.id), SALIDA_MS);
+    if (timerCierreRef.current) clearTimeout(timerCierreRef.current);
+    timerCierreRef.current = setTimeout(() => onCerrar(nueva.id), SALIDA_MS);
   };
 
   return (

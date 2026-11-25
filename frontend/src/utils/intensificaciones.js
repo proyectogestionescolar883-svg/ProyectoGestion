@@ -37,6 +37,11 @@ export function clampNota(value) {
 //  Dic  habilitado <=> desaprobó el Segundo Cuatrimestre O ALGUNA 1°C está DESAPROBADA.
 //  Feb  habilitado <=> existe una nota cargada de DICIEMBRE (secuencia DICIEMBRE → FEBRERO).
 export function tiposIntensifHabilitados(nota1, nota2, instancias) {
+  const comoNumero = (valor) => {
+    if (valor === '' || valor === null || valor === undefined) return null;
+    const numero = Number(valor);
+    return Number.isNaN(numero) ? null : numero;
+  };
   const tipoDe = (ins) => TIPO_POR_BUCKET[BUCKET_POR_PERIODO[ins.periodo]];
   const estadoTipo = { '1C': [], DICIEMBRE: [], FEBRERO: [] };
   const notaTipo = { '1C': [], DICIEMBRE: [], FEBRERO: [] };
@@ -46,14 +51,16 @@ export function tiposIntensifHabilitados(nota1, nota2, instancias) {
       estadoTipo[tipo].push(ins.estado);
     }
     if (tipo) {
-      notaTipo[tipo].push(ins.nota);
+      notaTipo[tipo].push(comoNumero(ins.nota));
     }
   });
 
-  const hab1c = nota1 != null && nota1 < NOTA_APROBACION;
+  const n1 = comoNumero(nota1);
+  const n2 = comoNumero(nota2);
+  const hab1c = n1 !== null && n1 < NOTA_APROBACION;
   const habDic =
-    (nota2 != null && nota2 < NOTA_APROBACION) || estadoTipo['1C'].includes('DESAPROBADA');
-  const habFeb = notaTipo['DICIEMBRE'].some((nota) => nota != null);
+    (n2 !== null && n2 < NOTA_APROBACION) || estadoTipo['1C'].includes('DESAPROBADA');
+  const habFeb = notaTipo['DICIEMBRE'].some((nota) => nota !== null);
 
   return {
     '1C': hab1c,

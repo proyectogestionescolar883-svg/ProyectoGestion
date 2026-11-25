@@ -104,7 +104,6 @@ function AdminPreceptores() {
   const [editingPreceptor, setEditingPreceptor] = useState(null);
   const [formData, setFormData] = useState(formVacio);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [personasDisponibles, setPersonasDisponibles] = useState([]);
   const [mostrarAgregarRol, setMostrarAgregarRol] = useState(false);
@@ -645,7 +644,6 @@ function AdminPreceptores() {
         <>
       {/* Punto 5.13: se eliminó la leyenda de solo texto que quedaba arriba de la
           tabla, duplicada con <AccionesLeyenda /> (que sí tiene colores). */}
-      {success && <div className="alert alert-success">{success}</div>}
 
       <div className="mb-12">
         <input

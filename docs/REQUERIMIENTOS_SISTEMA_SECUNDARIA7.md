@@ -8,13 +8,13 @@
 
 | Aspecto | Detalle |
 |---------|---------|
-| **Frontend** | React 18 + Vite, Context API (Auth, Data), React Router (implícito via vistas) |
+| **Frontend** | React 18 + Vite, Context API (Auth, Data); navegación por `view` / `navIntent` en cada dashboard (no React Router) |
 | **Backend API** | RESTful (Django REST Framework inferido), JWT Access + Refresh Token |
 | **Autenticación** | Login usuario/contraseña → Access Token (localStorage) + Refresh Token → Header `Authorization: Bearer` |
 | **Autorización** | RBAC por header `X-Rol-Activo` (valor: `preceptor`, `jefe_preceptores`, `admin`, `director`, `docente`, `familia`, `alumno`) |
-| **Estado Global** | `DataContext`: carga inicial `Promise.all` (~25 endpoints), polling notificaciones 30s, selectores globales (año/curso, curso/materia, hijo) |
+| **Estado Global** | `DataContext`: carga inicial `Promise.all`, polling notificaciones 30 s, selector global de **un solo curso** (Año lectivo → Año → División) + selector de hijo en Familia; sin selectores de curso por vista |
 | **Estándar Visual** | `VISUAL_STANDARD.md`: header oscuro, sidebar acordeón, cards glassmorphism, FormModal/ConfirmDeleteModal con Portal, íconos FontAwesome |
-| **Despliegue** | `npm run build` → estáticos servidos por backend o CDN |
+| **Despliegue** | Vercel: backend desde `backend/` (`backend/vercel.json`) y frontend desde `frontend/` (`frontend/vercel.json`, base path `/misecundaria7/`); BD PostgreSQL/Supabase. Ver `DEPLOY_VERCEL_SUPABASE.md` |
 
 ---
 
@@ -24,7 +24,7 @@
 |-----|-------|-------|--------------------------------|
 | `admin` | Administrador | fa-user-shield | Gestión de usuarios no directivos, cursos, materias, horarios, suplencias, calendario, historial, actas existentes, comunicados, notas, asistencias, preceptores, adelantos horas. No gestiona administradores ni directivos. |
 | `director` | Director | fa-user-tie | Igual que admin, más gestión exclusiva de administradores/directivos (mapeado en `ROL_EQUIV`) |
-| `jefe_preceptores` | Jefe de Preceptores | fa-users-cog | Supervisión preceptores, estadísticas, asignación cursos, admin preceptores, comunicados jefe, actas, notas, asistencias, estudiantes, docentes, tutores, adelantos horas, calendario, historial |
+| `jefe_preceptores` | Jefe de Preceptores | fa-users-cog | Supervisión preceptores, estadísticas, administración de preceptores, comunicados jefe, actas, notas, asistencias, estudiantes, docentes, tutores, adelantos horas, calendario, historial. Sin asignación de cursos (es exclusiva de Admin → Preceptores) |
 | `preceptor` | Preceptor | fa-clipboard-user | Gestión diaria: estudiantes, tutores, docentes, asistencias (día/materia/docentes), notas/RITE, actas, libro temas, proyectos, actividades, adelantos horas, horarios, comunicados, notificaciones, calendario |
 | `docente` | Docente | fa-chalkboard-teacher | Panel docente, planificaciones, libro temas, info, asistencia, actividades, actas docente, estudiantes, comunicados, notificaciones, diagnóstico, calendario, materias adeudadas |
 | `familia` | Familia | fa-users | Resumen, calificaciones/RITE PDF, asistencias, actas, comunicados, horarios, actividades, info, notificaciones (personales/por hijo), calendario |

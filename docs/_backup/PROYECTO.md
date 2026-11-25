@@ -1,5 +1,9 @@
 # PROYECTO — MiSecundaria 7
 
+> **DOCUMENTO HISTÓRICO (backup).** Describe el estado original con MySQL; la
+> producción actual usa PostgreSQL (Supabase) con `schema.py` y
+> `verificar_esquema --aplicar`. Las credenciales están redactadas.
+
 ## Índice
 
 1. [Descripción general del proyecto](#1-descripción-general-del-proyecto)
@@ -54,8 +58,8 @@
 | | Django REST Framework | — |
 | | SimpleJWT | — |
 | | ReportLab (PDF) | — |
-| | mysqlclient | — |
-| **Base de datos** | MySQL 8+ | — |
+| | mysqlclient (histórico) / psycopg2-binary (actual) | — |
+| **Base de datos** | MySQL 8+ (histórico) → PostgreSQL/Supabase (actual) | — |
 | **Autenticación** | JWT (access + refresh tokens) | — |
 
 ### 1.4 Arquitectura
@@ -64,11 +68,11 @@
 
 ```
 ┌─────────────┐     JWT Auth     ┌──────────────┐     ┌──────────┐
-│  React SPA  │ ──────────────►  │  Django API   │ ──► │  MySQL   │
-│  (Vite)     │ ◄──────────────  │  (DRF)        │ ◄── │  DB      │
+│  React SPA  │ ──────────────►  │  Django API   │ ──► │PostgreSQL│
+│  (Vite)     │ ◄──────────────  │  (DRF)        │ ◄── │/Supabase │
 └─────────────┘     JSON/HTTP    └──────────────┘     └──────────┘
       │                                                    │
-      │  localhost:5173                                    │  :3306
+      │  localhost:5173                                    │  pooler :6543
       └───────────────── Axios ────────────────────────────┘
 ```
 
@@ -87,7 +91,7 @@ No hay Server-Side Rendering. No hay BFF (Backend For Frontend). El frontend se 
 │   └── proyecto/
 │       ├── manage.py              # Entrypoint de Django
 │       ├── requirements.txt       # Dependencias Python
-│       ├── db.sqlite3             # (no usado en producción, BD real es MySQL)
+│       ├── db.sqlite3             # (no usado en producción, BD real es PostgreSQL/Supabase)
 │       ├── proyecto/              # Config de Django
 │       │   ├── settings.py        # Config: BD, CORS, JWT, apps instaladas
 │       │   ├── urls.py            # URL patterns del proyecto
@@ -149,19 +153,21 @@ No hay Server-Side Rendering. No hay BFF (Backend For Frontend). El frontend se 
 
 El backend es un proyecto Django con una sola app (`escuela`). Todos los modelos están en `models.py`, todos los serializers en `serializers.py`, todas las vistas en `views.py`.
 
-**No hay separación por módulo.** Es un monolito dentro de Django. Esto es intencional: la base de datos es externa (MySQL, `managed = False` en todos los modelos) y el esquema no es gestionado por Django.
+**No hay separación por módulo.** Es un monolito dentro de Django. Esto es intencional: la base de datos es externa (PostgreSQL/Supabase, `managed = False` en todos los modelos) y el esquema se gestiona con `schema.py` / `verificar_esquema --aplicar` (no con migraciones automáticas).
 
 ### 3.2 Configuración clave en settings.py
 
 ```python
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'sistema_escolar',
-        'USER': 'root',
-        'PASSWORD': 'admin1234',
-        'HOST': 'localhost',
-        'PORT': '3306',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': '<DB_NAME>',
+        'USER': '<DB_USER>',
+        'PASSWORD': '<DB_PASSWORD>',
+        'HOST': '<HOST>',
+        'PORT': '<DB_PORT>',
+        'OPTIONS': {'sslmode': 'require'},
+        'DISABLE_SERVER_SIDE_CURSORS': True,
     }
 }
 

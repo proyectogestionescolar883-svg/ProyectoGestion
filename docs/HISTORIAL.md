@@ -2,7 +2,7 @@
 
 > **Propósito:** Registro de todas las auditorías, correcciones y decisiones significativas tomadas en el proyecto. Este archivo preserva el trabajo ya realizado para referencia futura.
 >
-> **Última actualización:** 2026-10-03
+> **Última actualización:** 2026-11-24
 
 ---
 
@@ -981,4 +981,24 @@ corregidos con regresión automatizada:
 
 ---
 
-*Documento actualizado el 2026-10-04 · Proyecto Mi Secundaria 7*
+## 17. Alineación documental y redacción de credenciales (2026-11-24)
+
+- Se redactaron credenciales y datos personales de prueba en
+  `DEPLOY_VERCEL_SUPABASE.md`, `DOCUMENTACION_TECNICA.md`,
+  `GUIA_TESTEO_MiSecundaria7.md`, `_backup/PROYECTO.md` y backups; los valores
+  reales quedan fuera del repositorio y su rotación es externa al usuario.
+- Se alineó la documentación a PostgreSQL/Supabase: `psycopg2-binary`, pooler
+  transaccional, `escuela/schema.py` y `verificar_esquema --aplicar`; se
+  corrigió en `REFERENCIA_BD.md` el uso de `current_schema()` (antes
+  `DATABASE()`) y se retiraron los comandos MySQL/MariaDB de los flujos vigentes.
+- Se actualizaron conteos y contratos actuales: 57 modelos, 58 serializers,
+  53 ViewSets, 53 rutas y 7 roles; selector global de **un solo curso**
+  (Año lectivo → Año → División), sin multiselección ni selectores por vista.
+- Se marcaron como históricos los planes, relevamientos y `docs/_backup/`;
+  `VISUAL_STANDARD.md` queda como fuente de verdad visual. Se corrigió el
+  comentario de `/vercel.json` en `.gitignore` y el deploy documentado pasa a
+  Vercel (`frontend/` y `backend/`) con base path `/misecundaria7/`.
+
+---
+
+*Documento actualizado el 2026-11-24 · Proyecto Mi Secundaria 7*

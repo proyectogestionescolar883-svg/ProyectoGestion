@@ -14,14 +14,16 @@ const formVacio = {
   id_docente: '',
   id_curso: '',
   id_materia: '',
+  docente_nombre: '',
+  curso_nombre: '',
+  materia_nombre: '',
   fecha_adelanto: '',
   modulosSel: [],
   mantener: 0,
   motivo: '',
 };
 
-/* 13.x: fecha de evento (adelanto) por defecto en hoy. */
-const formVacioNuevo = () => ({ ...formVacio, fecha_adelanto: hoy() });
+const formVacioNuevo = () => ({ ...formVacio, fecha_adelanto: proximaLaborable(hoy()) });
 
 function mensajeError(err) {
   return mensajeErrorAmigable(err);
@@ -69,8 +71,19 @@ function FormAdelanto({ formData, setFormData, editing, guardando, onSubmit, onC
     const ids = new Set((cursoMateria ?? [])
       .filter((cm) => cm.id_docente != null)
       .map((cm) => Number(cm.id_docente)));
-    return (docentes ?? []).filter((d) => ids.has(Number(d.id)));
-  }, [cursoMateria, docentes]);
+    const resultado = (docentes ?? []).filter((d) => ids.has(Number(d.id)));
+    if (
+      formData.id_docente &&
+      !resultado.some((d) => Number(d.id) === Number(formData.id_docente))
+    ) {
+      resultado.unshift({
+        id: formData.id_docente,
+        apellido: '',
+        nombre: formData.docente_nombre || `Docente #${formData.id_docente}`,
+      });
+    }
+    return resultado;
+  }, [cursoMateria, docentes, formData.id_docente, formData.docente_nombre]);
 
   const cursosDelDocente = useMemo(() => {
     const mapa = new Map();
@@ -79,8 +92,11 @@ function FormAdelanto({ formData, setFormData, editing, guardando, onSubmit, onC
         mapa.set(Number(cm.id_curso), cm.curso_nombre || 'Curso');
       }
     });
+    if (formData.id_curso && !mapa.has(Number(formData.id_curso))) {
+      mapa.set(Number(formData.id_curso), formData.curso_nombre || `Curso #${formData.id_curso}`);
+    }
     return [...mapa.entries()].map(([id_curso, curso_nombre]) => ({ id_curso, curso_nombre }));
-  }, [asignacionesDelDocente]);
+  }, [asignacionesDelDocente, formData.id_curso, formData.curso_nombre]);
 
   const materiasDelCurso = useMemo(() => {
     const mapa = new Map();
@@ -91,8 +107,11 @@ function FormAdelanto({ formData, setFormData, editing, guardando, onSubmit, onC
           mapa.set(Number(cm.id_materia), cm.materia_nombre || 'Materia');
         }
       });
+    if (formData.id_materia && !mapa.has(Number(formData.id_materia))) {
+      mapa.set(Number(formData.id_materia), formData.materia_nombre || `Materia #${formData.id_materia}`);
+    }
     return [...mapa.entries()].map(([id_materia, materia_nombre]) => ({ id_materia, materia_nombre }));
-  }, [asignacionesDelDocente, formData.id_curso]);
+  }, [asignacionesDelDocente, formData.id_curso, formData.id_materia, formData.materia_nombre]);
 
   const modulosOrdenados = useMemo(() => {
     return (modulos ?? []).slice().sort((a, b) =>
@@ -105,12 +124,19 @@ function FormAdelanto({ formData, setFormData, editing, guardando, onSubmit, onC
     [modulosOrdenados, formData.modulosSel],
   );
 
+  const fechaPasada = Boolean(
+    editing && formData.fecha_adelanto && formData.fecha_adelanto < hoy(),
+  );
+
   const alCambiarDocente = (idDocente) => {
     setFormData((p) => ({
       ...p,
       id_docente: idDocente ? Number(idDocente) : '',
+      docente_nombre: '',
       id_curso: '',
+      curso_nombre: '',
       id_materia: '',
+      materia_nombre: '',
       modulosSel: [],
     }));
   };
@@ -119,7 +145,9 @@ function FormAdelanto({ formData, setFormData, editing, guardando, onSubmit, onC
     setFormData((p) => ({
       ...p,
       id_curso: idCurso ? Number(idCurso) : '',
+      curso_nombre: '',
       id_materia: '',
+      materia_nombre: '',
       modulosSel: [],
     }));
   };
@@ -128,6 +156,7 @@ function FormAdelanto({ formData, setFormData, editing, guardando, onSubmit, onC
     setFormData((p) => ({
       ...p,
       id_materia: idMateria ? Number(idMateria) : '',
+      materia_nombre: '',
       modulosSel: [],
     }));
   };
@@ -151,7 +180,7 @@ function FormAdelanto({ formData, setFormData, editing, guardando, onSubmit, onC
             <select id="adh-docente" value={formData.id_docente || ''} onChange={(e) => alCambiarDocente(e.target.value)} required>
               <option value="">Seleccione un docente...</option>
               {docentesConAsignacion.map((d) => (
-                <option key={d.id} value={d.id}>{d.apellido}, {d.nombre}</option>
+                <option key={d.id} value={d.id}>{d.apellido ? `${d.apellido}, ${d.nombre}` : d.nombre}</option>
               ))}
             </select>
           </div>
@@ -184,11 +213,14 @@ function FormAdelanto({ formData, setFormData, editing, guardando, onSubmit, onC
             <input
               id="adh-fecha"
               type="date"
-              min={hoy()}
+              min={editing ? undefined : hoy()}
               value={formData.fecha_adelanto || ''}
-              onChange={(e) => setFormData((p) => ({ ...p, fecha_adelanto: e.target.value }))}
+              onChange={(e) => {
+                setAvisoFecha('');
+                setFormData((p) => ({ ...p, fecha_adelanto: e.target.value }));
+              }}
               onBlur={(e) => {
-                if (esFinDeSemana(e.target.value)) {
+                if (!editing && esFinDeSemana(e.target.value)) {
                   setFormData((p) => ({ ...p, fecha_adelanto: proximaLaborable(e.target.value) }));
                   setAvisoFecha('No se pueden registrar los fines de semana. Se movió al lunes siguiente.');
                 }
@@ -196,6 +228,12 @@ function FormAdelanto({ formData, setFormData, editing, guardando, onSubmit, onC
               required
             />
             {avisoFecha && <div className="alert alert-warning" style={{ marginTop: 6 }}>{avisoFecha}</div>}
+            {fechaPasada && (
+              <div className="alert alert-warning" style={{ marginTop: 6 }}>
+                Estás modificando un adelanto con fecha pasada ({fmtFecha(formData.fecha_adelanto)}).
+                Se conserva la fecha original del registro.
+              </div>
+            )}
           </div>
 
           <div>
@@ -423,8 +461,7 @@ function GestionAdelantosHoras({ readOnly = false }) {
 
   const abrirNuevo = () => {
     limpiar();
-    /* UI-6: los fines de semana no se permiten. */
-    setFormData({ ...formVacioNuevo(), fecha_adelanto: proximaLaborable() });
+    setFormData(formVacioNuevo());
     setShowForm(true);
   };
 
@@ -433,8 +470,11 @@ function GestionAdelantosHoras({ readOnly = false }) {
     setEditing(a);
     setFormData({
       id_docente: a.id_docente || '',
+      docente_nombre: a.docente_nombre || '',
       id_curso: a.id_curso || '',
+      curso_nombre: a.curso_nombre || '',
       id_materia: a.id_materia || '',
+      materia_nombre: a.materia_nombre || '',
       fecha_adelanto: a.fecha_adelanto || '',
       modulosSel: (Array.isArray(a.modulos_detalle) ? a.modulos_detalle : [])
         .map((m) => Number(m.id_modulo))
@@ -663,11 +703,7 @@ function GestionAdelantosHoras({ readOnly = false }) {
                               )}
                               <button type="button" className="btn btn-sm btn-danger" onClick={() => handleEliminar(a)} aria-label="Eliminar adelanto" title="Eliminar"><i className="fas fa-trash-alt" aria-hidden="true" /></button>
                             </div>
-                          ) : (
-                            <div>
-                              <button type="button" className="btn btn-sm btn-danger" onClick={() => handleEliminar(a)} aria-label="Eliminar adelanto" title="Eliminar"><i className="fas fa-trash-alt" aria-hidden="true" /></button>
-                            </div>
-                          )}
+                            ) : null}
                         </td>
                       )}
                     </tr>

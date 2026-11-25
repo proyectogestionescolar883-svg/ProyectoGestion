@@ -60,7 +60,9 @@ export function notaGuardada(rendiciones = [], periodo, anio) {
   const r = (rendiciones || []).find(
     (x) => x.periodo === periodo && Number(x.anio) === Number(anio),
   );
-  return r ? Number(r.nota) : null;
+  if (!r || r.nota === '' || r.nota === null || r.nota === undefined) return null;
+  const nota = Number(r.nota);
+  return Number.isNaN(nota) ? null : nota;
 }
 
 export function periodoAprobado(rendiciones = []) {

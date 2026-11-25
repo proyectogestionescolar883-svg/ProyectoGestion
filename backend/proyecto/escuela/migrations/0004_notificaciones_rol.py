@@ -1,23 +1,30 @@
-"""
-Agrega la columna `rol` a `notificaciones` (segmento destino).
+"""Agrega `notificaciones.rol` (registro histórico; `managed=False`).
 
-La tabla se crea manualmente (managed=False); esta migración ejecuta el DDL
-para que baste con `python manage.py migrate`. El valor guardado es el
-segmento destino de la notificación: 'alumno', 'familia', 'docente',
-'preceptor', 'jefe_preceptores', 'directivo' o 'universal'. Las filas con
-`rol` NULL (históricas) siguen viéndose en cualquier rol activo.
+El DDL y el tipo viven en `escuela/schema.py`. Esta migración sólo agrega la
+columna si falta. La reversión es no-op para no quitar una columna soportada.
 """
 from django.db import migrations
 
-SQL_ALTER = """
-ALTER TABLE notificaciones
-    ADD COLUMN rol VARCHAR(32) NULL
-"""
+from escuela import schema
 
-SQL_DROP = """
-ALTER TABLE notificaciones
-    DROP COLUMN rol
-"""
+COLUMNAS = tuple(
+    (tabla, columna, ddl)
+    for tabla, columna, ddl, _relleno, _nota in schema.COLUMNAS
+    if tabla == 'notificaciones' and columna == 'rol'
+)
+
+
+def agregar(apps, schema_editor):
+    with schema_editor.connection.cursor() as cursor:
+        existentes = schema.columnas_de(cursor, 'notificaciones')
+        for _tabla, columna, ddl in COLUMNAS:
+            if columna in existentes:
+                continue
+            cursor.execute(
+                f'ALTER TABLE {schema._q(cursor, "notificaciones")} '
+                f'ADD COLUMN {schema._q(cursor, columna)} '
+                f'{schema._ddl_para(cursor, ddl)}'
+            )
 
 
 class Migration(migrations.Migration):
@@ -27,5 +34,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(SQL_ALTER, reverse_sql=SQL_DROP),
+        migrations.RunPython(agregar, migrations.RunPython.noop),
     ]

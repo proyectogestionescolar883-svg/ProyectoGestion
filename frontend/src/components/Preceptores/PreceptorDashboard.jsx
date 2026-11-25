@@ -131,8 +131,12 @@ function PreceptorDashboard({ user, onLogout }) {
   };
 
   const cursoId = useMemo(
-    () => (curso ? (cursosObj || []).find((c) => c.nombre_curso === curso)?.id_curso || null : null),
-    [curso, cursosObj],
+    () => (curso && anioLectivo
+      ? (cursosObj || []).find(
+        (c) => c.nombre_curso === curso && Number(c.ciclo_anio) === Number(anioLectivo),
+      )?.id_curso || null
+      : null),
+    [curso, anioLectivo, cursosObj],
   );
 
   const renderView = () => {

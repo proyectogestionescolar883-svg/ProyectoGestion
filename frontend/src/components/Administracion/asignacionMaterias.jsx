@@ -22,13 +22,14 @@ function AsignacionMaterias() {
   const [editando, setEditando] = useState(null);
   const [formData, setFormData] = useState(formVacio);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     refreshAdminCursos(false);
     refreshAdminMaterias(false);
-    getDocentes().then((r) => setDocentes(Array.isArray(r) ? r : [])).catch(() => {});
+    getDocentes()
+      .then((r) => setDocentes(Array.isArray(r) ? r : []))
+      .catch(() => toast.error('Error al cargar los docentes.'));
   }, [refreshAdminCursos, refreshAdminMaterias]);
 
   const cargarAsignaciones = useCallback(() => {
@@ -62,7 +63,6 @@ function AsignacionMaterias() {
     setEditando(null);
     setFormData(formVacio);
     setError('');
-    setSuccess('');
     setShowModal(true);
   };
 
@@ -70,7 +70,6 @@ function AsignacionMaterias() {
     setEditando(cm);
     setFormData({ id_materia: cm.id_materia, id_docente: cm.id_docente ?? '' });
     setError('');
-    setSuccess('');
     setShowModal(true);
   };
 
@@ -83,7 +82,6 @@ function AsignacionMaterias() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setSuccess('');
     setGuardando(true);
     try {
       const payload = {
@@ -115,7 +113,6 @@ function AsignacionMaterias() {
       loadingText: 'Quitando...',
       onConfirm: async () => {
         setError('');
-        setSuccess('');
         try {
           await updateCursoMateria(cm.id_curso_materia, { activo: false });
           toast.success('Asignación desactivada correctamente.');
@@ -143,7 +140,6 @@ function AsignacionMaterias() {
       <div className="card-header"><h2><i className="fas fa-book-open" aria-hidden="true" /> Asignación de Materias a Cursos</h2></div>
       <div className="card-body">
         {error && <div className="alert alert-danger">{error}</div>}
-        {success && <div className="alert alert-success">{success}</div>}
 
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', marginBottom: '16px' }}>
           <div className="form-group-filter" style={{ flex: 1 }}>

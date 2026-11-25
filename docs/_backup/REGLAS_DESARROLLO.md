@@ -1,5 +1,7 @@
 # REGLAS DE DESARROLLO — Mi Secundaria 7
 
+> **DOCUMENTO HISTÓRICO (backup).** Versión original con MySQL; la regla vigente es `docs/REGLAS_DESARROLLO.md` (PostgreSQL/Supabase).
+
 > **Propósito:** Este documento define las reglas absolutas que cualquier agente de IA debe seguir al modificar el código del proyecto. Cada regla está extraída directamente del código existente. No es una guía de buenas prácticas genérica; es una especificación vinculante derivada del proyecto real.
 >
 > **Antes de escribir cualquier línea de código, leer este documento completo y ejecutar los Checklists (secciones 20 y 21).**

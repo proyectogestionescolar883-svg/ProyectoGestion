@@ -1,5 +1,7 @@
   # DESARROLLO UI — Guía oficial de diseño y desarrollo visual
 
+  > **DOCUMENTO HISTÓRICO (backup).** La fuente visual vigente es `docs/VISUAL_STANDARD.md`; este archivo es de consulta histórica.
+
   Este documento define el estándar exacto para toda la interfaz del proyecto. Cualquier IA o desarrollador que trabaje en el frontend debe seguirlo estrictamente para mantener la consistencia visual en todos los módulos y roles.
 
   ---

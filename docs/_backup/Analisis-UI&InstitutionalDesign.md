@@ -1,5 +1,7 @@
 # UI & Institutional Design Audit — Mi Secundaria 7
 
+> **DOCUMENTO HISTÓRICO (backup).** La fuente visual vigente es `docs/VISUAL_STANDARD.md`; este análisis es de consulta histórica.
+
 > **Scope:** Global CSS audit, institutional design-system compliance, and Shared-component extraction methodology for the Mi Secundaria 7 React project (Vite, vanilla CSS, no external UI frameworks).
 >
 > **Estado:** Análisis de código estático. Extracciones Shared, consolidación de selectores y nuevas variables CSS pendientes de las reglas pre-ejecución.

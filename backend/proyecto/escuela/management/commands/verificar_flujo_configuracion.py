@@ -29,11 +29,12 @@ Uso:
     python manage.py verificar_flujo_configuracion --anio 2099 --limpiar --marca MARCA
 """
 import json
+import re
 import uuid
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.test import Client
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -45,7 +46,10 @@ from escuela.models import (
     Materia,
     Modulos,
     PeriodoEvaluacion,
+    Rol,
     TipoActa,
+    Usuario,
+    UsuarioRol,
 )
 
 BASE = '/api'
@@ -82,6 +86,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         anio = options['anio']
         marca = options['marca'] or uuid.uuid4().hex[:10]
+        if not re.fullmatch(r'[0-9a-fA-F]{1,16}', marca):
+            raise CommandError(
+                '--marca debe ser hexadecimal de 1 a 16 caracteres: %s' % marca
+            )
         self.stdout.write('Marca de esta corrida: %s' % marca)
 
         if options['limpiar']:
@@ -109,6 +117,9 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('RESULTADO: todas las verificaciones OK'))
 
     # ------------------------------------------------------------------
+
+    def _host(self):
+        return settings.ALLOWED_HOSTS[0] if settings.ALLOWED_HOSTS else 'localhost'
 
     def _titulo(self, texto):
         self.stdout.write('\n' + '=' * 72)
@@ -141,10 +152,10 @@ class Command(BaseCommand):
         # `test.Client` usa el host `testserver`, que no está en ALLOWED_HOSTS
         # (el proyecto define hosts reales), así que se fija uno válido.
         cli = Client(
-            HTTP_HOST=settings.ALLOWED_HOSTS[0],
+            HTTP_HOST=self._host(),
             HTTP_AUTHORIZATION='Bearer ' + str(RefreshToken.for_user(admin).access_token),
         )
-        cli_anonimo = Client(HTTP_HOST=settings.ALLOWED_HOSTS[0])
+        cli_anonimo = Client(HTTP_HOST=self._host())
         creado = {}
 
         # -- 1) ciclo lectivo -------------------------------------------
@@ -154,7 +165,7 @@ class Command(BaseCommand):
                                   content_type='application/json')
         fallos += not self._ok('crear ciclo', cod, {201}, cuerpo)
         if cod != 201:
-            return fallos
+            return fallos, creado
         creado['ciclo'] = cuerpo['id_ciclo']
 
         cod, cuerpo = self._pedir(cli, 'post', f'{BASE}/ciclos-lectivos/',
@@ -315,12 +326,30 @@ class Command(BaseCommand):
         # token; si la fila no existía, se borra al terminar para no dejar
         # rastro. Los roles se resuelven por `usuario` + `usuario_roles`, así que
         # el token refleja los permisos reales de la persona.
+        rol_preceptor, _ = Rol.objects.get_or_create(nombre_rol='preceptor')
+        usuario_preceptor, creado_usuario = Usuario.objects.get_or_create(
+            usuario='luciapreceptora',
+            defaults={'contrasena': 'sin-uso', 'estado': True},
+        )
+        vinculo_creado = False
+        if not UsuarioRol.objects.filter(
+            id_usuario=usuario_preceptor, id_rol=rol_preceptor,
+        ).exists():
+            UsuarioRol.objects.create(
+                id_usuario=usuario_preceptor, id_rol=rol_preceptor,
+            )
+            vinculo_creado = True
+
         preceptor, creado_preceptor = User.objects.get_or_create(
             username='luciapreceptora', defaults={'is_active': True},
         )
+        if creado_usuario:
+            creado['usuario_preceptor'] = usuario_preceptor.pk
+        if creado_usuario or creado_preceptor:
+            creado['usuario_preceptor_auth'] = preceptor.pk
         try:
             cli_preceptor = Client(
-                HTTP_HOST=settings.ALLOWED_HOSTS[0],
+                HTTP_HOST=self._host(),
                 HTTP_AUTHORIZATION='Bearer ' + str(RefreshToken.for_user(preceptor).access_token),
             )
             for etiqueta, ruta in (
@@ -337,8 +366,14 @@ class Command(BaseCommand):
                 )
                 fallos += not self._ok(f'preceptor no puede {etiqueta}', cod, {403}, cuerpo)
         finally:
-            if creado_preceptor:
-                preceptor.delete()
+            if vinculo_creado:
+                UsuarioRol.objects.filter(
+                    id_usuario_id=usuario_preceptor.pk, id_rol_id=rol_preceptor.pk,
+                ).delete()
+            if creado_usuario:
+                Usuario.objects.filter(pk=usuario_preceptor.pk).delete()
+            if creado.get('usuario_preceptor_auth'):
+                User.objects.filter(pk=creado['usuario_preceptor_auth']).delete()
 
         cod, cuerpo = self._pedir(cli_anonimo, 'get', f'{BASE}/ciclos-lectivos/')
         fallos += not self._ok('anónimo no puede listar (401)', cod, {401}, cuerpo)
@@ -371,7 +406,7 @@ class Command(BaseCommand):
         cms = ids('curso_materia')
         horarios = ids('horario')
 
-        if marca:
+        if marca and not any(creado.values()):
             cursos_marcados = list(
                 Curso.all_objects.filter(nombre_curso__contains=marca)
                 .values_list('id_curso', 'id_ciclo_id')

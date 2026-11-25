@@ -150,9 +150,12 @@ function Asistencias({ navContext }) {
     setCargandoDiaria(true);
     getAsistenciaDiaria(curso, today)
       .then(setDataDiaria)
-      .catch(() => setDataDiaria([]))
+      .catch(() => {
+        setDataDiaria([]);
+        toast.error('Error al cargar la asistencia diaria.');
+      })
       .finally(() => setCargandoDiaria(false));
-  }, [curso]);
+  }, [curso, today, toast]);
 
   useEffect(() => {
     if (tab === 'dia' && curso) cargarDiaria();
@@ -166,10 +169,13 @@ function Asistencias({ navContext }) {
       if (estudianteMateria) params.alumno = estudianteMateria;
       getAsistenciasPreceptorMateria(materiaCmId, params)
         .then(setDataMateria)
-        .catch(() => setDataMateria([]))
+        .catch(() => {
+          setDataMateria([]);
+          toast.error('Error al cargar la asistencia por materia.');
+        })
         .finally(() => setCargandoMateria(false));
     }
-  }, [tab, materiaCmId, fechaMateria, estudianteMateria]);
+  }, [tab, materiaCmId, fechaMateria, estudianteMateria, toast]);
 
   useEffect(() => {
     if (tab === 'dia' && curso && (regFecha || regEstudiante)) {
@@ -179,32 +185,46 @@ function Asistencias({ navContext }) {
       if (regEstudiante) params.alumno = regEstudiante;
       getRegistroDiario(curso, params)
         .then(setDataRegistro)
-        .catch(() => setDataRegistro([]))
+        .catch(() => {
+          setDataRegistro([]);
+          toast.error('Error al cargar el registro diario.');
+        })
         .finally(() => setCargandoRegistro(false));
     }
-  }, [tab, curso, regFecha, regEstudiante]);
+  }, [tab, curso, regFecha, regEstudiante, toast]);
 
   useEffect(() => {
-    getServerTime().then(setServerInfo).catch(() => setServerInfo(null));
-  }, []);
+    getServerTime()
+      .then(setServerInfo)
+      .catch(() => {
+        setServerInfo(null);
+        toast.error('No se pudo obtener la hora del servidor.');
+      });
+  }, [toast]);
 
   useEffect(() => {
     if (tab !== 'docentes' || !curso) return;
     setCargandoDocHoy(true);
     getAsistenciasDocentesHoy(curso)
       .then(setDocHoy)
-      .catch(() => setDocHoy([]))
+      .catch(() => {
+        setDocHoy([]);
+        toast.error('Error al cargar la asistencia docente de hoy.');
+      })
       .finally(() => setCargandoDocHoy(false));
-  }, [tab, curso]);
+  }, [tab, curso, toast]);
 
   useEffect(() => {
     if (tab !== 'docentes' || tabDocentes !== 'historial' || !curso) return;
     setCargandoDocHistorial(true);
     getHistorialAsistenciasDocentes(curso, fechaHistDoc)
       .then(setDocHistorial)
-      .catch(() => setDocHistorial([]))
+      .catch(() => {
+        setDocHistorial([]);
+        toast.error('Error al cargar el historial de asistencia docente.');
+      })
       .finally(() => setCargandoDocHistorial(false));
-  }, [tab, tabDocentes, curso, fechaHistDoc]);
+  }, [tab, tabDocentes, curso, fechaHistDoc, toast]);
 
   const getEstadoSeleccionado = (id) => asistEstudiantes[id] || 'Presente';
 
@@ -217,30 +237,57 @@ function Asistencias({ navContext }) {
       toast.warning('No hay estados de asistencia configurados.');
       return;
     }
-    const cm = (cursoMateria || []).find(
-      (item) => cursosSelIds.includes(String(item.id_curso)),
-    );
-    if (!cm) {
+    if (cmCurso.length === 0) {
       toast.warning('No hay materias asignadas al curso seleccionado.');
+      return;
+    }
+    const idUsuario = user?.id_usuario || user?.id;
+    if (!idUsuario) {
+      toast.error('No se pudo identificar al usuario que registra las asistencias.');
       return;
     }
     setGuardando(true);
     try {
+      const registrosPrevios = await Promise.all(
+        cursosSel.map((nombreCurso) => getRegistroDiario(nombreCurso, { fecha: hoy() }).catch(() => [])),
+      );
+      const yaRegistrados = new Set(
+        registrosPrevios.flat().map((r) => String(r.id_alumno ?? r.alumno_id ?? r.alumno?.id)),
+      );
+      const alumnosAGuardar = listaEstudiantes.filter((a) => !yaRegistrados.has(String(a.id)));
+      if (alumnosAGuardar.length === 0) {
+        toast.info('Los estudiantes ya tienen asistencia registrada para hoy.');
+        return;
+      }
+      const resolverCm = (alumno) => {
+        const cursoObj = (cursosObj || []).find(
+          (c) => String(c.nombre_curso) === String(alumno.curso),
+        );
+        const cursoId = alumno.id_curso ?? cursoObj?.id_curso;
+        return cmCurso.find((item) => String(item.id_curso) === String(cursoId)) || null;
+      };
+      const alumnosSinCm = alumnosAGuardar.filter((a) => !resolverCm(a));
+      if (alumnosSinCm.length > 0) {
+        toast.warning(`No hay curso-materia para ${alumnosSinCm.length} estudiante(s): no se guardaron asistencias.`);
+        return;
+      }
       const estadosPorNombre = Object.fromEntries(
         estadosAsistencia.map((e) => [e.nombre_estado, e.id_estado_asistencia]),
       );
-      await Promise.all(listaEstudiantes.map((a) => {
+      await Promise.all(alumnosAGuardar.map((a) => {
         const estado = getEstadoSeleccionado(a.id);
         return createAsistencia({
           id_alumno: a.id,
-          id_curso_materia: cm.id,
+          id_curso_materia: resolverCm(a).id,
           fecha: hoy(),
-          numero_modulo: null,
           id_estado_asistencia: estadosPorNombre[estado] || estadosAsistencia[0].id_estado_asistencia,
-          id_usuario: user?.id || 1,
+          id_usuario: idUsuario,
         });
       }));
-      toast.success('Asistencias guardadas correctamente.');
+      const omitidos = listaEstudiantes.length - alumnosAGuardar.length;
+      toast.success(omitidos > 0
+        ? `Asistencias guardadas. Se omitieron ${omitidos} registro(s) existente(s).`
+        : 'Asistencias guardadas correctamente.');
       await refreshData();
       await cargarDiaria();
     } catch (err) {

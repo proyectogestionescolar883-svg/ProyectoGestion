@@ -1,15 +1,19 @@
 import { useData } from '../../context/DataContext';
 import { parseCurso } from '../../utils/orientacion';
 
-function comunicadoAplicaAcurso(comunicado, hijoCurso) {
+function comunicadoAplicaAcurso(comunicado, cursoObj, cursoNombre) {
   const alcances = Array.isArray(comunicado?.alcances) ? comunicado.alcances : [];
   if (!alcances.length) return true;
-  const parts = parseCurso(hijoCurso || '');
+  const parts = parseCurso(cursoObj?.nombre_curso || cursoNombre || '');
   return alcances.some((alcance) => {
+    const hasCiclo = alcance.id_ciclo !== null && alcance.id_ciclo !== undefined;
     const hasCurso = alcance.curso !== null && alcance.curso !== undefined;
     const hasDivision = alcance.division !== null && alcance.division !== undefined;
-    if (!hasCurso && !hasDivision && alcance.id_ciclo === null && alcance.id_ciclo === undefined && alcance.id_materia === null && alcance.id_materia === undefined) {
-      return true;
+    const hasMateria = alcance.id_materia !== null && alcance.id_materia !== undefined;
+    if (!hasCiclo && !hasCurso && !hasDivision && !hasMateria) return true;
+    if (hasCiclo) {
+      if (cursoObj?.id_ciclo === null || cursoObj?.id_ciclo === undefined) return false;
+      if (Number(cursoObj.id_ciclo) !== Number(alcance.id_ciclo)) return false;
     }
     if (hasCurso && parts.anio !== Number(alcance.curso)) return false;
     if (hasDivision && parts.division !== Number(alcance.division)) return false;
@@ -18,10 +22,14 @@ function comunicadoAplicaAcurso(comunicado, hijoCurso) {
 }
 
 function Comunicados({ hijo }) {
-  const { comunicadosFamilia } = useData();
-  const comunicados = comunicadosFamilia
-    .filter((c) => comunicadoAplicaAcurso(c, hijo.curso))
-    .sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const { comunicadosFamilia, cursosObj, getEstudianteById } = useData();
+  const estudiante = getEstudianteById(hijo?.alumnoId);
+  const cursoObj = cursosObj.find(
+    (c) => c.id_curso != null && estudiante?.id_curso != null && String(c.id_curso) === String(estudiante.id_curso),
+  ) || null;
+  const comunicados = (Array.isArray(comunicadosFamilia) ? comunicadosFamilia : [])
+    .filter((c) => comunicadoAplicaAcurso(c, cursoObj, hijo?.curso))
+    .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
 
   return (
     <div className="card">

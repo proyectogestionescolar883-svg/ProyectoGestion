@@ -10,7 +10,7 @@ export default function AsistenciaMateriaDetalle({ alumnoId, cursoMateria, idCur
   const materias = useMemo(() => {
     const map = new Map();
     (cursoMateria || [])
-      .filter((cm) => cm.id_curso === idCurso)
+      .filter((cm) => String(cm.id_curso) === String(idCurso))
       .forEach((cm) => {
         if (!map.has(cm.id)) {
           map.set(cm.id, { id: cm.id, nombre: cm.materia_nombre || 'Sin nombre' });
@@ -29,7 +29,7 @@ export default function AsistenciaMateriaDetalle({ alumnoId, cursoMateria, idCur
     setCargando(true);
     try {
       const data = await getAsistenciasEstudianteDetalle(cmId, alumnoId);
-      setAsistencias(data);
+      setAsistencias(Array.isArray(data) ? data : (data?.results || []));
     } catch {
       setAsistencias([]);
     } finally {

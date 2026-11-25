@@ -1,3 +1,10 @@
 node_modules
 dist
 .vercel
+
+.env
+.env.*
+!.env.example
+
+coverage
+.nyc_output

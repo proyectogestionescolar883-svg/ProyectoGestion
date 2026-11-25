@@ -1,5 +1,7 @@
 # DECISIONES ARQUITECTÓNICAS — Mi Secundaria 7
 
+> **DOCUMENTO HISTÓRICO (backup).** Decisiones originales; las vigentes están en `REGLAS_DESARROLLO.md` y `DOCUMENTACION_TECNICA.md`.
+
 > **Propósito:** Este documento explica POR QUÉ se tomaron las decisiones importantes del proyecto. No es un changelog (no registra qué cambió) ni documentación técnica (no explica cómo funciona el código). Es un registro de la justificación detrás de cada decisión arquitectónica, para que cualquier desarrollador o IA que trabaje en el proyecto pueda entender las razones y respetarlas.
 >
 > **Si no se entiende por qué algo se hizo de cierta manera, este documento debe ser la primera fuente de consulta.**

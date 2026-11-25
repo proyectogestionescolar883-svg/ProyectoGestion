@@ -16,8 +16,6 @@ function normalizeCursoPermitido(c) {
   return '';
 }
 
-// 5.6 — Normaliza la selección de cursos a un array de nombres. Acepta un
-// string (comportamiento anterior, un curso solo) o el array del header global.
 export function aListaCursos(curso) {
   if (Array.isArray(curso)) return curso.filter(Boolean);
   return curso ? [curso] : [];
@@ -58,8 +56,6 @@ export function cursosPorAnio(anioLectivo, inscripciones, cursos, cursosObj, cur
 }
 
 export function docentesPorFiltros(anioLectivo, curso, materia, docentes, asignacionesDocente) {
-  // 5.6 — `curso` puede ser un array (multiselección del header): el docente
-  // tiene que tener alguna asignación en CUALQUIER curso marcado.
   const seleccionados = aListaCursos(curso);
   return docentes.filter((d) =>
     asignacionesDocente.some((a) => {
@@ -80,9 +76,6 @@ export function nombreDocente(docente) {
   return `${docente.apellido}, ${docente.nombre}`;
 }
 
-// Los tutores se filtran por el curso del selector global del header: se
-// muestra solo el tutor que tiene al menos un alumno en ese curso/año. `curso`
-// acepta el string del preceptor o el array del multiselect (Admin/Jefe).
 export function tutoresPorAnioYCurso(anioLectivo, curso, tutores, cursosPermitidos = []) {
   const seleccionados = aListaCursos(curso);
   if (!anioLectivo || seleccionados.length === 0) return [];
@@ -101,8 +94,6 @@ export function tutoresPorAnioYCurso(anioLectivo, curso, tutores, cursosPermitid
 }
 
 export function filtrosCompletos(anioLectivo, curso) {
-  // 5.6 — Con multiselección alcanza con que haya al menos un curso marcado, y
-  // cada uno debe traer año y división (ej: "2°1"), no solo el año ("2°").
   const seleccionados = aListaCursos(curso);
   if (!anioLectivo || seleccionados.length === 0) return false;
   return seleccionados.some((c) => /\d+\s*[°º]\s*\d+/.test(String(c)));

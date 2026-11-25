@@ -24,11 +24,10 @@ function obtenerMensajeApi(err) {
   return mensajeErrorAmigable(err);
 }
 
-function PanelDocente({ miDocente, mapSuplencias }) {
+function PanelDocente({ miDocente, mapSuplencias, puedeEditar = true }) {
   const { cursoMateria, cursosObj, estudiantes, planificaciones, actasDocente, refreshData } = useData();
   const toast = useToast();
   const fileInputRef = useRef(null);
-  const [mensaje, setMensaje] = useState('');
   const [subiendo, setSubiendo] = useState(false);
   const MEDIA_BASE = BASE_URL;
 
@@ -39,17 +38,17 @@ function PanelDocente({ miDocente, mapSuplencias }) {
     const safePlanificaciones = planificaciones ?? [];
     const safeActasDocente = actasDocente ?? [];
     const misAsigs = safeCursoMateria.filter((cm) => {
-      const s = mapSuplencias?.[cm.id];
-      if (cm.id_docente === miDocente.id) return true;
-      return Boolean(s && s.id_docente_suplente === miDocente.id);
+      const s = mapSuplencias?.[String(cm.id)];
+      if (cm.id_docente != null && String(cm.id_docente) === String(miDocente.id)) return true;
+      return Boolean(s && s.id_docente_suplente != null && String(s.id_docente_suplente) === String(miDocente.id));
     });
-    const cursoIds = [...new Set(misAsigs.map((cm) => cm.id_curso).filter(Boolean))];
+    const cursoIds = new Set(misAsigs.map((cm) => String(cm.id_curso)).filter(Boolean));
     return {
       materias: [...new Set(misAsigs.map((cm) => cm.materia_nombre).filter(Boolean))].length,
       cursos: [...new Set(misAsigs.map((cm) => cm.curso_nombre).filter(Boolean))].length,
-      estudiantes: safeEstudiantes.filter((a) => cursoIds.includes(a.id_curso)).length,
-      proyectos: safePlanificaciones.filter((p) => p.id_docente === miDocente.id).length,
-      actas: safeActasDocente.filter((ad) => ad.docenteId === miDocente.id).length,
+      estudiantes: safeEstudiantes.filter((a) => a.id_curso != null && cursoIds.has(String(a.id_curso))).length,
+      proyectos: safePlanificaciones.filter((p) => p.id_docente != null && String(p.id_docente) === String(miDocente.id)).length,
+      actas: safeActasDocente.filter((ad) => ad.docenteId != null && String(ad.docenteId) === String(miDocente.id)).length,
       estado: miDocente.usuario_estado === false ? 'Inactivo' : 'Activo',
     };
   }, [miDocente, cursoMateria, estudiantes, planificaciones, actasDocente, mapSuplencias]);
@@ -64,21 +63,23 @@ function PanelDocente({ miDocente, mapSuplencias }) {
     );
   }
 
-  const misAsignaciones = cursoMateria
+  const misAsignaciones = (Array.isArray(cursoMateria) ? cursoMateria : [])
     .filter((cm) => {
-      const s = mapSuplencias?.[cm.id];
-      if (cm.id_docente === miDocente.id) return true;
-      return Boolean(s && s.id_docente_suplente === miDocente.id);
+      const s = mapSuplencias?.[String(cm.id)];
+      if (cm.id_docente != null && String(cm.id_docente) === String(miDocente.id)) return true;
+      return Boolean(s && s.id_docente_suplente != null && String(s.id_docente_suplente) === String(miDocente.id));
     })
     .map((cm) => {
-      const s = mapSuplencias?.[cm.id];
-      const cObj = cursosObj.find((c) => c.id_curso === cm.id_curso);
+      const s = mapSuplencias?.[String(cm.id)];
+      const cObj = cursosObj.find(
+        (c) => c.id_curso != null && String(c.id_curso) === String(cm.id_curso),
+      );
       return {
         id: cm.id,
         curso: cm.curso_nombre || '',
         materia: cm.materia_nombre || '',
         anio: cObj?.ciclo_anio || '',
-        esSuplente: Boolean(s && s.id_docente_suplente === miDocente.id),
+        esSuplente: Boolean(s && s.id_docente_suplente != null && String(s.id_docente_suplente) === String(miDocente.id)),
         suplenteNombre: s?.suplente_nombre || null,
       };
     });
@@ -95,8 +96,7 @@ function PanelDocente({ miDocente, mapSuplencias }) {
     : null;
 
   const handleSubir = async (file) => {
-    if (!file) return;
-    setMensaje('');
+    if (!file || !puedeEditar) return;
     setSubiendo(true);
     try {
       await uploadMiDdjjDocente(file);
@@ -184,7 +184,7 @@ function PanelDocente({ miDocente, mapSuplencias }) {
                   type="button"
                   className="btn btn-primary btn-lg"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={subiendo}
+                  disabled={subiendo || !puedeEditar}
                 >
                   <i className="fas fa-file-upload" aria-hidden="true" /> {subiendo ? 'Subiendo...' : 'Seleccionar y Subir Archivo'}
                 </button>
@@ -249,12 +249,6 @@ function PanelDocente({ miDocente, mapSuplencias }) {
             </div>
           </div>
 
-          {mensaje && (
-            <div className={`ddjj-message ${mensaje.startsWith('Error') ? 'error' : 'success'}`}>
-              <i className={`fas ${mensaje.startsWith('Error') ? 'fa-exclamation-circle' : 'fa-check-circle'}`} aria-hidden="true" />
-              {mensaje}
-            </div>
-          )}
         </div>
       </div>
 

@@ -96,5 +96,5 @@ reporte_*.txt
 /pg_fks.sql
 /pg_inserts.sql
 /pg_tables.sql
-# vercel.json de la raíz: placeholder sin uso (el deploy sale de frontend/ y backend/)
+# vercel.json de la raíz: se ignora para evitar una config accidental que altere el root dir; los válidos son frontend/vercel.json y backend/vercel.json
 /vercel.json

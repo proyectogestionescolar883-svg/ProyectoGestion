@@ -88,6 +88,7 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
     preceptores,
     administradores,
     ciclosLectivos,
+    hijosFamilia,
     navIntent,
   } = useData();
   const { user } = useAuth();
@@ -99,7 +100,11 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
   useEffect(() => {
     const marca = navIntent?.timestamp;
     const comunicadoId = navIntent?.params?.comunicadoId ?? navIntent?.params?.id_comunicado;
-    if (!marca || !comunicadoId || navComunicadoAplicado.current === marca) return;
+    if (!marca || !comunicadoId) {
+      setComunicadoResaltado(null);
+      return;
+    }
+    if (navComunicadoAplicado.current === marca) return;
     navComunicadoAplicado.current = marca;
     setComunicadoResaltado(comunicadoId);
   }, [navIntent]);
@@ -129,11 +134,20 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
             .filter((c) => comunicadoMatchesCurso(c, cursoObj));
         }
 
-        const miTutor = padresTutores.find((pt) => String(pt.id_usuario) === String(userId));
+        const listaEstudiantes = Array.isArray(estudiantes) ? estudiantes : [];
+        const miTutor = (Array.isArray(padresTutores) ? padresTutores : [])
+          .find((pt) => String(pt.id_usuario) === String(userId));
         if (!miTutor) return [];
-        const misHijos = estudiantes;
+        const porTutor = listaEstudiantes.filter(
+          (a) => a.id_tutor != null && String(a.id_tutor) === String(miTutor.id),
+        );
+        const misHijos = porTutor.length > 0
+          ? porTutor
+          : (Array.isArray(hijosFamilia) ? hijosFamilia : [])
+            .map((h) => listaEstudiantes.find((a) => String(a.id) === String(h.alumnoId)))
+            .filter(Boolean);
         const cursosHijos = misHijos
-          .map((h) => cursosObj.find((c) => c.id_curso === h.id_curso))
+          .map((h) => cursosObj.find((c) => String(c.id_curso) === String(h.id_curso)))
           .filter(Boolean);
         return comunicados
           .filter((c) => comunicadoEstaVigente(c, ciclosLectivos))
@@ -213,7 +227,7 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
       default:
         return [];
     }
-  }, [comunicados, user, userRole, estudiantes, cursoMateria, cursosObj, docentes, padresTutores, preceptores, selectedChild, cursoSeleccionado, materiaSeleccionada, ciclosLectivos, misAsignaciones]);
+  }, [comunicados, user, userRole, estudiantes, cursoMateria, cursosObj, docentes, padresTutores, preceptores, selectedChild, cursoSeleccionado, materiaSeleccionada, ciclosLectivos, misAsignaciones, hijosFamilia]);
 
   const comunicadosOrdenados = useMemo(() => {
     return [...comunicadosFiltrados].sort((a, b) => {
@@ -224,7 +238,7 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
   }, [comunicadosFiltrados]);
 
   const handleFileDownload = (ruta) => {
-    window.open(`${buildMediaUrl(ruta)}`, '_blank');
+    window.open(`${buildMediaUrl(ruta)}`, '_blank', 'noopener,noreferrer');
   };
 
   const getNombreCurso = (cursoId) => {
@@ -380,7 +394,7 @@ function ComunicadosView({ userRole, selectedChild, cursoSeleccionado, materiaSe
                     <button
                       type="button"
                       className="btn btn-sm btn-primary"
-                      onClick={() => setSelectedComunicado(c)}
+                      onClick={() => { setSelectedComunicado(c); setComunicadoResaltado(null); }}
                     >
                       <i className="fas fa-eye" aria-hidden="true" /> Ver
                     </button>

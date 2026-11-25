@@ -75,7 +75,6 @@ function CalendarioInstitucional({ readOnly = false, navContext }) {
   const [eventoVer, setEventoVer] = useState(null);
   const [form, setForm] = useState(FORM_DEFAULT);
   const [guardando, setGuardando] = useState(false);
-  const [mensaje, setMensaje] = useState('');
   const navEventoProcesado = useRef(null);
 
   const cargarEventos = useCallback(async () => {
@@ -83,8 +82,9 @@ function CalendarioInstitucional({ readOnly = false, navContext }) {
     try {
       const data = await getEventosInstitucionales();
       setEventos(Array.isArray(data) ? data : data.results || []);
-    } catch {
+    } catch (err) {
       setEventos([]);
+      toast.error(mensajeErrorAmigable(err, 'Error al cargar los eventos institucionales.'));
     } finally {
       setCargando(false);
     }
@@ -158,7 +158,6 @@ function CalendarioInstitucional({ readOnly = false, navContext }) {
     const fechaStr = `${anio}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
     setForm({ ...FORM_DEFAULT, fecha: fechaStr });
     setEventoEditar(null);
-    setMensaje('');
     setModalAbierto(true);
   };
 
@@ -187,7 +186,6 @@ function CalendarioInstitucional({ readOnly = false, navContext }) {
       hora_fin: ev.hora_fin || '',
     });
     setEventoEditar(ev);
-    setMensaje('');
     setEventoVer(null);
     setModalAbierto(true);
   };
@@ -206,7 +204,6 @@ function CalendarioInstitucional({ readOnly = false, navContext }) {
       return;
     }
     setGuardando(true);
-    setMensaje('');
     try {
       const payload = { ...form };
       if (payload.alcance !== 'franja') {
@@ -242,7 +239,7 @@ function CalendarioInstitucional({ readOnly = false, navContext }) {
           setEventoVer(null);
           await cargarEventos();
         } catch (err) {
-          toast.error(`Error al eliminar: ${err.message}`);
+          toast.error(`Error al eliminar: ${mensajeErrorAmigable(err)}`);
         }
       },
     });
@@ -454,7 +451,7 @@ function CalendarioInstitucional({ readOnly = false, navContext }) {
       )}
 
       {modalAbierto && (
-        <FormModal title={eventoEditar ? 'Editar Evento Institucional' : 'Nuevo Evento Institucional'} onClose={() => setModalAbierto(false)} error={mensaje && mensaje.startsWith('Error') ? mensaje : null} onClearError={() => setMensaje('')}>
+        <FormModal title={eventoEditar ? 'Editar Evento Institucional' : 'Nuevo Evento Institucional'} onClose={() => setModalAbierto(false)}>
           <div className="standard-modal-body" style={{ display: 'grid', gap: '14px' }}>
             <div className="form-row">
               <div className="form-group">
@@ -513,9 +510,6 @@ function CalendarioInstitucional({ readOnly = false, navContext }) {
               </div>
             )}
 
-            {mensaje && (
-              <p style={{ color: mensaje.startsWith('Error') ? '#ff6b6b' : '#51cf66', margin: '8px 0' }}>{mensaje}</p>
-            )}
           </div>
 
           <div className="standard-modal-footer">

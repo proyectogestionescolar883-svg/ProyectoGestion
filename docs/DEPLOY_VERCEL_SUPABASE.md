@@ -2,7 +2,10 @@
 
 > **Propósito:** dejar anotado, muy por encima, qué se hizo para migrar y deployar el sistema, y qué queda al pendiente.
 >
-> **Última actualización:** 2026-11-16
+> **Última actualización:** 2026-11-24
+>
+> **Estado actual:** producción con PostgreSQL (Supabase); las credenciales se
+> leen de variables de entorno y nunca se documentan en este archivo.
 
 ---
 
@@ -21,7 +24,7 @@
 | `secundaria7-backend` | secundaria7-backend.vercel.app | `backend` | Django | `DB_*`, `DJANGO_*`, `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS` |
 | `secundaria7-frontend` | secundaria7-frontend.vercel.app | `frontend` | Vite | `VITE_API_URL` |
 
-- **Base de datos (Supabase):** se usa el **pooler en modo transacción** `aws-1-us-east-1.pooler.supabase.com:6543`, usuario `postgres.<project-ref>`. La conexión directa (`db.<ref>.supabase.co`) es IPv6 y Vercel no la alcanza.
+- **Base de datos (Supabase/PostgreSQL):** se usa el **pooler en modo transacción** en `<HOST>:6543` con `<DB_USER>` y `<DB_PASSWORD>` (valores reales sólo en las env vars de Vercel). La conexión directa es IPv6 y Vercel no la alcanza.
 - **Deployment Protection** desactivada en ambos proyectos.
 
 ## Cambios de código relevantes
@@ -31,11 +34,11 @@
 - `backend/requirements.txt`: se agregó `psycopg2-binary`.
 - `frontend/vercel.json`: rewrites para el base path `/misecundaria7/`.
 - `backend/vercel.json` y `backend/.vercelignore`.
-- `backend/proyecto/settings.py`: `MIGRATION_MODULES = {'escuela': None}`. Los modelos son `managed=False` y el esquema se controla con `schema.py` / `manage.py verificar_esquema` (ahora compatible con Postgres); `makemigrations --check --dry-run` ya no propone un `initial` falso. Las migraciones 0001–0012 quedan como registro histórico, no se ejecutan automáticamente..
+- `backend/proyecto/settings.py`: `MIGRATION_MODULES = {'escuela': None}`. Los modelos son `managed=False` y el esquema se controla con `schema.py` / `manage.py verificar_esquema --aplicar` (compatible con Postgres, usa `current_schema()`); `makemigrations --check --dry-run` ya no propone un `initial` falso. Las migraciones 0001–0012 quedan como registro histórico, no se ejecutan automáticamente.
 
 ## Pendientes / al pendiente
 
-- [ ] **Seguridad — contraseñas:** todas las cuentas quedaron con contraseña `123` (aplicada directo en la tabla `usuarios`). Incluye las cuentas **admin** (`mfernandez`, `rgutierrez`) → el sitio público queda accesible para cualquiera. **Resetear a algo seguro y forzar cambio.**
-- [ ] **Rotar la contraseña de `postgres` de Supabase** (desde el Dashboard → Settings → Database, o vía Management API con un PAT; por SQL no se puede: "only superusers can alter privileged roles").
+- [ ] **Seguridad — contraseñas:** las cuentas de prueba quedaron con una contraseña débil conocida (valor redactado: `<DB_PASSWORD>`), aplicada directo en la tabla `usuarios`. Incluye cuentas **admin** (identificadores redactados: `<ADMIN_USER_1>`, `<ADMIN_USER_2>`) → el sitio público queda accesible para cualquiera. **Resetear a algo seguro y forzar cambio.**
+- [ ] **Rotación externa (a cargo del usuario, fuera de este repo):** contraseña de `<DB_USER>` en Supabase y `<DJANGO_SECRET_KEY>` en Vercel. La rotación real no se realiza ni se registra en la documentación.
 - [ ] Confirmar que los **backups** de Supabase estén activos.
 - [ ] Revisar si `deploy/`, `estructura base de datos/` y `misecundaria7-frontend.zip` siguen haciendo falta.

@@ -72,10 +72,6 @@ function Estudiantes({ readOnly = false, preceptorCursos = [], anioLectivo: anio
   useEffect(() => {
     ensureData('inscripciones');
   }, [ensureData]);
-  // 5.6 - `cursoGlobal` puede llegar como string (preceptor, un curso) o como
-  // array (Admin/Jefe, multiselección). `cursosGlobal` es el array del header y
-  // tiene prioridad; `curso` es siempre el array efectivo, y el título del modal
-  // usa el primero para no mostrar una lista larga.
   const toast = useToast();
   const [modo, setModo] = useState(readOnly ? 'vista' : '');
   const [anioLectivoLocal, setAnioLectivoLocal] = useState('');
@@ -178,7 +174,9 @@ function Estudiantes({ readOnly = false, preceptorCursos = [], anioLectivo: anio
           setGuardando(false);
           return;
         }
-        const cursoObj = cursosObj.find((c) => c.nombre_curso === form.curso);
+        const cursoObj = cursosObj.find(
+          (c) => c.nombre_curso === form.curso && Number(c.ciclo_anio) === Number(form.anioLectivo),
+        );
         const estudiantePayload = {
           estado: form.estado,
           dni: form.dni,

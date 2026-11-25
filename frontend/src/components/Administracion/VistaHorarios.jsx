@@ -1,10 +1,21 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useData } from '../../context/DataContext';
+import { useToast } from '../../context/ToastContext';
 import { getCursoMateria, getHorarios, getHorariosEspeciales, getSuplencias, getAdelantosHoras } from '../../services/api';
 import { suplenciasActivasLista } from '../../utils/suplencias';
 import LoadingSpinner from '../Shared/LoadingSpinner';
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function timeStr(value) {
   if (!value) return '';
@@ -179,8 +190,8 @@ function buildRowsHtml(daySlots, timeKeys, rowspans, nombreCursoDisplay, turno, 
   const colspan = DIAS.length + 1;
   const preceptorTexto = preceptorNombre || '-';
 
-  let theadHtml = `<tr class="info-row"><th colspan="${colspan}"><div class="info-row-inner"><span class="info-left">Curso: ${nombreCursoDisplay}</span><span class="info-center">Turno: ${turno}</span><span class="info-right">Preceptor: ${preceptorTexto}</span></div></th></tr>`;
-  theadHtml += `<tr><th>Horario</th>${DIAS.map((d) => `<th>${d}</th>`).join('')}</tr>`;
+  let theadHtml = `<tr class="info-row"><th colspan="${colspan}"><div class="info-row-inner"><span class="info-left">Curso: ${escapeHtml(nombreCursoDisplay)}</span><span class="info-center">Turno: ${escapeHtml(turno)}</span><span class="info-right">Preceptor: ${escapeHtml(preceptorTexto)}</span></div></th></tr>`;
+  theadHtml += `<tr><th>Horario</th>${DIAS.map((d) => `<th>${escapeHtml(d)}</th>`).join('')}</tr>`;
 
   let rowsHtml = '';
 
@@ -196,7 +207,7 @@ function buildRowsHtml(daySlots, timeKeys, rowspans, nombreCursoDisplay, turno, 
     if (!hasContent) return;
 
     rowsHtml += '<tr>';
-    rowsHtml += `<td class="time-col">${hInicio} – ${hFin}</td>`;
+    rowsHtml += `<td class="time-col">${escapeHtml(hInicio)} – ${escapeHtml(hFin)}</td>`;
 
     DIAS.forEach((dia) => {
       if (remaining[dia] > 0) {
@@ -216,15 +227,15 @@ function buildRowsHtml(daySlots, timeKeys, rowspans, nombreCursoDisplay, turno, 
       if (rs > 1) remaining[dia] = rs - 1;
 
       const esEspecial = slot.tipo === 'especial';
-      rowsHtml += `<td rowspan="${rs}" class="${esEspecial ? 'especial' : ''}">`;
+      rowsHtml += `<td rowspan="${escapeHtml(rs)}" class="${esEspecial ? 'especial' : ''}">`;
       if (slot.materia_nombre) {
-        rowsHtml += `<div class="materia">${slot.materia_nombre}</div>`;
-        rowsHtml += `<div class="docente">${slot.docente_nombre || '-'}</div>`;
+        rowsHtml += `<div class="materia">${escapeHtml(slot.materia_nombre)}</div>`;
+        rowsHtml += `<div class="docente">${escapeHtml(slot.docente_nombre || '-')}</div>`;
         if (slot.aula) {
-          rowsHtml += `<div class="aula">${slot.aula}</div>`;
+          rowsHtml += `<div class="aula">${escapeHtml(slot.aula)}</div>`;
         }
         (slot.suplentes || []).forEach((sp) => {
-          rowsHtml += `<div class="suplente"><span class="suplente-label">${sp.nivel > 1 ? `Suplente nivel ${sp.nivel}` : 'Suplente'}</span> ${sp.nombre || '-'}</div>`;
+          rowsHtml += `<div class="suplente"><span class="suplente-label">${escapeHtml(sp.nivel > 1 ? `Suplente nivel ${sp.nivel}` : 'Suplente')}</span> ${escapeHtml(sp.nombre || '-')}</div>`;
         });
       }
       rowsHtml += '</td>';
@@ -331,6 +342,7 @@ function ScheduleTable({ timeKeys, daySlots, rowspans, nombreCursoDisplay, turno
 
 function VistaHorarios({ cursosOptions, cursoForzado, mostrarTitulo, cargarAdelantos = true }) {
   const { modulos } = useData();
+  const toast = useToast();
   const [cursoSeleccionado, setCursoSeleccionado] = useState('');
   const [cargando, setCargando] = useState(false);
   const [daySlots, setDaySlots] = useState({});
@@ -414,9 +426,9 @@ function VistaHorarios({ cursosOptions, cursoForzado, mostrarTitulo, cargarAdela
         setTimeKeys(allTimes);
         setRowspans(computeRowspans(ds));
       })
-      .catch(() => {})
+      .catch(() => toast.error('Error al cargar los datos del horario.'))
       .finally(() => setCargando(false));
-  }, [cursoSeleccionado, modulosSorted, cursosOptions, cargarAdelantos]);
+  }, [cursoSeleccionado, modulosSorted, cursosOptions, cargarAdelantos, toast]);
 
   const descargarPDF = useCallback(() => {
     const { theadHtml, tbodyHtml } = buildRowsHtml(daySlots, timeKeys, rowspans, nombreCursoDisplay, turno, preceptorNombre);
@@ -425,7 +437,8 @@ function VistaHorarios({ cursosOptions, cursoForzado, mostrarTitulo, cargarAdela
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Horario - ${cursoNombre}</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:;">
+<title>Horario - ${escapeHtml(cursoNombre)}</title>
 <style>
   @page { size: landscape; margin: 15mm; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; margin: 0; padding: 20px; }

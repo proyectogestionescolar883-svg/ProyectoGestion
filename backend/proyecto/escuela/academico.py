@@ -10,6 +10,41 @@ from escuela.models import (
     NOTA_APROBACION,
 )
 from escuela.notifications import notificar_alumno
+from escuela.utils import franjas_se_solapan
+
+
+def _curso_del_anio(alumno, anio_lectivo):
+    historial = (
+        HistorialCursoAlumno.objects.filter(
+            id_alumno=alumno,
+            anio_lectivo=anio_lectivo,
+        )
+        .select_related('id_curso')
+        .order_by('-id_historial_curso')
+        .first()
+    )
+    if historial and historial.id_curso:
+        return historial.id_curso
+    curso = alumno.id_curso
+    if curso and curso.id_ciclo_id and getattr(curso.id_ciclo, 'anio', None) == anio_lectivo:
+        return curso
+    return curso if curso and anio_lectivo is None else None
+
+
+def _franjas_del_curso_materia(cm):
+    franjas = []
+    for horario in Horario.objects.filter(
+        id_curso_materia=cm, id_modulo__isnull=False,
+    ).select_related('id_modulo'):
+        modulo = horario.id_modulo
+        dia = (horario.dia_semana or '').lower()
+        if modulo and modulo.hora_inicio is not None and modulo.hora_fin is not None:
+            franjas.append((dia, modulo.hora_inicio, modulo.hora_fin))
+    for especial in HorariosEspeciales.objects.filter(id_curso_materia=cm):
+        dia = (especial.dia_semana or '').lower()
+        if especial.hora_inicio is not None and especial.hora_fin is not None:
+            franjas.append((dia, especial.hora_inicio, especial.hora_fin))
+    return franjas
 
 
 def estado_por_cuatrimestres(nota1, nota2):
@@ -32,9 +67,9 @@ def estado_por_cuatrimestres(nota1, nota2):
     return 'adeudada', None
 
 
-def consolidar_historial_alumno(alumno, anio_lectivo):
+def consolidar_historial_alumno(alumno, anio_lectivo, curso_actual=None):
     """Consolida las calificaciones del año y actualiza/crea el historial académico."""
-    curso_actual = alumno.id_curso
+    curso_actual = curso_actual or _curso_del_anio(alumno, anio_lectivo)
     if not curso_actual:
         return
 
@@ -56,8 +91,9 @@ def consolidar_historial_alumno(alumno, anio_lectivo):
             if n2_obj:
                 nota2 = n2_obj.nota_numerica
 
-        notas_validos = [n for n in [nota1, nota2] if n is not None]
-        nota_final = sum(notas_validos) / len(notas_validos) if notas_validos else None
+        nota_final = None
+        if nota1 is not None and nota2 is not None:
+            nota_final = (nota1 + nota2) / 2
 
         estado_materia, periodo_aprob = estado_por_cuatrimestres(nota1, nota2)
         intensificacion_aprobada = IntensificacionAcademica.objects.filter(
@@ -140,26 +176,27 @@ def procesar_cierre_ciclo(anio_lectivo):
     procesados = 0
     omitidos = []
     for alumno in alumnos:
-        if not alumno.id_curso:
+        curso_actual = _curso_del_anio(alumno, anio_lectivo)
+        if not curso_actual:
             omitidos.append({
                 'id_alumno': alumno.id_alumno,
                 'nombre': f'{alumno.apellido}, {alumno.nombre}',
             })
             continue
-        consolidar_historial_alumno(alumno, anio_lectivo)
+        consolidar_historial_alumno(alumno, anio_lectivo, curso_actual)
         procesados += 1
 
         historial_curso, _ = HistorialCursoAlumno.objects.update_or_create(
             id_alumno=alumno,
             anio_lectivo=anio_lectivo,
             defaults={
-                'id_curso': alumno.id_curso,
+                'id_curso': curso_actual,
                 'estado': 'FINALIZADO',
                 'fecha_finalizacion': timezone.now().date()
             }
         )
 
-        materias_curso = list(CursoMateria.objects.filter(id_curso=alumno.id_curso, activo=True))
+        materias_curso = list(CursoMateria.objects.filter(id_curso=curso_actual, activo=True))
         historiales_anio = {
             h.id_curso_materia_id: h.estado_materia
             for h in HistorialAcademico.objects.filter(
@@ -173,11 +210,13 @@ def procesar_cierre_ciclo(anio_lectivo):
         )
         curso_destino = Curso.objects.filter(
             id_ciclo__anio=anio_lectivo + 1,
-            nombre_curso=alumno.id_curso.nombre_curso,
-            orientacion=alumno.id_curso.orientacion,
+            nombre_curso=curso_actual.nombre_curso,
+            orientacion=curso_actual.orientacion,
+            activo=True,
         ).first() or Curso.objects.filter(
             id_ciclo__anio=anio_lectivo + 1,
-            nombre_curso=alumno.id_curso.nombre_curso,
+            nombre_curso=curso_actual.nombre_curso,
+            activo=True,
         ).first()
         PromocionAlumno.objects.update_or_create(
             id_alumno=alumno,
@@ -185,7 +224,7 @@ def procesar_cierre_ciclo(anio_lectivo):
             anio_lectivo=anio_lectivo,
             defaults={
                 'resultado': 'PROMOVIDO' if todas_aprobadas else 'REPITENTE',
-                'curso_origen': alumno.id_curso,
+                'curso_origen': curso_actual,
                 'curso_destino': curso_destino,
                 'fecha_resolucion': timezone.now(),
             }
@@ -204,9 +243,11 @@ def procesar_cierre_ciclo(anio_lectivo):
                     id_ciclo__anio=anio_lectivo + 1,
                     nombre_curso=ex.id_curso_origen.nombre_curso,
                     orientacion=ex.id_curso_origen.orientacion,
+                    activo=True,
                 ).first() or Curso.objects.filter(
                     id_ciclo__anio=anio_lectivo + 1,
                     nombre_curso=ex.id_curso_origen.nombre_curso,
+                    activo=True,
                 ).first() or ex.id_curso_origen
                 RecursadaMateria.objects.get_or_create(
                     id_alumno=alumno,
@@ -226,7 +267,7 @@ def procesar_cierre_ciclo(anio_lectivo):
 
 def detectar_superposiciones_y_bloqueos(alumno, anio_lectivo):
     """Detecta superposiciones horarias entre materias recursadas y el año actual."""
-    curso_actual = alumno.id_curso
+    curso_actual = _curso_del_anio(alumno, anio_lectivo)
     if not curso_actual:
         return
 
@@ -244,40 +285,44 @@ def detectar_superposiciones_y_bloqueos(alumno, anio_lectivo):
         if not cm_recs.exists():
             continue
         cm_rec = cm_recs.first()
-        horarios_rec = list(Horario.objects.filter(id_curso_materia=cm_rec))
+        franjas_rec = _franjas_del_curso_materia(cm_rec)
 
         for cm_act in cms_actuales:
             if cm_act.id_materia == rec.id_materia:
                 continue
-            horarios_act = list(Horario.objects.filter(id_curso_materia=cm_act))
+            franjas_act = _franjas_del_curso_materia(cm_act)
+            solapan = any(
+                dia_rec and dia_act and dia_rec == dia_act
+                and franjas_se_solapan(ini_rec, fin_rec, ini_act, fin_act)
+                for dia_rec, ini_rec, fin_rec in franjas_rec
+                for dia_act, ini_act, fin_act in franjas_act
+            )
+            if not solapan:
+                continue
 
-            for hr in horarios_rec:
-                for ha in horarios_act:
-                    if hr.dia_semana and ha.dia_semana and hr.dia_semana.lower() == ha.dia_semana.lower():
-                        if hr.id_modulo_id and ha.id_modulo_id and hr.id_modulo_id == ha.id_modulo_id:
-                            BloqueoHorarioAlumno.objects.update_or_create(
-                                id_alumno=alumno,
-                                id_materia_bloqueada=cm_act.id_materia,
-                                defaults={
-                                    'id_curso_materia_bloqueada': cm_act,
-                                    'id_materia_prioritaria': rec.id_materia,
-                                    'id_curso_materia_prioritaria': cm_rec,
-                                    'id_materia_recursada': rec.id_materia,
-                                    'id_curso_materia_recursada': cm_rec,
-                                    'motivo': 'SUPERPOSICION_RECURSADA',
-                                    'estado': True,
-                                    'fecha_bloqueo': timezone.now(),
-                                    'observaciones': f'Bloqueada por superposición con recursada de {rec.id_materia.nombre_materia}'
-                                }
-                            )
+            BloqueoHorarioAlumno.objects.update_or_create(
+                id_alumno=alumno,
+                id_materia_bloqueada=cm_act.id_materia,
+                defaults={
+                    'id_curso_materia_bloqueada': cm_act,
+                    'id_materia_prioritaria': rec.id_materia,
+                    'id_curso_materia_prioritaria': cm_rec,
+                    'id_materia_recursada': rec.id_materia,
+                    'id_curso_materia_recursada': cm_rec,
+                    'motivo': 'SUPERPOSICION_RECURSADA',
+                    'estado': True,
+                    'fecha_bloqueo': timezone.now(),
+                    'observaciones': f'Bloqueada por superposición con recursada de {rec.id_materia.nombre_materia}'
+                }
+            )
 
-                            SituacionMateriaAlumno.objects.update_or_create(
-                                id_alumno=alumno,
-                                id_curso_materia=cm_act,
-                                anio_lectivo=anio_lectivo,
-                                defaults={
-                                    'situacion': 'BLOQUEADA',
-                                    'motivo_bloqueo': f'Superposición con recursada de {rec.id_materia.nombre_materia}',
-                                    'fecha_inicio': timezone.now()
-                                }
-                            )
+            SituacionMateriaAlumno.objects.update_or_create(
+                id_alumno=alumno,
+                id_curso_materia=cm_act,
+                anio_lectivo=anio_lectivo,
+                defaults={
+                    'situacion': 'BLOQUEADA',
+                    'motivo_bloqueo': f'Superposición con recursada de {rec.id_materia.nombre_materia}',
+                    'fecha_inicio': timezone.now()
+                }
+            )

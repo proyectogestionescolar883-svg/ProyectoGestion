@@ -1,13 +1,10 @@
 import { useData } from '../../context/DataContext';
 import { buildMediaUrl } from '../../utils/medios';
-import { BASE_URL } from '../../services/api';
-
-const API_BASE = BASE_URL;
 
 function Actas({ hijo }) {
   const { actasEstudiante } = useData();
-  const actas = actasEstudiante
-    .filter((a) => a.alumnoId === hijo.alumnoId)
+  const actas = (Array.isArray(actasEstudiante) ? actasEstudiante : [])
+    .filter((a) => a.alumnoId != null && hijo?.alumnoId != null && String(a.alumnoId) === String(hijo.alumnoId))
     .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
 
   return (

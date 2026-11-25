@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import FiltrosAnioCurso from '../Shared/FiltrosAnioCurso';
 import { estudiantesPorAnioYCurso } from '../Preceptores/preceptorUtils';
@@ -13,8 +13,13 @@ function TutoresEstudiantesEditor({
   idPrefix = 'tut-estudiante',
 }) {
   const { inscripciones, estudiantes, aniosLectivos, cursosObj, ensureData } = useData();
+  const idsSeleccionados = useMemo(
+    () => (Array.isArray(alumnos_ids) ? alumnos_ids : []),
+    [alumnos_ids],
+  );
+  const ayudaId = `${idPrefix}-ayuda`;
   useEffect(() => {
-    ensureData('inscripciones');
+    if (typeof ensureData === 'function') ensureData('inscripciones');
   }, [ensureData]);
 
   const listaEstudiantes = estudiantesPorAnioYCurso(
@@ -27,11 +32,11 @@ function TutoresEstudiantesEditor({
   const toggleEstudiante = (id) => {
     const idNum = Number(id);
     if (Number.isNaN(idNum) || idNum <= 0) return;
-    const yaExiste = alumnos_ids.includes(idNum);
+    const yaExiste = idsSeleccionados.includes(idNum);
     if (yaExiste) {
-      setEstudiantesIds(alumnos_ids.filter((x) => x !== idNum));
+      setEstudiantesIds(idsSeleccionados.filter((x) => x !== idNum));
     } else {
-      setEstudiantesIds([...alumnos_ids, idNum]);
+      setEstudiantesIds([...idsSeleccionados, idNum]);
     }
   };
 
@@ -55,6 +60,7 @@ function TutoresEstudiantesEditor({
         </p>
       ) : (
         <div
+          aria-describedby={ayudaId}
           style={{
             maxHeight: 220,
             overflowY: 'auto',
@@ -63,7 +69,7 @@ function TutoresEstudiantesEditor({
           }}
         >
           {listaEstudiantes.map((al) => {
-            const activo = alumnos_ids.includes(Number(al.id));
+            const activo = idsSeleccionados.includes(Number(al.id));
             return (
               <label
                 key={al.id}
@@ -92,8 +98,8 @@ function TutoresEstudiantesEditor({
           })}
         </div>
       )}
-      <p className="m-0" style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>
-        Asignados: <strong>{alumnos_ids.length}</strong> estudiante(s)
+      <p id={ayudaId} className="m-0" style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>
+        Asignados: <strong>{idsSeleccionados.length}</strong> estudiante(s)
       </p>
     </div>
   );

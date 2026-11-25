@@ -104,6 +104,18 @@ def _formatear_nav(nav):
         return ''
 
 
+def _mensaje_con_nav(mensaje, nav):
+    return f'{mensaje}{_formatear_nav(nav)}' if nav else mensaje or ''
+
+
+def _tiene_marcador_ref(mensaje, marcador):
+    return re.search(re.escape(marcador), mensaje or '') is not None
+
+
+def _sin_sufijo_nav(mensaje):
+    return re.sub(r'\s*\[nav:\{.*?\}\s*\]$', '', (mensaje or '').rstrip())
+
+
 def notificar(*, id_usuario, titulo='', mensaje='', id_alumno=None, fecha=None,
               check_limits=True, dedupe_key=None, nav=None, rol=None):
     """Crea una notificación para un usuario destinatario con anti-spam.
@@ -134,20 +146,22 @@ def notificar(*, id_usuario, titulo='', mensaje='', id_alumno=None, fecha=None,
     #     if _limite_diario_excedido(id_usuario) or _limite_horario_excedido(id_usuario):
     #         return None
 
-    if dedupe_key:
-        # Deduplicación por clave de referencia externa
-        existente = Notificacion.objects.filter(
-            id_usuario=id_usuario,
-            # Usamos un campo virtual en el mensaje para la clave;
-            # alternativa: añadir campo dedupe_key al modelo si se necesita
-            mensaje__contains=f'[ref:{dedupe_key}]',
-        ).first()
+    marcador_ref = f'[ref:{dedupe_key}]' if dedupe_key else None
+    if marcador_ref:
+        existente = next(
+            (
+                notificacion
+                for notificacion in Notificacion.objects.filter(id_usuario=id_usuario)
+                if _tiene_marcador_ref(notificacion.mensaje, marcador_ref)
+            ),
+            None,
+        )
         if existente:
             return existente
+        if not _tiene_marcador_ref(mensaje, marcador_ref):
+            mensaje = f'{mensaje}\n{marcador_ref}' if mensaje else marcador_ref
 
-    # Añadir metadatos de navegación al mensaje (Parte 8)
-    if nav:
-        mensaje = f'{mensaje}{_formatear_nav(nav)}'
+    mensaje = _mensaje_con_nav(mensaje, nav)
 
     # Anti-spam: no crear si ya existe una idéntica en los últimos 5 minutos
     # (evita ráfagas por reintentos de red)
@@ -183,7 +197,7 @@ def notificar_estado_cuenta(usuario):
         return None
     if usuario.estado:
         titulo = 'Cuenta habilitada'
-        mensaje = 'Tu cuenta de usuario ha sido habilitada. Ya puedes acceder al sistema.'
+        mensaje = 'Tu cuenta de usuario ha sido habilitada. Ya podés acceder al sistema.'
     else:
         titulo = 'Cuenta deshabilitada'
         mensaje = 'Tu cuenta de usuario ha sido deshabilitada. Contacta a la administración para más información.'
@@ -236,10 +250,10 @@ def notificar_alumno(*, alumno, titulo='', mensaje='', dedupe=True, strategy='CO
         for tutor in tutores:
             destinatarios.append((tutor.id_usuario, SEGMENTO_FAMILIA))
 
+    mensaje_final = _mensaje_con_nav(mensaje, nav)
     creadas = []
     for usuario, segmento in destinatarios:
         if strategy == 'DAILY':
-            # Deduplicación diaria: buscar notificación del mismo día
             hoy_inicio = timezone.make_aware(
                 timezone.datetime.combine(timezone.localdate(), time.min)
             )
@@ -252,34 +266,36 @@ def notificar_alumno(*, alumno, titulo='', mensaje='', dedupe=True, strategy='CO
                 fecha__lt=hoy_fin,
             ).first()
             if ya:
-                # Acumular mensaje si es distinto
-                if mensaje not in (ya.mensaje or ''):
-                    ya.mensaje = f'{ya.mensaje}\n{mensaje}' if ya.mensaje else mensaje
+                mensaje_ya = _sin_sufijo_nav(ya.mensaje)
+                if _sin_sufijo_nav(mensaje_final) not in mensaje_ya:
+                    ya.mensaje = f'{mensaje_ya}\n{mensaje_final}' if mensaje_ya else mensaje_final
                     ya.save()
                 creadas.append(ya)
                 continue
 
         if strategy == 'REFERENCE' and dedupe_key:
-            # Deduplicación por clave de referencia externa
             ref_marker = f'[ref:{dedupe_key}]'
-            # Añadir marcador al mensaje para que notificar() pueda dedupe
-            mensaje_con_ref = f'{mensaje}\n{ref_marker}' if ref_marker not in mensaje else mensaje
-            existente = Notificacion.objects.filter(
-                id_usuario=usuario,
-                id_alumno=alumno,
-                mensaje__contains=ref_marker,
-            ).first()
+            mensaje_con_ref = mensaje if _tiene_marcador_ref(mensaje, ref_marker) else f'{mensaje}\n{ref_marker}'
+            existente = next(
+                (
+                    notificacion
+                    for notificacion in Notificacion.objects.filter(
+                        id_usuario=usuario,
+                        id_alumno=alumno,
+                    )
+                    if _tiene_marcador_ref(notificacion.mensaje, ref_marker)
+                ),
+                None,
+            )
             if existente:
-                # Actualizar mensaje si cambió el contenido
-                if mensaje not in (existente.mensaje or ''):
+                if _sin_sufijo_nav(mensaje_con_ref) not in _sin_sufijo_nav(existente.mensaje):
                     nav_match = re.search(r'\s*\[nav:\{.*?\}\s*\]', existente.mensaje or '')
                     nav_sufijo = nav_match.group(0) if nav_match else ''
-                    existente.mensaje = f'{mensaje}\n{ref_marker}{nav_sufijo}'
+                    existente.mensaje = _mensaje_con_nav(mensaje_con_ref, nav) if nav else f'{mensaje_con_ref}{nav_sufijo}'
                     existente.save()
                 creadas.append(existente)
                 continue
 
-            # Crear nueva con marcador de referencia
             creadas.append(
                 notificar(
                     id_usuario=usuario,
@@ -293,12 +309,11 @@ def notificar_alumno(*, alumno, titulo='', mensaje='', dedupe=True, strategy='CO
             )
             continue
 
-        # Estrategia CONTENT (por defecto)
         if dedupe and Notificacion.objects.filter(
             id_usuario=usuario,
             id_alumno=alumno,
             titulo=titulo,
-            mensaje=mensaje,
+            mensaje=mensaje_final,
         ).exists():
             continue
 

@@ -106,7 +106,6 @@ function Cursos() {
   const [editing, setEditing] = useState(null);
   const [formData, setFormData] = useState(formVacio);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
@@ -124,7 +123,6 @@ function Cursos() {
     setEditing(null);
     setFormData(formVacio);
     setError('');
-    setSuccess('');
   };
 
   const abrirNuevo = () => {
@@ -150,7 +148,6 @@ function Cursos() {
   const handleSubmit = async (e, esEdicion) => {
     e.preventDefault();
     setError('');
-    setSuccess('');
     setGuardando(true);
     try {
       const payload = {
@@ -189,7 +186,6 @@ function Cursos() {
         loadingText: 'Desactivando...',
         onConfirm: async () => {
           setError('');
-          setSuccess('');
           try {
             await updateCurso(curso.id_curso, { activo: false });
             toast.success('Curso desactivado correctamente.');
@@ -204,7 +200,6 @@ function Cursos() {
 
   const handleReactivar = async (curso) => {
     setError('');
-    setSuccess('');
     try {
       await updateCurso(curso.id_curso, { activo: true });
       toast.success('Curso reactivado correctamente.');
@@ -223,7 +218,6 @@ function Cursos() {
       </div>
       <div className="card-body">
         {error && <div className="alert alert-danger">{error}</div>}
-        {success && <div className="alert alert-success">{success}</div>}
 
         <div className="flex-row--between mb-16">
           <label style={{ cursor: 'pointer', userSelect: 'none' }}>

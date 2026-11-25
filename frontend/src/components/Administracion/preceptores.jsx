@@ -12,9 +12,6 @@ import {
   deletePreceptor,
   getPreceptores,
   updatePreceptor,
-  getDocentes,
-  getDirectivos,
-  getUsuarios,
   getUsuariosConRol,
   getUsuariosSinRol,
   quitarRolUsuario,
@@ -112,7 +109,7 @@ function Preceptores({ rol = 'preceptor' }) {
   const etiquetaPlural = esJefe ? 'Jefes de Preceptores' : 'Preceptores';
   const entidad = esJefe ? 'jefe de preceptores' : 'preceptor';
 
-  const { cursosObj, refreshData, docentes, preceptores: listaPreceptores, administradores } = useData();
+  const { cursosObj, refreshData } = useData();
   const toast = useToast();
   const [preceptores, setPreceptores] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -121,9 +118,7 @@ function Preceptores({ rol = 'preceptor' }) {
   const [editingPreceptor, setEditingPreceptor] = useState(null);
   const [formData, setFormData] = useState(formVacio);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [guardando, setGuardando] = useState(false);
-  const [personasDisponibles, setPersonasDisponibles] = useState([]);
   const [mostrarAgregarRol, setMostrarAgregarRol] = useState(false);
   const [guardandoAgregarRol, setGuardandoAgregarRol] = useState(false);
   const [mostrarQuitarRol, setMostrarQuitarRol] = useState(false);
@@ -132,6 +127,10 @@ function Preceptores({ rol = 'preceptor' }) {
   const [mostrarProgramar, setMostrarProgramar] = useState(false);
   const [programandoPreceptor, setProgramandoPreceptor] = useState(null);
   const [guardandoProgramar, setGuardandoProgramar] = useState(false);
+  const necesitaCredenciales = !editingPreceptor || (
+    editingPreceptor
+    && (editingPreceptor.usuario_estado === null || editingPreceptor.usuario_estado === undefined || !editingPreceptor.usuario)
+  );
 
   // Punto 9.2: Asignación de Cursos (solo para Admin, no para Jefe de Preceptores)
   const [activeTab, setActiveTab] = useState('admin'); // 'admin' | 'asignacion-cursos'
@@ -139,35 +138,6 @@ function Preceptores({ rol = 'preceptor' }) {
   const [selectedPreceptorId, setSelectedPreceptorId] = useState('');
   const [searchAsignados, setSearchAsignados] = useState('');
   const [searchDisponibles, setSearchDisponibles] = useState('');
-
-  // Fetch personas disponibles para Jefe de Preceptores
-  const cargarPersonasDisponibles = useMemo(() => {
-    const personasMap = new Map();
-    const agregar = (list, tipo) => (list || []).forEach((p) => {
-      if (p.id_usuario && !personasMap.has(p.id_usuario)) {
-        personasMap.set(p.id_usuario, {
-          id: p.id_usuario,
-          tipo,
-          label: `${p.apellido}, ${p.nombre} (${tipo})`,
-          dni: p.dni,
-          nombre: p.nombre,
-          apellido: p.apellido,
-          email: p.correo,
-          usuario: p.usuario || '',
-        });
-      }
-    });
-    agregar(docentes, 'Docente');
-    if (esJefe) {
-      agregar(listaPreceptores, 'Preceptor');
-    }
-    agregar(administradores, 'Administrador');
-    return Array.from(personasMap.values());
-  }, [docentes, listaPreceptores, administradores, esJefe]);
-
-  useEffect(() => {
-    setPersonasDisponibles(cargarPersonasDisponibles);
-  }, [cargarPersonasDisponibles]);
 
   // Estado para personas sin el rol (cargado desde backend)
   const [personasParaAgregarRol, setPersonasParaAgregarRol] = useState([]);
@@ -319,7 +289,6 @@ function Preceptores({ rol = 'preceptor' }) {
 
   const handleAsignar = async (cursoId) => {
     setError('');
-    setSuccess('');
     const yaTienePreceptor = preceptorDeCurso(cursoId);
     if (yaTienePreceptor) {
       setError('Este curso ya tiene un preceptor asignado. Desasígnelo primero.');
@@ -342,7 +311,6 @@ function Preceptores({ rol = 'preceptor' }) {
     await confirmarEliminacion('¿Quitar este curso del preceptor?\n\nEsta acción no se puede deshacer.', {
       onConfirm: async () => {
         setError('');
-        setSuccess('');
         setGuardando(true);
         try {
           await updateCurso(cursoId, { id_preceptor: null });
@@ -362,7 +330,6 @@ function Preceptores({ rol = 'preceptor' }) {
     setEditingPreceptor(null);
     setFormData({ ...formVacio, modo_creacion: 'nuevo' });
     setError('');
-    setSuccess('');
     setShowModal(true);
   };
 
@@ -379,10 +346,10 @@ function Preceptores({ rol = 'preceptor' }) {
       dni: preceptor.dni || '',
       telefono: preceptor.telefono || '',
       cursos_ids: normalizarCursosIds(preceptor.cursos_asignados),
+      id_usuario_existente: preceptor.id_usuario || '',
       modo_creacion: 'nuevo',
     });
     setError('');
-    setSuccess('');
     setShowModal(true);
   };
 
@@ -394,14 +361,14 @@ function Preceptores({ rol = 'preceptor' }) {
 
   const toggleEstado = async (preceptor) => {
     setError('');
-    setSuccess('');
     try {
       await updatePreceptor(preceptor.id_preceptor, {
         estado: !(preceptor.usuario_estado !== false),
       }, rol);
-      toast.success(preceptor.usuario_estado !== false
+      const mensajeEstado = preceptor.usuario_estado !== false
         ? `${etiquetaSingular} deshabilitado correctamente.`
-        : `${etiquetaSingular} habilitado correctamente.`);
+        : `${etiquetaSingular} habilitado correctamente.`;
+      toast.success(mensajeEstado);
       await fetchPreceptores();
       await refreshData();
     } catch (err) {
@@ -423,7 +390,6 @@ function Preceptores({ rol = 'preceptor' }) {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
-    setSuccess('');
     setGuardando(true);
 
     try {
@@ -440,16 +406,15 @@ function Preceptores({ rol = 'preceptor' }) {
       delete payload.modo_creacion;
       delete payload.id_usuario;
 
-      if (editingPreceptor && !payload.contrasena) {
+      if (editingPreceptor && !necesitaCredenciales && !payload.contrasena) {
         delete payload.contrasena;
       }
       if (editingPreceptor && payload.estado === undefined) {
         delete payload.estado;
       }
 
-      // Validar contraseña solo si es creación nueva
-      if (!editingPreceptor && !payload.contrasena) {
-        toast.warning(`La contrasena es obligatoria para crear un ${entidad}.`);
+      if (necesitaCredenciales && (!payload.usuario_nombre || !payload.contrasena)) {
+        toast.warning(`Completá usuario y contrasena para ${editingPreceptor ? 'crear las credenciales' : `crear un ${entidad}`}.`);
         setGuardando(false);
         return;
       }
@@ -476,7 +441,6 @@ function Preceptores({ rol = 'preceptor' }) {
     await confirmarEliminacion(`Eliminar al ${entidad} ${preceptor.apellido}, ${preceptor.nombre}?\n\nEl registro se dará de baja y no aparecerá más en los listados.`, {
       onConfirm: async () => {
         setError('');
-        setSuccess('');
         try {
           await deletePreceptor(preceptor.id_preceptor, rol);
           toast.success(`${etiquetaSingular} eliminado correctamente.`);
@@ -539,7 +503,6 @@ function Preceptores({ rol = 'preceptor' }) {
   const abrirProgramar = (preceptor) => {
     setProgramandoPreceptor(preceptor);
     setError('');
-    setSuccess('');
     setMostrarProgramar(true);
   };
 
@@ -562,13 +525,12 @@ function Preceptores({ rol = 'preceptor' }) {
     }
     setGuardandoProgramar(true);
     setError('');
-    setSuccess('');
     try {
       await updatePreceptor(programandoPreceptor.id_preceptor, {
         fecha_deshabilitacion_programada: fechas.fecha_deshabilitacion_programada || null,
         fecha_habilitacion_programada: fechas.fecha_habilitacion_programada || null,
       }, rol);
-      toast.success(`Fechas programadas actualizadas correctamente.`);
+      toast.success('Fechas programadas actualizadas correctamente.');
       setMostrarProgramar(false);
       await fetchPreceptores();
       await refreshData();
@@ -611,20 +573,21 @@ function Preceptores({ rol = 'preceptor' }) {
                   type="text"
                   value={formData.usuario_nombre}
                   onChange={(e) => setFormData((prev) => ({ ...prev, usuario_nombre: e.target.value }))}
-                  required
+                  required={necesitaCredenciales}
+                  disabled={!necesitaCredenciales}
                 />
               </div>
 
               <div className="form-group-filter">
                 <label htmlFor="preceptor-contrasena">
-                  Contrasena {editingPreceptor ? '(dejar en blanco para mantener)' : ''}
+                  Contrasena {editingPreceptor && !necesitaCredenciales ? '(dejar en blanco para mantener)' : ''}
                 </label>
                 <input
                   id="preceptor-contrasena"
                   type="password"
                   value={formData.contrasena}
                   onChange={(e) => setFormData((prev) => ({ ...prev, contrasena: e.target.value }))}
-                  required={!editingPreceptor}
+                  required={necesitaCredenciales}
                 />
               </div>
             </div>
@@ -812,8 +775,6 @@ function Preceptores({ rol = 'preceptor' }) {
         </div>
       </div>
 
-      {success && <div className="alert alert-success">{success}</div>}
-
       <div className="mb-12">
         <input
           type="text"
@@ -863,7 +824,6 @@ function Preceptores({ rol = 'preceptor' }) {
           handleQuitar={handleQuitar}
           guardando={guardando}
           error={error}
-          success={success}
           fetchAsignacionPreceptores={fetchAsignacionPreceptores}
         />
       ) : (
@@ -990,7 +950,6 @@ function AsignacionCursosAdmin({
   handleQuitar,
   guardando,
   error,
-  success,
   fetchAsignacionPreceptores,
 }) {
   const preceptorObj = preceptores.find((p) => String(p.id) === String(selectedPreceptorId));
@@ -1004,7 +963,6 @@ function AsignacionCursosAdmin({
       </div>
 
       {error && <div className="alert alert-danger">{error}</div>}
-      {success && <div className="alert alert-success">{success}</div>}
 
       {/* Punto 5.14: avisador de cursos sin preceptor */}
       {sinPreceptor.length > 0 && (

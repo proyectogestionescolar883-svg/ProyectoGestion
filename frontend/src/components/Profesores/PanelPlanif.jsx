@@ -1,13 +1,11 @@
 import { Fragment, useState, useEffect, useCallback } from 'react';
 import { buildMediaUrl } from '../../utils/medios';
-import { getPlanificaciones, createPlanificacion, updatePlanificacion, deletePlanificacion, BASE_URL } from '../../services/api';
+import { getPlanificaciones, createPlanificacion, updatePlanificacion, deletePlanificacion } from '../../services/api';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import FormModal from '../../components/Shared/FormModal';
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import { mensajeErrorAmigable } from '../../utils/errores';
-
-const API_BASE = BASE_URL;
 
 const formVacio = { contenido: '', objetivos: '', salidas: '', fundamentacion: '' };
 
@@ -84,7 +82,6 @@ function PanelPlanif({ cursoMateriaId, docenteId, materiaNombre, cursoNombre, mi
   const [editing, setEditing] = useState(null);
   const [formData, setFormData] = useState(formVacio);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [guardando, setGuardando] = useState(false);
 
   const cargar = useCallback(async () => {
@@ -102,29 +99,19 @@ function PanelPlanif({ cursoMateriaId, docenteId, materiaNombre, cursoNombre, mi
     cargar();
   }, [cargar]);
 
-  const parsearDescripcion = (p) => {
-    try {
-      const obj = JSON.parse(p.descripcion || '{}');
-      return {
-        contenido: obj.contenido || '',
-        objetivos: obj.objetivos || '',
-        salidas: obj.salidas || '',
-        fundamentacion: obj.fundamentacion || '',
-      };
-    } catch {
-      return { contenido: '', objetivos: '', salidas: '', fundamentacion: '' };
-    }
-  };
-
   const limpiar = () => {
     setShowNewForm(false);
     setEditing(null);
     setFormData(formVacio);
     setError('');
-    setSuccess('');
   };
 
+  useEffect(() => {
+    if (!puedeEditar) limpiar();
+  }, [puedeEditar]);
+
   const abrirNuevo = () => {
+    if (!puedeEditar) return;
     if (showNewForm) {
       limpiar();
     } else {
@@ -134,15 +121,21 @@ function PanelPlanif({ cursoMateriaId, docenteId, materiaNombre, cursoNombre, mi
   };
 
   const abrirEditar = (proyecto) => {
+    if (!puedeEditar) return;
     limpiar();
     setEditing(proyecto);
-    setFormData(parsearDescripcion(proyecto));
+    setFormData({
+      contenido: proyecto.contenido || '',
+      objetivos: proyecto.objetivos || '',
+      salidas: proyecto.salidas || '',
+      fundamentacion: proyecto.fundamentacion || '',
+    });
   };
 
   const handleSubmit = async (e, esEdicion) => {
     e.preventDefault();
+    if (!puedeEditar) return;
     setError('');
-    setSuccess('');
     setGuardando(true);
     try {
       const payload = {
@@ -172,10 +165,10 @@ function PanelPlanif({ cursoMateriaId, docenteId, materiaNombre, cursoNombre, mi
   };
 
   const handleEliminar = async (proyecto) => {
+    if (!puedeEditar) return;
     await confirmarEliminacion('¿Querés eliminar este proyecto?\n\nEl registro se dará de baja y no aparecerá más en los listados.', {
       onConfirm: async () => {
         setError('');
-        setSuccess('');
         try {
           await deletePlanificacion(proyecto.id_planificacion);
           toast.success('Proyecto eliminado correctamente.');
@@ -203,7 +196,6 @@ function PanelPlanif({ cursoMateriaId, docenteId, materiaNombre, cursoNombre, mi
       </div>
 
       {error && <div className="alert alert-danger">{error}</div>}
-      {success && <div className="alert alert-success">{success}</div>}
 
       {!puedeEditar && (
         <p
@@ -222,7 +214,7 @@ function PanelPlanif({ cursoMateriaId, docenteId, materiaNombre, cursoNombre, mi
         </p>
       )}
 
-      {showNewForm && (
+      {showNewForm && puedeEditar && (
         <FormProyecto
           formData={formData}
           setFormData={setFormData}
@@ -312,7 +304,7 @@ function PanelPlanif({ cursoMateriaId, docenteId, materiaNombre, cursoNombre, mi
         </table>
       </div>
 
-      {editing && (
+      {editing && puedeEditar && (
         <FormProyecto
           editing={editing}
           formData={formData}

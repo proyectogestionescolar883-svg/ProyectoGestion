@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import LoadingSpinner from './LoadingSpinner';
 import {
   getMateriasAdeudadas,
@@ -23,9 +23,23 @@ import { buildMediaUrl } from '../../utils/medios';
  */
 function fmtFecha(value) {
   if (!value) return '—';
-  const date = new Date(String(value).slice(0, 19));
+  const texto = String(value);
+  const partes = texto.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?)?(Z|[+-]\d{2}:?\d{2})?$/,
+  );
+  const date = partes && !partes[8]
+    ? new Date(
+      Number(partes[1]), Number(partes[2]) - 1, Number(partes[3]),
+      Number(partes[4] || 0), Number(partes[5] || 0), Number(partes[6] || 0),
+    )
+    : new Date(texto);
   if (Number.isNaN(date.getTime())) return '—';
   return new Intl.DateTimeFormat('es-AR', { dateStyle: 'short' }).format(date);
+}
+
+function fmtNota(value) {
+  if (value === null || value === undefined || String(value).trim() === '') return '—';
+  return Number(value);
 }
 
 function periodoLabel(periodo) {
@@ -69,13 +83,21 @@ function PanelMateriasAdeudadas({
   const [actividades, setActividades] = useState([]);
   const [intensificaciones, setIntensificaciones] = useState([]);
   const [loading, setLoading] = useState(true);
+  const cargasRef = useRef(0);
+  const alumnoId = alumno?.id;
 
   useEffect(() => {
-    if (!alumno) {
+    const seq = ++cargasRef.current;
+    setDeudas([]);
+    setRendiciones([]);
+    setActividades([]);
+    setIntensificaciones([]);
+    if (!alumnoId) {
       setLoading(false);
       return;
     }
-    const params = { alumno: alumno.id };
+    setLoading(true);
+    const params = { alumno: alumnoId };
     Promise.all([
       getMateriasAdeudadas(params),
       getRendicionesMateriasAdeudadas(params),
@@ -83,19 +105,23 @@ function PanelMateriasAdeudadas({
       getIntensificacionesAcademicas(params),
     ])
       .then(([deudasRes, rendRes, actsRes, intensRes]) => {
+        if (seq !== cargasRef.current) return;
         setDeudas(Array.isArray(deudasRes) ? deudasRes : []);
         setRendiciones(Array.isArray(rendRes) ? rendRes : []);
         setActividades(Array.isArray(actsRes) ? actsRes : []);
         setIntensificaciones(Array.isArray(intensRes) ? intensRes : []);
       })
       .catch(() => {
+        if (seq !== cargasRef.current) return;
         setDeudas([]);
         setRendiciones([]);
         setActividades([]);
         setIntensificaciones([]);
       })
-      .finally(() => setLoading(false));
-  }, [alumno]);
+      .finally(() => {
+        if (seq === cargasRef.current) setLoading(false);
+      });
+  }, [alumnoId]);
 
   const rendicionesPorDeuda = useMemo(() => {
     const mapa = {};
@@ -238,7 +264,7 @@ function PanelMateriasAdeudadas({
                     <strong>¡Aprobada!</strong>{' '}
                     {d.fecha_aprobacion && <span>Fecha de aprobación: <strong>{fmtFecha(d.fecha_aprobacion)}</strong>.</span>}
                     {ultimaAprobada && (
-                      <span> Nota: <strong>{Number(ultimaAprobada.nota)}</strong> ({periodoLabel(ultimaAprobada.periodo)}{' '}
+                        <span> Nota: <strong>{fmtNota(ultimaAprobada.nota)}</strong> ({periodoLabel(ultimaAprobada.periodo)}{' '}
                         {ultimaAprobada.anio_rendicion}).</span>
                     )}
                   </div>
@@ -265,7 +291,7 @@ function PanelMateriasAdeudadas({
                           <li key={i.id_intensificacion}>
                             <strong>{periodoLabel(i.periodo)} {i.anio_rendicion}</strong>{' '}
                             {badgeEstado(i.estado)}
-                            {i.nota != null && <span> — Nota: <strong>{Number(i.nota)}</strong></span>}
+                            {i.nota != null && <span> — Nota: <strong>{fmtNota(i.nota)}</strong></span>}
                             {i.fecha_registro && <span className="text-muted"> · {fmtFecha(i.fecha_registro)}</span>}
                           </li>
                         ))}
@@ -311,7 +337,7 @@ function PanelMateriasAdeudadas({
                                   <tr key={r.id_rendicion}>
                                     <td>{periodoLabel(r.periodo)} {r.anio_rendicion}</td>
                                     <td>{badgeEstado(r.estado)}</td>
-                                    <td>{r.nota != null ? Number(r.nota) : '—'}</td>
+                                    <td>{fmtNota(r.nota)}</td>
                                     <td>{fmtFecha(r.fecha_rendicion)}</td>
                                   </tr>
                                 ))}

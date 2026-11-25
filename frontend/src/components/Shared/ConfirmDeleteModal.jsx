@@ -19,19 +19,51 @@ export default function ConfirmDeleteModal({
   onCancel,
 }) {
   const cancelarRef = useRef(null);
+  const modalRef = useRef(null);
+  const onCancelRef = useRef(onCancel);
+  useEffect(() => { onCancelRef.current = onCancel; }, [onCancel]);
+
+  useEffect(() => {
+    if (!open) return;
+    cancelarRef.current?.focus();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
-    cancelarRef.current?.focus();
+    const overflowAnterior = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = overflowAnterior; };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
     const manejarTeclado = (e) => {
       if (e.key === 'Escape' && !loading) {
         e.preventDefault();
-        onCancel();
+        onCancelRef.current?.();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const nodos = modalRef.current?.querySelectorAll('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])');
+      if (!nodos || nodos.length === 0) return;
+      const primero = nodos[0];
+      const ultimo = nodos[nodos.length - 1];
+      if (!modalRef.current?.contains(document.activeElement)) {
+        e.preventDefault();
+        primero.focus();
+        return;
+      }
+      if (e.shiftKey && document.activeElement === primero) {
+        e.preventDefault();
+        ultimo.focus();
+      } else if (!e.shiftKey && document.activeElement === ultimo) {
+        e.preventDefault();
+        primero.focus();
       }
     };
     document.addEventListener('keydown', manejarTeclado);
     return () => document.removeEventListener('keydown', manejarTeclado);
-  }, [open, loading, onCancel]);
+  }, [open, loading]);
 
   if (!open) return null;
 
@@ -40,11 +72,12 @@ export default function ConfirmDeleteModal({
       className="ddjj-modal-overlay"
       role="presentation"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !loading) onCancel();
+        if (e.target === e.currentTarget && !loading) onCancelRef.current?.();
       }}
     >
       <div
         className="confirm-modal"
+        ref={modalRef}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-modal-title"

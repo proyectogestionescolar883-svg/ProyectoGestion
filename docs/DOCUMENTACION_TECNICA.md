@@ -46,7 +46,7 @@
 - Declaraciones Juradas digitales para docentes.
 - Visualización de horarios, actividades y diagnóstico grupal.
 - Notificaciones internas por usuario.
-- Roles y permisos diferenciados (Admin, Director, Docente, Preceptor, Estudiante, Familia).
+- Roles y permisos diferenciados (7 roles: `admin`, `director`, `docente`, `preceptor`, `jefe_preceptores`, `alumno`, `familia`).
 
 ### 1.3 Tecnologías utilizadas
 
@@ -60,8 +60,8 @@
 | | Django REST Framework | — |
 | | SimpleJWT | — |
 | | ReportLab (PDF) | — |
-| | mysqlclient | — |
-| **Base de datos** | MySQL 8+ | — |
+| | psycopg2-binary | — |
+| **Base de datos** | PostgreSQL (Supabase, pooler transaccional) | — |
 | **Autenticación** | JWT (access + refresh tokens) | — |
 
 ### 1.4 Arquitectura
@@ -70,11 +70,11 @@
 
 ```
 ┌─────────────┐     JWT Auth     ┌──────────────┐     ┌──────────┐
-│  React SPA  │ ──────────────►  │  Django API   │ ──► │  MySQL   │
-│  (Vite)     │ ◄──────────────  │  (DRF)        │ ◄── │  DB      │
+│  React SPA  │ ──────────────►  │  Django API   │ ──► │PostgreSQL│
+│  (Vite)     │ ◄──────────────  │  (DRF)        │ ◄── │ (Supabase│
 └─────────────┘     JSON/HTTP    └──────────────┘     └──────────┘
       │                                                    │
-      │  localhost:5173                                    │  :3306
+      │  localhost:5173                                    │  pooler :6543
       └───────────────── Axios ────────────────────────────┘
 ```
 
@@ -93,7 +93,7 @@ No hay Server-Side Rendering. No hay BFF (Backend For Frontend). El frontend se 
 │   └── proyecto/
 │       ├── manage.py              # Entrypoint de Django
 │       ├── requirements.txt       # Dependencias Python
-│       ├── db.sqlite3             # (no usado en producción, BD real es MySQL)
+│       ├── db.sqlite3             # (no usado en producción, BD real es PostgreSQL/Supabase)
 │       ├── proyecto/              # Config de Django
 │       │   ├── settings.py        # Config: BD, CORS, JWT, apps instaladas
 │       │   ├── urls.py            # URL patterns del proyecto
@@ -155,27 +155,29 @@ No hay Server-Side Rendering. No hay BFF (Backend For Frontend). El frontend se 
 
 El backend es un proyecto Django con una sola app (`escuela`). Todos los modelos están en `models.py`, todos los serializers en `serializers.py`, todas las vistas en `views.py`.
 
-**No hay separación por módulo.** Es un monolito dentro de Django. Esto es intencional: la base de datos es externa (MySQL, `managed = False` en todos los modelos) y el esquema no es gestionado por Django.
+**No hay separación por módulo.** Es un monolito dentro de Django. Esto es intencional: la base de datos es externa (PostgreSQL/Supabase, `managed = False` en todos los modelos) y el esquema se declara en `escuela/schema.py` y se aplica con `verificar_esquema --aplicar`.
 
 ### 3.2 Configuración clave en settings.py
 
 ```python
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'sistema_escolar',
-        'USER': 'root',
-        'PASSWORD': 'admin1234',
-        'HOST': 'localhost',
-        'PORT': '3306',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': '<DB_NAME>',
+        'USER': '<DB_USER>',
+        'PASSWORD': '<DB_PASSWORD>',
+        'HOST': '<HOST>',
+        'PORT': '<DB_PORT>',
+        'OPTIONS': {'sslmode': 'require'},
+        'DISABLE_SERVER_SIDE_CURSORS': True,
     }
 }
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# CORS
-CORS_ALLOWED_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173']
+# CORS (lista real definida por entorno en Vercel)
+CORS_ALLOWED_ORIGINS = ['<FRONTEND_ORIGIN>']
 
 # JWT
 REST_FRAMEWORK = {
@@ -268,7 +270,7 @@ REST_FRAMEWORK = {
 
 ### 3.4 Serializers (`serializers.py`)
 
-El archivo tiene 1540 líneas con TODOS los serializers. Patrón general:
+El archivo tiene 3627 líneas con 58 serializers. Patrón general:
 
 ```python
 class ModeloSerializer(serializers.ModelSerializer):
@@ -290,7 +292,7 @@ class ModeloSerializer(serializers.ModelSerializer):
 
 ### 3.5 Views (`views.py`)
 
-El archivo tiene 1881 líneas. Contiene:
+El archivo tiene 8689 líneas con 53 ViewSets y funciones auxiliares. Contiene:
 
 #### Funciones regulares (no ViewSets)
 
@@ -356,30 +358,27 @@ Ver sección [6. Flujo de autenticación](#6-flujo-de-autenticación).
 ```python
 router = DefaultRouter()
 router.register(r'usuarios', views.UsuarioViewSet)
+router.register(r'roles', views.RolViewSet)
 router.register(r'alumnos', views.AlumnoViewSet)
 router.register(r'docentes', views.DocenteViewSet)
 router.register(r'preceptores', views.PreceptorViewSet)
-router.register(r'directivos', views.DirectivoViewSet)
-router.register(r'padres-tutores', views.PadreTutorViewSet)
 router.register(r'cursos', views.CursoViewSet)
-router.register(r'materias', views.MateriaViewSet)
 router.register(r'curso-materia', views.CursoMateriaViewSet)
-router.register(r'horarios', views.HorarioViewSet)
-router.register(r'calificaciones', views.CalificacionViewSet)
-router.register(r'asistencias', views.AsistenciaViewSet)
-router.register(r'actas', views.ActaViewSet)
-router.register(r'comunicados', views.ComunicadoViewSet)
-router.register(r'planificaciones', views.PlanificacionViewSet)
-router.register(r'diagnosticos-grupales', views.DiagnosticoGrupalViewSet)
 router.register(r'notificaciones', views.NotificacionViewSet)
-router.register(r'ddjj-docente', views.DdjjDocenteViewSet)
-router.register(r'actividades-docente', views.ActividadDocenteViewSet)
-# ... y más
+router.register(r'eventos-institucionales', views.EventoInstitucionalViewSet)
+router.register(r'historial-academico', views.HistorialAcademicoViewSet)
+router.register(r'materias-adeudadas', views.MateriaAdeudadaViewSet)
+# ... 53 registros en total: la lista completa está en backend/proyecto/escuela/urls.py
 
 urlpatterns = [
     path('login/', views.login_view),
     path('me/', views.me_view),
+    path('rol-activo/', views.seleccionar_rol),
     path('upload/', views.upload_file),
+    path('estadisticas-preceptoria/', views.estadisticas_preceptoria),
+    path('supervision-preceptores/', views.supervision_preceptores),
+    path('cierre-ciclo/', views.cierre_ciclo_api_view),
+    path('boletin-academico/<int:alumno_id>/', views.boletin_academico_api_view),
     path('', include(router.urls)),
 ]
 ```
@@ -801,10 +800,10 @@ horarios
 
 ### 8.2 Prioridad de la BD real sobre el SQL de referencia
 
-**🔥 REGLA ABSOLUTA:** El archivo `estructura base de datos/sistema_escolar.sql` es solo una referencia visual. La base de datos MySQL real es la ÚNICA fuente de verdad.
+**🔥 REGLA ABSOLUTA:** El archivo `estructura base de datos/sistema_escolar.sql` es solo una referencia histórica. La base de datos PostgreSQL/Supabase real es la ÚNICA fuente de verdad; el esquema declarativo vigente es `escuela/schema.py`.
 
 - Nunca asumir que un campo existe porque aparece en el SQL de referencia.
-- Antes de modificar un modelo Django, verificar la estructura real de MySQL con `DESCRIBE <tabla>;` o `SHOW COLUMNS FROM <tabla>;`.
+- Antes de modificar un modelo Django, verificar la estructura real con `\d+ <tabla>` o `information_schema.columns` (o con `verificar_esquema`).
 - Si hay discrepancia entre el modelo Django y la BD real, la BD real tiene razón. Actualizar el modelo Django.
 - `migrate` no crea ni altera estas tablas (`managed = False`). Para extender el esquema físico hay que pasar por la especificación declarativa de `escuela/schema.py` (migración + `verificar_esquema`), nunca por un `ALTER` suelto. Ver §14.3.
 - Antes de tocar la base, hacer backup verificado y confirmar que el archivo no está vacío.
@@ -1201,13 +1200,13 @@ Implementado para todos los roles. Cada perfil usa el mismo patrón visual (grid
 ### 14.1 Base de datos externa con `managed = False`
 
 **Contexto:**
-El sistema se construyó sobre una base de datos MySQL preexistente que ya contenía todas las tablas con su esquema definido. Esta base de datos fue creada y es mantenida por el equipo de administración de la escuela, independientemente del desarrollo del sistema web.
+El sistema se construyó originalmente sobre una base de datos MySQL preexistente; hoy corre en PostgreSQL (Supabase) con el mismo esquema lógico declarado en `escuela/schema.py`. La base es externa al proyecto Django y la mantiene el equipo de administración de la escuela.
 
 **Motivo:**
 Django por defecto intenta gestionar el esquema de la base de datos mediante migraciones. Si se hubiera permitido que Django gestionara el esquema, habría entrado en conflicto con la base de datos existente: Django podría intentar crear tablas que ya existen, modificar columnas que tienen restricciones externas, o eliminar objetos que otros sistemas consumen.
 
 **Beneficios:**
-- El sistema Django puede trabajar sobre cualquier base de datos MySQL existente sin necesidad de modificarla.
+- El sistema Django trabaja sobre la base PostgreSQL/Supabase existente sin gestionar su esquema con migraciones automáticas.
 - El equipo de base de datos puede seguir gestionando el esquema independientemente (agregar índices, modificar tipos de datos, optimizar consultas) sin coordinar con el desarrollo del sistema web.
 - No hay riesgo de que Django borre o modifique datos accidentalmente a través de migraciones.
 - La integración con sistemas legacy (posibles sistemas preexistentes en la escuela) es transparente.
@@ -1223,10 +1222,10 @@ Django por defecto intenta gestionar el esquema de la base de datos mediante mig
 ### 14.2 La base de datos real tiene prioridad sobre cualquier SQL de referencia
 
 **Contexto:**
-Durante el desarrollo inicial, se utilizó un archivo `sistema_escolar.sql` como referencia para conocer la estructura de la base de datos. Este archivo fue útil para entender las tablas y relaciones, pero con el tiempo se fue desactualizando: algunas columnas fueron agregadas directamente en MySQL, otras modificadas, y el archivo SQL no se mantuvo sincronizado.
+Durante el desarrollo inicial se usó `sistema_escolar.sql` (luego `sistema_escolar.mariadb.sql`) como referencia histórica. Con el tiempo quedó desactualizado: columnas agregadas directamente en la BD, cambios de tipo y el salto a PostgreSQL/Supabase; hoy la fuente de verdad es la BD real y `escuela/schema.py`.
 
 **Motivo:**
-Varios errores de desarrollo se originaron porque se confiaba en el SQL de referencia en lugar de verificar la base de datos real. Por ejemplo, se intentó acceder a columnas que ya no existían, o se asumió que ciertos campos tenían un tipo de datos que en realidad era diferente. La lección aprendida fue que el único referente confiable es la base de datos ejecutándose en MySQL.
+Varios errores de desarrollo se originaron porque se confiaba en el SQL de referencia en lugar de verificar la base de datos real. Por ejemplo, se intentó acceder a columnas que ya no existían, o se asumió que ciertos campos tenían un tipo de datos que en realidad era diferente. La lección aprendida fue que el único referente confiable es la base de datos ejecutándose en PostgreSQL (Supabase).
 
 **Beneficios:**
 - Elimina la dependencia de un archivo que puede estar desactualizado.
@@ -1235,7 +1234,7 @@ Varios errores de desarrollo se originaron porque se confiaba en el SQL de refer
 
 **Qué problemas evita:**
 - Errores 500 por acceder a columnas que no existen en la base de datos real.
-- Inconsistencias entre el modelo Django y la estructura real de MySQL.
+- Inconsistencias entre el modelo Django y la estructura real de PostgreSQL/Supabase.
 - Tiempo perdido debuggeando problemas que en realidad eran diferencias entre el SQL de referencia y la BD real.
 
 **Corolario (implementado el 2026-10-03):** como `managed = False` impide que
@@ -1280,50 +1279,38 @@ capa explícita de sincronización:
 | `escuela/tests/test_api_sin_500.py` | Regresión: ningún listado del router puede devolver 5xx, y sin autenticar todos siguen rechazados. |
 
 **Reglas de diseño del DDL:**
-- Solo `ADD COLUMN`, `ADD INDEX`, `ADD CONSTRAINT` y `MODIFY COLUMN` para
-  alinear nulabilidad. Nunca `DROP`, `TRUNCATE` ni `DELETE`.
+- Solo `ADD COLUMN`, `CREATE INDEX`, `ADD CONSTRAINT` y `ALTER COLUMN ... SET/DROP NOT NULL`
+  (o `TYPE`) para alinear nulabilidad y tipos. Nunca `DROP`, `TRUNCATE` ni `DELETE`.
 - Cada sentencia se valida contra `information_schema` antes de ejecutarse:
   se puede ejecutar tantas veces como haga falta.
 - Las filas existentes se rellenan con el valor por defecto del modelo, para que
   los managers con borrado lógico (`ActivoManager`, que filtran `estado=True`)
   sigan viendo los registros que ya estaban cargados.
-- `MODIFY ... NOT NULL` solo se aplica si ya no quedan NULLs; si quedan, se
-  informa y no se toca.
+- `SET NOT NULL` solo se aplica si ya no quedan NULLs; si quedan, se informa y no se toca.
 
 **Flujo de verificación antes de un despliegue:**
 
 ```bash
-# 1. Backup (verificar que el archivo no está vacío)
-cd deploy && set -a && . ./.env && set +a
-docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" misecundaria7-db sh -c \
-    'mariadb-dump -uroot --single-transaction --routines --triggers \
-     --events --default-character-set=utf8mb4 sistema_escolar' \
-    > /srv/backups/misecundaria7/database/$(date +%Y%m%d-%H%M%S)-pre.sql
+# 1. Backup en Supabase (Dashboard → Database → Backups), o con pg_dump usando
+#    <DB_USER>/<DB_PASSWORD>/<HOST>/<DB_PORT> desde variables de entorno:
+PGPASSWORD="<DB_PASSWORD>" pg_dump -h "<HOST>" -p "<DB_PORT>" \
+    -U "<DB_USER>" -Fc "<DB_NAME>" > "$(date +%Y%m%d-%H%M%S)-pre.dump"
 
-# 2. Reconstruir la imagen (el código va horneado en la imagen, no hay bind mount)
-docker compose -f deploy/compose.yml build api
-docker compose -f deploy/compose.yml up -d api
+# 2. Confirmar que el esquema quedó alineado (NO ejecutar migrate: managed=False)
+python manage.py verificar_esquema
+python manage.py verificar_esquema --aplicar   # sólo si informa diferencias
 
-# 3. Aplicar migraciones y confirmar que el esquema quedó alineado
-docker compose -f deploy/compose.yml exec -T api python manage.py migrate
-docker compose -f deploy/compose.yml exec -T api python manage.py verificar_esquema
-
-# 4. Tests (usan una base `test_*` aparte; nunca tocan la real)
-docker compose -f deploy/compose.yml exec -T api python manage.py test escuela
+# 3. Tests (usan una base efímera; nunca tocan la real)
+python manage.py test escuela
 ```
 
-Para que los tests puedan crear su base efímera, el usuario de la aplicación
-necesita el privilegio sobre el patrón `test\_%`:
+Para los tests en PostgreSQL no aplica `GRANT ... test\_%`: Django crea la base
+`test_<DB_NAME>` con el rol configurado, que debe tener `CREATEDB` en Supabase
+(permiso de rol, no un `GRANT` MySQL).
 
-```sql
-GRANT ALL PRIVILEGES ON `test\_%`.* TO 'misecundaria7'@'%';
-FLUSH PRIVILEGES;
-```
-
-**Reversión:** `python manage.py migrate escuela 0006` deshace la 0007. El
-`reverse` suelta primero las FK nuevas y después las columnas; volver a aplicar
-`0007` deja el esquema alineado. En producción conviene dejarla aplicada: bajarla
-implica perder las columnas y sus datos.
+**Reversión:** no hay `migrate escuela 0006` que deshacer en producción: el DDL
+es aditivo y no destructivo. Si hay que volver atrás, se restaura el backup y se
+vuelve a ejecutar `verificar_esquema`; no se eliminan columnas con datos.
 
 **Límite del volcado de referencia:** `deploy/sql/sistema_escolar.mariadb.sql`
 define 42 tablas y la base real tiene 67 (faltan, entre otras, `modulos`,
@@ -1815,10 +1802,10 @@ En **update**, además elimina el PDF anterior del disco antes de regenerar.
 
 ### 17.2 Inconsistencias entre modelo y base de datos
 
-**Problema:** El modelo Django tiene un campo que no existe en la tabla MySQL, o viceversa.
+**Problema:** El modelo Django tiene un campo que no existe en la tabla PostgreSQL/Supabase, o viceversa.
 
-**Síntoma típico:** HTTP 500 en varios endpoints a la vez, con
-`(1054, "Unknown column '<tabla>.<columna>' in 'SELECT'")`. Suele indicar que
+**Síntoma típico:** HTTP 500 en varios endpoints a la vez, con un error de
+columna inexistente (`UndefinedColumn` / `42703`; antes, en MySQL, `1054`). Suele indicar que
 falta una columna de borrado lógico (`estado` / `fecha_eliminacion`) o un flag
 `activo`, porque `ActivoManager` las filtra en casi todas las consultas.
 
@@ -2188,16 +2175,18 @@ Cada `Panel{Rol}.jsx` tiene una sección de tarjetas de estadísticas debajo de 
 
 ## 22. Checklist de Verificación de Modelos
 
-> **Fuente:** Checklist de reverse-engineering de la base de datos, verificación de modelos contra MySQL.
+> **Fuente:** Checklist de reverse-engineering de la base de datos, verificación de modelos contra PostgreSQL/Supabase (`escuela/schema.py`).
 
 ### 22.1 Exportar y comparar esquema vivo
 
 ```bash
 # Exportar esquema de la BD real (estructura, sin datos)
-mysqldump -u root -p --no-data --routines --triggers sistema_escolar > /tmp/live_schema.sql
+PGPASSWORD="<DB_PASSWORD>" pg_dump -h "<HOST>" -p "<DB_PORT>" -U "<DB_USER>" \
+    --schema-only "<DB_NAME>" > /tmp/live_schema.sql
 
-# Comparar con el DDL de referencia
-diff -u "estructura base de datos/sistema_escolar.sql" /tmp/live_schema.sql
+# Comparar con el DDL declarativo vigente
+python manage.py generar_sql_esquema --salida /tmp/esquema_declarativo.sql
+diff -u /tmp/esquema_declarativo.sql /tmp/live_schema.sql
 ```
 
 **Qué buscar en el diff:**
@@ -2208,9 +2197,9 @@ diff -u "estructura base de datos/sistema_escolar.sql" /tmp/live_schema.sql
 | Modelos Django pero no en BD | Modelo obsoleto o error de `db_table` |
 | Diferencias en tipos de columna | `IntegerField` vs `BIGINT`, `CharField` vs `VARCHAR(n)` incorrecto |
 | Diferencias en `NOT NULL` / `DEFAULT` | `blank=True` incorrecto en Django |
-| FK constraint diffs (`ON DELETE`) | `on_delete` en Django no coincide con MySQL |
+| FK constraint diffs (`ON DELETE`) | `on_delete` en Django no coincide con PostgreSQL |
 | Índices faltantes o extras | Rendimiento, unicidad comprometida |
-| `auto_increment` diffs | `AutoField` vs `BigAutoField` |
+| `SERIAL`/`BIGSERIAL` diffs | `AutoField` vs `BigAutoField` |
 
 ### 22.2 Inspectdb vs. modelos reales
 
@@ -2224,15 +2213,15 @@ diff -u backend/proyecto/escuela/models.py /tmp/inspected_models.py
 
 **Checklist por cada modelo:**
 
-- [ ] `db_table` en `Meta` coincide con el nombre real de la tabla MySQL
-- [ ] PK es `AutoField` (MySQL `auto_increment`) — verificar en `db_table` SQL
+- [ ] `db_table` en `Meta` coincide con el nombre real de la tabla PostgreSQL
+- [ ] PK es `AutoField` (`SERIAL`/`BIGSERIAL`) — verificar en `db_table` SQL
 - [ ] Todos los FK usan `db_column='nombre_real'` correcto
-- [ ] `max_length` en `CharField` coincide con `VARCHAR(n)` de MySQL
-- [ ] `null=True/blank=True` coincide con `DEFAULT NULL` / `NOT NULL` de MySQL
-- [ ] `unique=True` coincide con `UNIQUE KEY` en MySQL
-- [ ] `unique_together` coincide con restricciones compuestas en MySQL
-- [ ] `primary_key=True` en modelos como `UsuarioRol` coincide con PK compuesta MySQL
-- [ ] Campos `BooleanField` mapean correctamente a `TINYINT(1)`
+- [ ] `max_length` en `CharField` coincide con `VARCHAR(n)` de PostgreSQL
+- [ ] `null=True/blank=True` coincide con `NULL` / `NOT NULL` de PostgreSQL
+- [ ] `unique=True` coincide con `UNIQUE` en PostgreSQL
+- [ ] `unique_together` coincide con restricciones compuestas en PostgreSQL
+- [ ] `primary_key=True` en modelos como `UsuarioRol` coincide con PK compuesta PostgreSQL
+- [ ] Campos `BooleanField` mapean correctamente a `BOOLEAN`
 
 ### 22.3 Consistencia de Managers custom
 
@@ -2251,31 +2240,31 @@ grep -n "ActivoManager\|PlanificacionManager\|all_objects" backend/proyecto/escu
 
 ### 22.4 Relaciones y restricciones
 
-**Verificar contra el DDL de MySQL:**
+**Verificar contra el DDL de PostgreSQL:**
 
-| Modelo Django | FK en MySQL | `on_delete` esperado |
+| Modelo Django | FK en PostgreSQL | `on_delete` esperado |
 |---------------|-------------|---------------------|
 | `Alumno.id_usuario` → `Usuario` | `alumnos_ibfk_1` | `SET_NULL` (nullable) |
 | `Alumno.id_tutor` → `PadreTutor` | `alumnos_ibfk_2` | `SET_NULL` (nullable) |
 | `Alumno.id_curso` → `Curso` | `alumnos_ibfk_3` | `SET_NULL` (nullable) |
-| `CursoMateria.id_curso` → `Curso` | FK en MySQL | Verificar `ON DELETE` |
-| `CursoMateria.id_materia` → `Materia` | FK en MySQL | Verificar `ON DELETE` |
-| `CursoMateria.id_docente` → `Docente` | FK en MySQL | Verificar `ON DELETE` |
+| `CursoMateria.id_curso` → `Curso` | FK en PostgreSQL | Verificar `ON DELETE` |
+| `CursoMateria.id_materia` → `Materia` | FK en PostgreSQL | Verificar `ON DELETE` |
+| `CursoMateria.id_docente` → `Docente` | FK en PostgreSQL | Verificar `ON DELETE` |
 | `Calificacion.id_alumno` → `Alumno` | `calificaciones_ibfk_1` | Verificar |
 | `Calificacion.id_curso_materia` → `CursoMateria` | `calificaciones_ibfk_2` | Verificar |
 | `Calificacion.id_docente` → `Docente` | `calificaciones_ibfk_3` | Verificar |
 | `Calificacion.id_periodo` → `PeriodoEvaluacion` | `calificaciones_ibfk_4` | Verificar |
-| `HistorialCambio.id_usuario` → `Usuario` | FK en MySQL | Verificar |
-| `HistorialCambio.id_tipo_accion` → `TipoAccion` | FK en MySQL | Verificar |
+| `HistorialCambio.id_usuario` → `Usuario` | FK en PostgreSQL | Verificar |
+| `HistorialCambio.id_tipo_accion` → `TipoAccion` | FK en PostgreSQL | Verificar |
 
 ### 22.5 Checklist de reverse-engineering completo
 
-- [ ] `mysqldump --no-data` exportado y comparado con `sistema_escolar.sql`
+- [ ] `pg_dump --schema-only` exportado y comparado con `generar_sql_esquema`
 - [ ] `inspectdb` generado y comparado con `models.py`
-- [ ] Todos los 55 modelos verificados: `db_table`, PKs, FKs, tipos, NULLs
+- [ ] Los 57 modelos verificados: `db_table`, PKs, FKs, tipos, NULLs
 - [ ] Managers `ActivoManager`/`PlanificacionManager` verificados
 - [ ] `all_objects` presente donde corresponde
-- [ ] FK constraints verificadas contra MySQL DDL
+- [ ] FK constraints verificadas contra el DDL de PostgreSQL
 
 ---
 
@@ -2283,7 +2272,7 @@ grep -n "ActivoManager\|PlanificacionManager\|all_objects" backend/proyecto/escu
 
 Módulo implementado el 2026-10-04. Antes de esto, con la base vacía **no había
 forma de crear un ciclo lectivo, un módulo horario ni un período de evaluación
-desde la interfaz**: había que hacer `INSERT` en MariaDB a mano.
+desde la interfaz**: había que hacer `INSERT` en la BD a mano (entonces MySQL/MariaDB, hoy PostgreSQL/Supabase).
 
 ### 23.1 Catálogos y endpoints
 

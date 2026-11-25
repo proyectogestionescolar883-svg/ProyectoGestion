@@ -1,48 +1,35 @@
+"""Columnas de programación de usuarios (registro histórico; `managed=False`).
+
+El DDL lo declara `escuela/schema.py`. Esta migración sólo agrega lo que falte,
+usando la inspección portable de ese módulo. La reversión es no-op para no
+quitar columnas que hoy forman parte del esquema soportado.
+"""
 from django.db import migrations
+
+from escuela import schema
+
+COLUMNAS = tuple(
+    (tabla, columna, ddl)
+    for tabla, columna, ddl, _relleno, _nota in schema.COLUMNAS
+    if tabla == 'usuarios'
+    and columna in (
+        'fecha_deshabilitacion_programada',
+        'fecha_habilitacion_programada',
+    )
+)
 
 
 def forwards(apps, schema_editor):
     with schema_editor.connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT COLUMN_NAME
-            FROM information_schema.COLUMNS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME = 'usuarios'
-              AND COLUMN_NAME IN ('fecha_deshabilitacion_programada', 'fecha_habilitacion_programada')
-            """
-        )
-        existentes = {row[0] for row in cursor.fetchall()}
-
-        if 'fecha_deshabilitacion_programada' not in existentes:
+        existentes = schema.columnas_de(cursor, 'usuarios')
+        for _tabla, columna, ddl in COLUMNAS:
+            if columna in existentes:
+                continue
             cursor.execute(
-                "ALTER TABLE usuarios ADD COLUMN fecha_deshabilitacion_programada DATETIME NULL"
+                f'ALTER TABLE {schema._q(cursor, "usuarios")} '
+                f'ADD COLUMN {schema._q(cursor, columna)} '
+                f'{schema._ddl_para(cursor, ddl)}'
             )
-
-        if 'fecha_habilitacion_programada' not in existentes:
-            cursor.execute(
-                "ALTER TABLE usuarios ADD COLUMN fecha_habilitacion_programada DATETIME NULL"
-            )
-
-
-def backwards(apps, schema_editor):
-    with schema_editor.connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT COLUMN_NAME
-            FROM information_schema.COLUMNS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME = 'usuarios'
-              AND COLUMN_NAME IN ('fecha_deshabilitacion_programada', 'fecha_habilitacion_programada')
-            """
-        )
-        existentes = {row[0] for row in cursor.fetchall()}
-
-        if 'fecha_deshabilitacion_programada' in existentes:
-            cursor.execute("ALTER TABLE usuarios DROP COLUMN fecha_deshabilitacion_programada")
-
-        if 'fecha_habilitacion_programada' in existentes:
-            cursor.execute("ALTER TABLE usuarios DROP COLUMN fecha_habilitacion_programada")
 
 
 class Migration(migrations.Migration):
@@ -51,6 +38,6 @@ class Migration(migrations.Migration):
     dependencies = []
 
     operations = [
-        migrations.RunPython(forwards, backwards),
+        migrations.RunPython(forwards, migrations.RunPython.noop),
     ]
 

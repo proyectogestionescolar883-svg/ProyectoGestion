@@ -4,7 +4,7 @@ import { useToast } from '../../context/ToastContext';
 import { createMateria, updateMateria } from '../../services/api';
 import AsignacionMaterias from './asignacionMaterias';
 import FormModal from '../../components/Shared/FormModal';
-import AccionesCelda, { nombreAccion } from '../../components/Shared/AccionesCelda';
+import AccionesCelda from '../../components/Shared/AccionesCelda';
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import { mensajeErrorAmigable } from '../../utils/errores';
 
@@ -43,7 +43,6 @@ function GestionMaterias() {
   const [editing, setEditing] = useState(null);
   const [formData, setFormData] = useState(formVacio);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
@@ -55,7 +54,6 @@ function GestionMaterias() {
     setEditing(null);
     setFormData(formVacio);
     setError('');
-    setSuccess('');
   };
 
   const abrirNuevo = () => {
@@ -72,7 +70,6 @@ function GestionMaterias() {
   const handleSubmit = async (e, esEdicion) => {
     e.preventDefault();
     setError('');
-    setSuccess('');
     setGuardando(true);
     try {
       const payload = { nombre_materia: formData.nombre_materia };
@@ -106,7 +103,6 @@ function GestionMaterias() {
         loadingText: 'Deshabilitando...',
         onConfirm: async () => {
           setError('');
-          setSuccess('');
           try {
             await updateMateria(materia.id_materia, { activo: false });
             toast.success('Materia deshabilitada correctamente.');
@@ -128,7 +124,6 @@ function GestionMaterias() {
         loadingText: 'Habilitando...',
         onConfirm: async () => {
           setError('');
-          setSuccess('');
           try {
             await updateMateria(materia.id_materia, { activo: true });
             toast.success('Materia habilitada correctamente.');
@@ -144,7 +139,6 @@ function GestionMaterias() {
   return (
     <div>
       {error && <div className="alert alert-danger">{error}</div>}
-      {success && <div className="alert alert-success">{success}</div>}
 
       <div className="flex-row--between mb-16">
         <label style={{ cursor: 'pointer', userSelect: 'none' }}>

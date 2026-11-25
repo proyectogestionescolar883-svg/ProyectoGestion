@@ -21,7 +21,7 @@ Este archivo es la **referencia general y estructurada de la base de datos** del
 | 2 | docente |
 | 3 | preceptor |
 | 4 | familia |
-| 5 | estudiante |
+| 5 | alumno |
 | 6 | director |
 | 7 | jefe_preceptores |
 
@@ -39,7 +39,7 @@ La materia **`Historial Test 99` (ID 38)** fue eliminada definitivamente y **NO 
 **Fecha de generación:** 2026-08-26  
 **Ciclo de trabajo actual:** 2026  
 **Base de datos:** `sistema_escolar`  
-**Tecnologías conocidas del proyecto:** Django + Django REST Framework, React, MariaDB/MySQL, DBeaver.
+**Tecnologías conocidas del proyecto:** Django + Django REST Framework, React, PostgreSQL (Supabase; el volcado original era MySQL/MariaDB), DBeaver.
 
 > Este archivo reúne lo que quedó establecido en la conversación y en los archivos de proyecto disponibles. Cuando un dato exacto no quedó recuperable de los materiales consultados, se marca como pendiente en vez de inventarlo.
 
@@ -48,7 +48,7 @@ La materia **`Historial Test 99` (ID 38)** fue eliminada definitivamente y **NO 
 ## 1. Reglas generales de conservación
 
 1. La base de datos es preexistente y Django usa modelos con `managed = False`; Django no debe crear ni modificar las tablas.
-2. El esquema real de MySQL/MariaDB es la referencia operativa. El archivo SQL de referencia/documentación no necesariamente coincide con todos los modelos Django.
+2. El esquema real de PostgreSQL/Supabase es la referencia operativa; `escuela/schema.py` es la especificación declarativa vigente. El volcado MySQL/MariaDB documentado abajo es histórico y no necesariamente coincide con los modelos Django actuales.
 3. No borrar contenido existente que no se haya indicado expresamente borrar.
 4. Al cargar datos de prueba, conservar los IDs y relaciones existentes cuando ya están definidos.
 5. No crear duplicados.
@@ -813,7 +813,7 @@ El análisis del proyecto indicó que:
 - El SQL de referencia es documentación, no el mecanismo real de creación de la BD.
 - La base real existe y funciona.
 
-Por eso, para cambios de datos, priorizar el esquema real recuperado de MySQL.
+Por eso, para cambios de datos, priorizar el esquema real de PostgreSQL/Supabase y la especificación de `escuela/schema.py`, no el volcado histórico de MySQL.
 
 ## Columnas que los modelos necesitan y el SQL de referencia no tenía (corregido 2026-10-03)
 
@@ -1788,9 +1788,11 @@ El documento de especificación y el README hablaban de **MariaDB**, pero el
 volcado de origen era **MySQL 9.7** con collation `utf8mb4_0900_ai_ci`, que
 MariaDB no soporta en las versiones habituales. Hoy la producción corre
 **PostgreSQL (Supabase)**; los comentarios "MySQL"/"MariaDB" que quedan en
-`schema.py` son históricos. El comando `verificar_esquema` usa `DATABASE()` y por
-eso falla en Postgres (ver `HALLAZGOS_NUEVOS.md` §2): no se usa para validar el
-esquema de producción.
+`schema.py` son históricos. El comando `verificar_esquema` ya no usa `DATABASE()`:
+resuelve el esquema activo con `current_schema()` a través del helper de
+`escuela/schema.py`, por lo que sí valida el esquema de producción (con
+`--aplicar` aplica el DDL declarativo aditivo). El fallback `DATABASE()` queda
+sólo como registro histórico para el MySQL original.
 
 ### D2 — `historial_academico`
 

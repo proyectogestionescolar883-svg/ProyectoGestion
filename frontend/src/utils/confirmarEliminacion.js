@@ -9,8 +9,8 @@ export function setConfirmHandler(fn) {
 async function confirmarEliminacion(mensaje = MENSAJE_DEFECTO, opciones = {}) {
   if (handler) {
     return handler({
-      message: mensaje || MENSAJE_DEFECTO,
       ...opciones,
+      message: mensaje || MENSAJE_DEFECTO,
     });
   }
   return window.confirm(mensaje || MENSAJE_DEFECTO);

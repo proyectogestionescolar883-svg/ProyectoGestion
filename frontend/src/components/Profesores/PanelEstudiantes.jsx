@@ -27,6 +27,8 @@ import {
 import { mensajeErrorAmigable } from '../../utils/errores';
 import AvisoDatosMaestros from '../Shared/AvisoDatosMaestros';
 
+const mismoId = (a, b) => a != null && b != null && String(a) === String(b);
+
 function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre, docenteId, puedeEditar = true, mostrarBannerSuplencia = true, alumnoId = null }) {
   const { estudiantes, calificacionesCompletas, periodos, refreshData } = useData();
   const toast = useToast();
@@ -40,10 +42,10 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
   const [previas, setPrevias] = useState([]);
   const [cargandoPrevias, setCargandoPrevias] = useState(false);
 
-  const estudiantesCurso = useMemo(
-    () => estudiantes.filter((a) => a.id_curso === cursoId),
-    [estudiantes, cursoId],
-  );
+  const estudiantesCurso = useMemo(() => {
+    if (cursoId == null) return [];
+    return (Array.isArray(estudiantes) ? estudiantes : []).filter((a) => mismoId(a.id_curso, cursoId));
+  }, [estudiantes, cursoId]);
 
   const periodo1 = useMemo(
     () => periodos.find((p) => p.orden_periodo === 1) || periodos[0],
@@ -55,16 +57,16 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
   );
 
   useEffect(() => {
-    const calsCm = calificacionesCompletas.filter(
-      (c) => c.id_curso_materia === cursoMateriaId,
+    const calsCm = (Array.isArray(calificacionesCompletas) ? calificacionesCompletas : []).filter(
+      (c) => mismoId(c.id_curso_materia, cursoMateriaId),
     );
 
     const nuevasFilas = estudiantesCurso.map((a) => {
       const cal1 = calsCm.find(
-        (c) => c.id_alumno === a.id && c.id_periodo === periodo1?.id_periodo,
+        (c) => mismoId(c.id_alumno, a.id) && mismoId(c.id_periodo, periodo1?.id_periodo),
       );
       const cal2 = calsCm.find(
-        (c) => c.id_alumno === a.id && c.id_periodo === periodo2?.id_periodo,
+        (c) => mismoId(c.id_alumno, a.id) && mismoId(c.id_periodo, periodo2?.id_periodo),
       );
       return {
         id: a.id,
@@ -85,15 +87,15 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
     if (!estudiantesCurso.length) return;
     setCargandoIntensif(true);
     try {
-      const alumnoIds = new Set(estudiantesCurso.map((a) => a.id));
+      const alumnoIds = new Set(estudiantesCurso.map((a) => String(a.id)));
       const allData = await getIntensificacionesAcademicas();
       const data = Array.isArray(allData) ? allData : allData.results || [];
       // Solo las instancias de la materia del panel actual y de estudiantes del curso.
       const intensifMateria = data.filter(
-        (i) => alumnoIds.has(i.id_alumno) && i.materia_nombre === materiaNombre,
+        (i) => i.id_alumno != null && alumnoIds.has(String(i.id_alumno)) && i.materia_nombre === materiaNombre,
       );
-      const calsCm = calificacionesCompletas.filter(
-        (c) => c.id_curso_materia === cursoMateriaId,
+      const calsCm = (Array.isArray(calificacionesCompletas) ? calificacionesCompletas : []).filter(
+        (c) => mismoId(c.id_curso_materia, cursoMateriaId),
       );
 
       // Historial académico: fuente del id_historial (necesario al CREAR una
@@ -105,18 +107,18 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
       const histList = Array.isArray(histData) ? histData : histData.results || [];
       const histPorEstudiante = new Map();
       histList.forEach((h) => {
-        if (!histPorEstudiante.has(h.id_alumno)) {
-          histPorEstudiante.set(h.id_alumno, h);
+        if (h.id_alumno != null && !histPorEstudiante.has(String(h.id_alumno))) {
+          histPorEstudiante.set(String(h.id_alumno), h);
         }
       });
 
       const filasIntensif = estudiantesCurso.map((estudiante) => {
-        const hist = histPorEstudiante.get(estudiante.id) || null;
+        const hist = histPorEstudiante.get(String(estudiante.id)) || null;
         const cal1 = calsCm.find(
-          (c) => c.id_alumno === estudiante.id && c.id_periodo === periodo1?.id_periodo,
+          (c) => mismoId(c.id_alumno, estudiante.id) && mismoId(c.id_periodo, periodo1?.id_periodo),
         );
         const cal2 = calsCm.find(
-          (c) => c.id_alumno === estudiante.id && c.id_periodo === periodo2?.id_periodo,
+          (c) => mismoId(c.id_alumno, estudiante.id) && mismoId(c.id_periodo, periodo2?.id_periodo),
         );
         const nota1Cal = cal1?.nota_numerica != null ? Number(cal1.nota_numerica) : null;
         const nota2Cal = cal2?.nota_numerica != null ? Number(cal2.nota_numerica) : null;
@@ -135,7 +137,7 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
               : null;
 
         const instanciasTodas = intensifMateria
-          .filter((i) => i.id_alumno === estudiante.id)
+          .filter((i) => mismoId(i.id_alumno, estudiante.id))
           .map((i) => ({
             id: i.id_intensificacion,
             idHistorial: i.id_historial,
@@ -207,7 +209,7 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
       ]);
       const deudas = Array.isArray(maData) ? maData : maData.results || [];
       const registros = Array.isArray(regData) ? regData : regData.results || [];
-      const alumnoIds = new Set(estudiantesCurso.map((a) => a.id));
+      const alumnoIds = new Set(estudiantesCurso.map((a) => String(a.id)));
 
       // Histórico de rendiciones indexado por materia adeudada.
       const rendicionesPorMateria = {};
@@ -229,13 +231,13 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
       const materiaNorm = String(materiaNombre || '').trim().toLowerCase();
       const previasEstudiantes = deudas.filter(
         (p) =>
-          alumnoIds.has(p.id_alumno) &&
+          p.id_alumno != null && alumnoIds.has(String(p.id_alumno)) &&
           p.tipo_deuda === 'PREVIA' &&
           String(p.materia_nombre || '').trim().toLowerCase() === materiaNorm,
       );
 
       const filasPrevias = previasEstudiantes.map((p) => {
-        const estudiante = estudiantesCurso.find((a) => a.id === p.id_alumno);
+        const estudiante = estudiantesCurso.find((a) => mismoId(a.id, p.id_alumno));
         return {
           alumnoId: p.id_alumno,
           estudianteNombre: estudiante ? `${estudiante.apellido}, ${estudiante.nombre}` : '',
@@ -262,14 +264,14 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
 
   const handleInputChange = (id, campo, valor) => {
     setFilas((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, [campo]: valor } : f)),
+      prev.map((f) => (mismoId(f.id, id) ? { ...f, [campo]: valor } : f)),
     );
   };
 
   const handleIntensifChange = (alumnoId, campo, valor) => {
     setIntensificaciones((prev) =>
       prev.map((f) =>
-        f.alumnoId === alumnoId
+        mismoId(f.alumnoId, alumnoId)
           ? { ...f, registros: { ...f.registros, [campo]: valor } }
           : f,
       ),
@@ -277,6 +279,7 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
   };
 
   const handleGuardarIntensificaciones = async () => {
+    if (!puedeEditar) return;
     const anio = new Date().getFullYear();
     const cambios = cambiosIntensificaciones(intensificaciones, anio, cursoMateriaId);
     if (cambios.length === 0) {
@@ -307,6 +310,14 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
 
   const anioPorDefecto = () => new Date().getFullYear();
 
+  useEffect(() => {
+    if (!puedeEditar) {
+      setMensaje('');
+      setPreviaNotas({});
+      setPreviaAnios({});
+    }
+  }, [puedeEditar]);
+
   const handlePreviaNotaChange = (materiaAdeudadaId, periodo, valor) => {
     setPreviaNotas((prev) => ({
       ...prev,
@@ -322,6 +333,7 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
   };
 
   const handleGuardarPrevias = async () => {
+    if (!puedeEditar) return;
     const promesas = [];
     for (const p of previas) {
       for (const per of PERIODOS_RENDICION) {
@@ -356,6 +368,7 @@ function PanelEstudiantes({ cursoMateriaId, cursoId, cursoNombre, materiaNombre,
   };
 
   const handleGuardar = async () => {
+    if (!puedeEditar) return;
     setGuardando(true);
     setMensaje('');
     try {

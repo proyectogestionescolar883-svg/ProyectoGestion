@@ -504,7 +504,7 @@ class Calificacion(models.Model):
     class Meta:
         managed = False
         db_table = 'calificaciones'
-        unique_together = (('id_alumno', 'id_curso_materia', 'id_periodo'),)
+        unique_together = (('id_alumno', 'id_curso_materia', 'id_periodo', 'estado'),)
 
 
 class EstadoAsistencia(models.Model):
@@ -1158,6 +1158,7 @@ class HistorialAcademico(models.Model):
     class Meta:
         managed = False
         db_table = 'historial_academico'
+        unique_together = (('id_alumno', 'id_curso_materia', 'anio_lectivo', 'estado'),)
 
     def __str__(self):
         return f'Historial {self.id_alumno_id} - {self.id_materia_id} - {self.anio_lectivo}'
@@ -1200,6 +1201,7 @@ class IntensificacionAcademica(models.Model):
     class Meta:
         managed = False
         db_table = 'intensificaciones_academicas'
+        unique_together = (('id_historial', 'periodo', 'anio_rendicion'),)
 
     def __str__(self):
         return f'Intensificación {self.id_historial_id} - {self.periodo} {self.anio_rendicion}'

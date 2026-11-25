@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getAsistenciasEstudianteDetalle } from '../services/api';
 
 // Resumen de asistencias de un alumno para las tarjetas de inicio y el RITE.
@@ -11,6 +11,8 @@ import { getAsistenciasEstudianteDetalle } from '../services/api';
 export function useAsistenciasAlumno(alumnoId) {
   const [registros, setRegistros] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [version, setVersion] = useState(0);
+  const recargar = useCallback(() => setVersion((n) => n + 1), []);
 
   useEffect(() => {
     if (!alumnoId) {
@@ -33,33 +35,35 @@ export function useAsistenciasAlumno(alumnoId) {
         if (!cancel) setLoading(false);
       });
     return () => { cancel = true; };
-  }, [alumnoId]);
+  }, [alumnoId, version]);
 
   const resumen = useMemo(() => {
-    const cuenta = { presente: 0, ausente: 0, tarde: 0, pendiente: 0 };
+    const cuenta = { presente: 0, ausente: 0, tarde: 0, justificado: 0, pendiente: 0 };
     const porMateria = {};
     registros.forEach((r) => {
-      const est = r.estado_nombre;
+      const est = String(r.estado_nombre || '').trim();
       if (est === 'Presente') cuenta.presente++;
       else if (est === 'Ausente') cuenta.ausente++;
       else if (est === 'Tarde' || est === 'Retirado') cuenta.tarde++;
+      else if (est === 'Justificado') cuenta.justificado++;
       else cuenta.pendiente++;
 
       const materia = r.materia_nombre || 'General';
-      if (!porMateria[materia]) porMateria[materia] = { ausencias: 0, tardanzas: 0 };
+      if (!porMateria[materia]) porMateria[materia] = { ausencias: 0, tardanzas: 0, justificadas: 0 };
       if (est === 'Ausente') porMateria[materia].ausencias += 1;
       else if (est === 'Tarde' || est === 'Retirado') porMateria[materia].tardanzas += 1;
+      else if (est === 'Justificado') porMateria[materia].justificadas += 1;
     });
     return {
       ...cuenta,
-      total: cuenta.presente + cuenta.ausente + cuenta.tarde,
+      total: cuenta.presente + cuenta.ausente + cuenta.tarde + cuenta.justificado,
       inasistencias: cuenta.ausente + cuenta.tarde,
       inasistenciasPorMateria: porMateria,
       registros,
     };
   }, [registros]);
 
-  return { ...resumen, loading };
+  return { ...resumen, loading, recargar };
 }
 
 export default useAsistenciasAlumno;

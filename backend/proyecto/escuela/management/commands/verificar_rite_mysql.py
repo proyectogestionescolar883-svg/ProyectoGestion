@@ -14,8 +14,10 @@ USO:
     python manage.py verificar_rite_mysql
 """
 
+import uuid
 from datetime import time
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import connection, transaction
 from django.utils import timezone
@@ -43,8 +45,6 @@ from escuela.models import (
     UsuarioRol,
 )
 
-APELLIDO_MARCA = 'FICTICIO_E2E'
-MATERIA_PREFIJO = 'E2E-'
 
 
 def _dni_libre(prefijo):
@@ -69,17 +69,24 @@ class Command(BaseCommand):
         out = self.stdout.write
         anio = 2100
         prefijo_dni = '98800'
-        curso_nombre = 'E2E-CURSO'
+        marca = uuid.uuid4().hex[:8]
+        apellido_marca = f'FICTICIO_{marca}'
+        materia_prefijo = f'E2E-{marca}-'
+        curso_nombre = f'E2E-CURSO-{marca}'
+        modulo_nombre = f'E2E-M1-{marca}'
+        periodo_nombre = f'E2E-1C-{marca}'
         nombres_materia = [
-            f'{MATERIA_PREFIJO}Matematica',
-            f'{MATERIA_PREFIJO}Lengua',
-            f'{MATERIA_PREFIJO}Historia',
+            f'{materia_prefijo}Matematica',
+            f'{materia_prefijo}Lengua',
+            f'{materia_prefijo}Historia',
         ]
-        usuario_admin = 'e2e_admin_test'
+        usuario_admin = f'e2e_admin_{marca}'
+        hosts = settings.ALLOWED_HOSTS or ['localhost']
+        fallo_transaccion = False
 
         out('=' * 72)
         out('Verificación en MySQL real (sistema_escolar) con ROLLBACK final')
-        out(f'  Anio lectivo de prueba: {anio}  |  Marcador: {APELLIDO_MARCA}')
+        out(f'  Anio lectivo de prueba: {anio}  |  Marcador: {apellido_marca}')
         out('=' * 72)
 
         try:
@@ -93,7 +100,7 @@ class Command(BaseCommand):
                 curso_id = curso.id_curso
 
                 doc = Docente.objects.create(
-                    nombre='Docente', apellido=APELLIDO_MARCA, dni=_dni_libre(prefijo_dni),
+                    nombre='Docente', apellido=apellido_marca, dni=_dni_libre(prefijo_dni),
                 )
 
                 cms = {}
@@ -106,7 +113,7 @@ class Command(BaseCommand):
                     cms[n] = (materia, cm)
 
                 alumno = Alumno.objects.create(
-                    nombre='Lucas', apellido=APELLIDO_MARCA,
+                    nombre='Lucas', apellido=apellido_marca,
                     dni=_dni_libre(prefijo_dni), id_curso=curso,
                 )
                 alumno_id = alumno.id_alumno
@@ -145,8 +152,8 @@ class Command(BaseCommand):
 
                 out('[3/5] Verificación de PERSISTENCIA por SQL directo...')
                 checks = [
-                    ('alumnos', f"id_alumno={alumno_id} AND apellido='{APELLIDO_MARCA}'", 1),
-                    ('cursos', f'id_curso={curso_id} AND nombre_curso=%s', 1, (curso_nombre,)),
+                    ('alumnos', 'id_alumno=%s AND apellido=%s', 1, (alumno_id, apellido_marca)),
+                    ('cursos', 'id_curso=%s AND nombre_curso=%s', 1, (curso_id, curso_nombre)),
                     ('calificaciones', 'id_alumno=%s', 6, (alumno_id,)),
                     ('historial_academico', 'id_alumno=%s', 3, (alumno_id,)),
                     ('materias_adeudadas', "id_alumno=%s AND tipo_deuda='PREVIA' AND estado='ADEUDADA'", 2, (alumno_id,)),
@@ -173,16 +180,20 @@ class Command(BaseCommand):
 
                 from django.contrib.auth.hashers import make_password
 
-                rol_admin, rol_creado = Rol.objects.get_or_create(nombre_rol='admin')
+                rol_admin, _ = Rol.objects.get_or_create(nombre_rol='admin')
                 usr = Usuario.objects.create(
-                    usuario=usuario_admin, contrasena=make_password('x'), estado=True,
+                    usuario=usuario_admin,
+                    contrasena=make_password(uuid.uuid4().hex),
+                    estado=True,
                 )
                 UsuarioRol.objects.create(id_usuario=usr, id_rol=rol_admin)
                 duser, _ = DjangoUser.objects.get_or_create(username=usuario_admin)
                 token = str(RefreshToken.for_user(duser).access_token)
 
                 client = APIClient()
-                client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}', HTTP_HOST='localhost')
+                client.credentials(
+                    HTTP_AUTHORIZATION=f'Bearer {token}', HTTP_HOST=hosts[0],
+                )
                 resp = client.get(f'/api/boletin-academico/{alumno_id}/')
                 if resp.status_code != 200:
                     raise RuntimeError(f'RITE endpoint devolvio {resp.status_code}: {resp.content[:200]}')
@@ -213,7 +224,7 @@ class Command(BaseCommand):
                 checks_rend = [
                     ('rendiciones_materias_adeudadas', 'id_alumno=%s', 1, (alumno_id,)),
                     ('registro_rendiciones_previas', 'id_alumno=%s', 1, (alumno_id,)),
-                    ('materias_adeudadas', f"id_alumno={alumno_id} AND id_materia=%s AND estado='APROBADA'", 1, (ma.id_materia_id,)),
+                    ('materias_adeudadas', "id_alumno=%s AND id_materia=%s AND estado='APROBADA'", 1, (alumno_id, ma.id_materia_id)),
                 ]
                 for tabla, where, esperado, params in checks_rend:
                     total = _filas(tabla, where, params)
@@ -225,7 +236,9 @@ class Command(BaseCommand):
                     raise RuntimeError('Persistencia de rendición no coincide.')
 
                 out('    Superposición horaria y bloqueo...')
-                mod = Modulos.objects.create(nombre='E2E-M1', hora_inicio=time(8, 0), hora_fin=time(9, 0))
+                mod = Modulos.objects.create(
+                    nombre=modulo_nombre, hora_inicio=time(8, 0), hora_fin=time(9, 0),
+                )
                 cm_rec = cms[materias_names[0]][1]
                 cm_bloq = cms[materias_names[2]][1]
                 RecursadaMateria.objects.create(
@@ -240,7 +253,7 @@ class Command(BaseCommand):
 
                 checks_bloq = [
                     ('bloqueos_horarios_alumno', 'id_alumno=%s', 1, (alumno_id,)),
-                    ('situaciones_materias_alumno', f"id_alumno={alumno_id} AND situacion='BLOQUEADA'", 1),
+                    ('situaciones_materias_alumno', "id_alumno=%s AND situacion='BLOQUEADA'", 1, (alumno_id,)),
                 ]
                 for tabla, where, esperado, params in [
                     c if len(c) == 4 else (c[0], c[1], c[2], ()) for c in checks_bloq
@@ -263,28 +276,29 @@ class Command(BaseCommand):
                 transaction.set_rollback(True)
 
         except Exception as exc:  # noqa: BLE001
+            fallo_transaccion = True
             out(f'\nERROR: {exc}')
             out('(el bloque atomic() ya descartó la transacción por el error)')
 
         out('\nVerificación de LIMPIEZA (después del rollback) por SQL directo:')
         limpieza_checks = [
-            ('alumnos', "apellido=%s", (APELLIDO_MARCA,)),
+            ('alumnos', "apellido=%s", (apellido_marca,)),
             ('cursos', 'nombre_curso=%s', (curso_nombre,)),
             ('curso_materia', "id_curso IN (SELECT id_curso FROM cursos WHERE nombre_curso=%s)", (curso_nombre,)),
-            ('docentes', "apellido=%s", (APELLIDO_MARCA,)),
-            ('historial_academico', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (APELLIDO_MARCA,)),
-            ('materias_adeudadas', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (APELLIDO_MARCA,)),
-            ('historial_cursos_alumno', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (APELLIDO_MARCA,)),
-            ('recursadas_materias', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (APELLIDO_MARCA,)),
-            ('bloqueos_horarios_alumno', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (APELLIDO_MARCA,)),
-            ('situaciones_materias_alumno', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (APELLIDO_MARCA,)),
-            ('rendiciones_materias_adeudadas', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (APELLIDO_MARCA,)),
-            ('registro_rendiciones_previas', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (APELLIDO_MARCA,)),
-            ('calificaciones', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (APELLIDO_MARCA,)),
-            ('actividades_materias_adeudadas', "id_docente IN (SELECT id_docente FROM docentes WHERE apellido=%s)", (APELLIDO_MARCA,)),
-            ('resultados_actividades_adeudadas', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (APELLIDO_MARCA,)),
-            ('periodos_evaluacion', 'nombre_periodo=%s', ('E2E-1C',)),
-            ('modulos', 'nombre=%s', ('E2E-M1',)),
+            ('docentes', "apellido=%s", (apellido_marca,)),
+            ('historial_academico', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (apellido_marca,)),
+            ('materias_adeudadas', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (apellido_marca,)),
+            ('historial_cursos_alumno', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (apellido_marca,)),
+            ('recursadas_materias', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (apellido_marca,)),
+            ('bloqueos_horarios_alumno', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (apellido_marca,)),
+            ('situaciones_materias_alumno', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (apellido_marca,)),
+            ('rendiciones_materias_adeudadas', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (apellido_marca,)),
+            ('registro_rendiciones_previas', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (apellido_marca,)),
+            ('calificaciones', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (apellido_marca,)),
+            ('actividades_materias_adeudadas', "id_docente IN (SELECT id_docente FROM docentes WHERE apellido=%s)", (apellido_marca,)),
+            ('resultados_actividades_adeudadas', "id_alumno IN (SELECT id_alumno FROM alumnos WHERE apellido=%s)", (apellido_marca,)),
+            ('periodos_evaluacion', 'nombre_periodo=%s', (periodo_nombre,)),
+            ('modulos', 'nombre=%s', (modulo_nombre,)),
             ('usuarios', 'usuario=%s', (usuario_admin,)),
             ('usuario_roles', "id_usuario IN (SELECT id_usuario FROM usuarios WHERE usuario=%s)", (usuario_admin,)),
             ('auth_user', 'username=%s', (usuario_admin,)),
@@ -299,17 +313,17 @@ class Command(BaseCommand):
 
         materias_restantes = _filas(
             'materias',
-            'nombre_materia LIKE %s', (MATERIA_PREFIJO + '%',),
+            'nombre_materia LIKE %s', (materia_prefijo + '%',),
         )
         estado_mat = 'LIMPIO' if materias_restantes == 0 else 'SUCIO'
         if materias_restantes != 0:
             limpio = False
         out(f'    {estado_mat}: materias = {materias_restantes}')
 
-        if limpio:
+        if limpio and not fallo_transaccion:
             out('\nRESULTADO: LIMPIEZA VERIFICADA (0 registros ficticios restantes).')
         else:
-            out('\nRESULTADO: QUEDARON REGISTROS FICTICIOS. Revisar manualmente.')
+            out('\nRESULTADO: QUEDARON REGISTROS FICTICIOS O FALLÓ LA TRANSACCIÓN.')
             raise SystemExit(1)
 
     @staticmethod

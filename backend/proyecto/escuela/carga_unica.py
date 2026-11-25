@@ -59,6 +59,7 @@ def crear_o_renovar_carga(cm, fecha, pendientes, docente=None):
         return None
 
     cm_id = getattr(cm, 'id_curso_materia', cm)
+    docente_id = getattr(docente, 'pk', docente)
     hoy_ventanas = list(
         CargaUnica.objects.filter(id_curso_materia_id=cm_id, fecha=fecha)
         .order_by('-fecha_creacion', '-id_carga_unica')
@@ -69,7 +70,7 @@ def crear_o_renovar_carga(cm, fecha, pendientes, docente=None):
     if cu is None:
         cu = CargaUnica.objects.create(
             id_curso_materia_id=cm_id,
-            id_docente=docente,
+            id_docente_id=docente_id,
             fecha=fecha,
             fecha_inicio=ahora,
             fecha_vencimiento=ahora + DURACION_VENTANA,
@@ -85,7 +86,11 @@ def crear_o_renovar_carga(cm, fecha, pendientes, docente=None):
         cu.pendientes = json.dumps(previos)
         cu.fecha_inicio = ahora
         cu.fecha_vencimiento = ahora + DURACION_VENTANA
-        cu.save(update_fields=['pendientes', 'fecha_inicio', 'fecha_vencimiento'])
+        update_fields = ['pendientes', 'fecha_inicio', 'fecha_vencimiento']
+        if docente_id is not None:
+            cu.id_docente_id = docente_id
+            update_fields.append('id_docente')
+        cu.save(update_fields=update_fields)
 
     return cu
 

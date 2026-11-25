@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 
 import Sidebar from './sidebar';
 import Header from './header';
@@ -20,9 +20,27 @@ import VistaHorarios from '../Administracion/VistaHorarios';
 import SupervisionPreceptores from './SupervisionPreceptores';
 import AdelantosHoras from '../Shared/AdelantosHoras';
 import { useData } from '../../context/DataContext';
-import { useMemo } from 'react';
 import { viewDesdeDestino } from '../../utils/navDestinos';
 import { resolverCursosSeleccionados, firmaSeleccion } from '../../utils/seleccionCurso';
+
+const VISTAS_JEFE = new Set([
+  'perfil',
+  'alumnos',
+  'docentes',
+  'tutores',
+  'asistencias',
+  'adelantos-horas',
+  'horarios',
+  'actas',
+  'notas',
+  'comunicados',
+  'admin-preceptores',
+  'estadisticas',
+  'supervision',
+  'historial',
+  'calendario',
+  'notificaciones',
+]);
 
 function JefePreceptorDashboard({ user, onLogout }) {
   const {
@@ -69,15 +87,10 @@ setSeleccionCursos,
 
   const [view, setView] = useState('perfil');
 
-  // 5.6 — multiselección de cursos; `curso` sigue siendo el primero de la lista
-  // para las vistas que todavía filtran por un curso solo.
   const [anioLectivo, setAnioLectivo] = useState('');
   const [curso, setCurso] = useState('');
   const [cursos, setCursos] = useState([]);
 
-  // Navegación desde notificaciones: el Jefe de Preceptores navega como
-  // preceptor (mismas vistas). Solo cambia de sección si existe una vista
-  // válida; si no, no navega (nunca pantalla en blanco).
   // 5.1: además deja el año lectivo y el curso ya seleccionados en el header.
   // Se aplica una vez por navegación (guarda por timestamp) para no pisar la
   // elección manual del header cuando `cursosObj` se refresca.
@@ -89,8 +102,8 @@ setSeleccionCursos,
     if (navAplicadoRef.current === navIntent.timestamp) return;
     navAplicadoRef.current = navIntent.timestamp;
 
-    const vista = viewDesdeDestino(navIntent.destino, 'preceptor');
-    if (vista) setView(vista);
+    const vista = viewDesdeDestino(navIntent.destino, user?.role || 'jefe_preceptores');
+    if (vista && VISTAS_JEFE.has(vista)) setView(vista);
 
     const p = navIntent.params || {};
     const anio = p.anio ?? p.anioLectivo ?? null;
@@ -103,8 +116,6 @@ setSeleccionCursos,
       ?? (typeof p.curso === 'string' && p.curso && !/[°º]/.test(p.curso) ? p.curso : null)
       ?? null;
 
-    // 5.6 — la notificación trae un curso puntual, así que se deja marcada solo
-    // esa división (y no todas las del año).
     if (porNombre) {
       setCursos([String(porNombre)]);
       setCurso(String(porNombre));
@@ -112,7 +123,7 @@ setSeleccionCursos,
     } else if (porId) {
       setCursoPendienteNav(String(porId));
     }
-  }, [navIntent]);
+  }, [navIntent, user?.role]);
 
   useEffect(() => {
     if (!cursoPendienteNav) return;

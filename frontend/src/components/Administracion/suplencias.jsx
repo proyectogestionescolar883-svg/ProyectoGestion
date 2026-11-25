@@ -380,10 +380,6 @@ function GestionSuplencias({ navContext }) {
     );
   };
 
-  const handleVer = (s) => {
-    toast.info(`Suplencia: ${s.materia_nombre} - ${s.curso_nombre} (${s.suplente_nombre})`);
-  };
-
   const historialFiltrado = useMemo(() => {
     let result = [...suplenciasHistorial];
     if (filtrosHistorial.docente) {

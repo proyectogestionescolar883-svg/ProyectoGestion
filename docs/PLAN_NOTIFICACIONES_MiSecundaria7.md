@@ -1,10 +1,16 @@
-**# Plan del Sistema de Notificaciones — MiSecundaria 7**
+# Plan del Sistema de Notificaciones — MiSecundaria 7
 
-\> **\*\*Documento de diseño / investigación. NO modifica código ni base de datos.\*\***
+> **Documento de diseño / investigación histórico.** No modifica código ni base
+> de datos. Las decisiones `[REQUIERE DECISIÓN]` que aparecen más abajo quedaron
+> resueltas; este plan se conserva como registro.
 
-\> Estado: propuesta para revisión. Toda decisión pendiente se marca **\*\*[REQUIERE DECISIÓN]\*\***.
+**Contrato vigente:** `Notificacion` expone `id_usuario` (destinatario),
+`id_alumno` (hijo/alumno relacionado, nullable), `rol`, `nav_destino` y
+`nav_params`; la navegación se serializa como `[nav:{...}]` dentro de `mensaje`.
+El frontend consume sus notificaciones con polling de 30 s en `DataContext` y
+`Notificaciones.jsx` respeta `navIntent` sin duplicar selectors de curso.
 
-**---**
+---
 
 **## 1. Resumen de la arquitectura propuesta**
 
@@ -108,45 +114,26 @@ notificaciones
 
 \`\`\`
 
-DDL real:
+DDL histórico (MySQL original; hoy equivalente en PostgreSQL/Supabase,
+declarado en `escuela/schema.py`):
 
-\`\`\`sql
+```sql
+CREATE TABLE notificaciones (
+    id_notificacion SERIAL PRIMARY KEY,
+    id_usuario INTEGER NOT NULL REFERENCES usuarios (id_usuario),
+    id_alumno INTEGER NULL REFERENCES alumnos (id_alumno),
+    titulo VARCHAR(255) NULL,
+    mensaje TEXT NULL,
+    fecha TIMESTAMP NULL,
+    leida BOOLEAN NOT NULL DEFAULT FALSE
+);
 
-CREATE TABLE \`notificaciones\` (
+CREATE INDEX id_usuario ON notificaciones (id_usuario);
+CREATE INDEX idx_notificaciones_id_alumno ON notificaciones (id_alumno);
+```
 
-  \`id\_notificacion\` int NOT NULL AUTO\_INCREMENT,
-
-  \`id\_usuario\` int NOT NULL,
-
-  \`id\_alumno\` int DEFAULT NULL,
-
-  \`titulo\` varchar(255) DEFAULT NULL,
-
-  \`mensaje\` text,
-
-  \`fecha\` datetime DEFAULT NULL,
-
-  \`leida\` tinyint(1) DEFAULT '0',
-
-  PRIMARY KEY (\`id\_notificacion\`),
-
-  KEY \`id\_usuario\` (\`id\_usuario\`),
-
-  KEY \`idx\_notificaciones\_id\_alumno\` (\`id\_alumno\`),
-
-  CONSTRAINT \`fk\_notificaciones\_alumno\`
-
-    FOREIGN KEY (\`id\_alumno\`) REFERENCES \`alumnos\` (\`id\_alumno\`),
-
-  CONSTRAINT \`notificaciones\_ibfk\_1\`
-
-    FOREIGN KEY (\`id\_usuario\`) REFERENCES \`usuarios\` (\`id\_usuario\`)
-
-) ENGINE=InnoDB AUTO\_INCREMENT=4
-
-  DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4\_0900\_ai\_ci;
-
-\`\`\`
+Columnas vigentes agregadas por `schema.py`: `rol`, `nav_destino`, `nav_params`
+(la navegación también se serializa como `[nav:{...}]` en `mensaje`).
 
 **\*\*Restricciones:\*\***
 

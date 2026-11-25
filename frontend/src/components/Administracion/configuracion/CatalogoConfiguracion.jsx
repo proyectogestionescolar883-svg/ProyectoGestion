@@ -37,7 +37,6 @@ export default function CatalogoConfiguracion({
   Form,
   toPayload,
   toFormData,
-  onGuardado,
   permiteInactivos = false,
   modo = 'eliminar',
   mensajeVacio,
@@ -82,7 +81,6 @@ export default function CatalogoConfiguracion({
     if (typeof refreshCatalogosMaestros === 'function') {
       await refreshCatalogosMaestros();
     }
-    if (typeof onGuardado === 'function') await onGuardado();
   };
 
   const limpiar = () => {

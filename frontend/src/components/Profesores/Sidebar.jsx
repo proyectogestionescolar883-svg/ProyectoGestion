@@ -13,6 +13,11 @@ function seccionDeVista(viewId, items) {
 function Sidebar({ view, setView, onLogout }) {
   const [expandedSection, setExpandedSection] = useState(null);
   const menuWrapperRef = useRef(null);
+  const scrollTimeoutRef = useRef(null);
+
+  useEffect(() => () => {
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+  }, []);
 
   useEffect(() => {
     const sectionId = seccionDeVista(view, menuItems);
@@ -31,7 +36,7 @@ function Sidebar({ view, setView, onLogout }) {
       // Esperar a que termine la animación del acordeón y luego ajustar el
       // scroll para que se vea todo el contenido abierto y el siguiente
       // desplegable quede visible.
-      setTimeout(() => {
+      scrollTimeoutRef.current = setTimeout(() => {
         const wrapper = menuWrapperRef.current;
         if (!wrapper) return;
         const sectionHeader = wrapper.querySelector(`[data-section-id="${sectionId}"]`);

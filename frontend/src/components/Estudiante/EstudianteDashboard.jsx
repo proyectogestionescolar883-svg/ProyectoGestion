@@ -19,6 +19,8 @@ import Sidebar from './Sidebar';
 import SidebarToggle from '../Shared/SidebarToggle';
 import Logo from '../Shared/Logo';
 
+const mismoId = (a, b) => a != null && b != null && String(a) === String(b);
+
 function EstudianteDashboard({ user, onLogout }) {
   const {
     estudiantes,
@@ -47,9 +49,18 @@ function EstudianteDashboard({ user, onLogout }) {
     const vista = viewDesdeDestino(navIntent.destino, 'alumno');
     if (vista) setView(vista);
   }, [navIntent]);
-  const miEstudiante = useMemo(
-    () => estudiantes.find((a) => String(a.id_usuario) === String(user?.id)) || null,
-    [estudiantes, user],
+  const miEstudiante = useMemo(() => {
+    const idUsuario = user?.id_usuario ?? user?.id;
+    return (Array.isArray(estudiantes) ? estudiantes : []).find(
+      (a) => mismoId(a.id_usuario, idUsuario),
+    ) || null;
+  }, [estudiantes, user]);
+
+  const cursoEstudiante = useMemo(
+    () => (Array.isArray(cursosObj) ? cursosObj : []).find(
+      (c) => mismoId(c.id_curso, miEstudiante?.id_curso),
+    ) || null,
+    [cursosObj, miEstudiante],
   );
   const {
     intensificaciones_1c,
@@ -62,20 +73,22 @@ function EstudianteDashboard({ user, onLogout }) {
 
   const misCalificaciones = useMemo(() => {
     if (!miEstudiante) return [];
-    return calificacionesCompletas.filter((c) => c.id_alumno === miEstudiante.id);
+    return (Array.isArray(calificacionesCompletas) ? calificacionesCompletas : []).filter(
+      (c) => mismoId(c.id_alumno, miEstudiante.id),
+    );
   }, [calificacionesCompletas, miEstudiante]);
 
   const calsPorMateria = useMemo(() => {
     if (!miEstudiante) return [];
     
     // Obtener todas las materias del curso del estudiante
-    const cursoNombre = miEstudiante.curso;
+    const cursoNombre = cursoEstudiante?.nombre_curso || miEstudiante.curso;
     const materiasDelCurso = materiasPorCurso[cursoNombre] || [];
     
     // Construir un mapa de calificaciones existentes por ID de curso_materia
     const gradesMap = {};
     misCalificaciones.forEach((c) => {
-      const key = c.id_curso_materia;
+      const key = String(c.id_curso_materia);
       if (!gradesMap[key]) {
         gradesMap[key] = {
           materia: c.materia_nombre || 'Sin materia',
@@ -83,7 +96,9 @@ function EstudianteDashboard({ user, onLogout }) {
           prenota1: '', nota1: '', prenota2: '', nota2: '', diagnostico: '',
         };
       }
-      const orden = periodos.find((p) => p.id_periodo === c.id_periodo)?.orden_periodo || 0;
+      const orden = (Array.isArray(periodos) ? periodos : []).find(
+        (p) => mismoId(p.id_periodo, c.id_periodo),
+      )?.orden_periodo || 0;
       if (orden <= 1) {
         gradesMap[key].prenota1 = c.pre_nota || '';
         gradesMap[key].nota1 = c.nota_numerica ?? '';
@@ -98,13 +113,12 @@ function EstudianteDashboard({ user, onLogout }) {
     // Construir la lista final desde todas las materias del curso
     const result = materiasDelCurso.map((materiaNombre) => {
       // Buscar si hay una calificación para esta materia
-      const cursoMateriaEntry = cursoMateria.find(
-        (cm) => cm.curso_nombre === cursoNombre && cm.materia_nombre === materiaNombre
+      const cursoMateriaEntry = (Array.isArray(cursoMateria) ? cursoMateria : []).find(
+        (cm) => mismoId(cm.id_curso, miEstudiante.id_curso) && cm.materia_nombre === materiaNombre,
       );
-      
-      if (cursoMateriaEntry && gradesMap[cursoMateriaEntry.id]) {
-        // Tiene calificaciones
-        return gradesMap[cursoMateriaEntry.id];
+
+      if (cursoMateriaEntry && gradesMap[String(cursoMateriaEntry.id)]) {
+        return gradesMap[String(cursoMateriaEntry.id)];
       } else {
         // Sin calificaciones - mostrar "Sin calificaciones"
         return {
@@ -120,7 +134,7 @@ function EstudianteDashboard({ user, onLogout }) {
     });
     
     return result;
-  }, [misCalificaciones, periodos, miEstudiante, materiasPorCurso, cursoMateria]);
+  }, [misCalificaciones, periodos, miEstudiante, cursoEstudiante, materiasPorCurso, cursoMateria]);
 
   // Las asistencias del alumno no salen de `asistenciasAdmin`: en DataContext
   // `asistenciasRaw` está pineado a `[]` (la tabla completa no se descarga), así
@@ -135,11 +149,10 @@ function EstudianteDashboard({ user, onLogout }) {
 
   const handleDescargarRite = () => {
     if (!miEstudiante) return;
-    const cursoEstudiante = cursosObj.find((c) => String(c.id_curso) === String(miEstudiante.id_curso));
     const html = riteHTML({
       estudianteNombre: `${miEstudiante.apellido}, ${miEstudiante.nombre}`,
       dni: miEstudiante.dni,
-      cursoNombre: miEstudiante.curso,
+      cursoNombre: cursoEstudiante?.nombre_curso || miEstudiante.curso,
       anioLectivo: miEstudiante.ciclo_anio || cursoEstudiante?.ciclo_anio || new Date().getFullYear(),
       materias: calsPorMateria,
       inasistenciasPorMateria,
@@ -181,7 +194,9 @@ function EstudianteDashboard({ user, onLogout }) {
               </h2>
               <p className="main-header-subtitle">
                 <i className="fas fa-school font-accent" aria-hidden="true" />
-                {miEstudiante ? `Curso: ${cursoConOrientacion(miEstudiante.curso)}` : 'Portal del Estudiante'}
+                {miEstudiante
+                  ? `Curso: ${cursoConOrientacion(cursoEstudiante || miEstudiante.curso)}`
+                  : 'Portal del Estudiante'}
               </p>
             </div>
           </div>
@@ -199,7 +214,7 @@ function EstudianteDashboard({ user, onLogout }) {
 
         {view === 'perfil' ? (
           <div className="view-section active">
-            <PanelEstudiante miEstudiante={miEstudiante} user={user} recursadas={recursadas} />
+            <PanelEstudiante miEstudiante={miEstudiante} recursadas={recursadas} />
           </div>
         ) : view === 'notificaciones' ? (
           <div className="view-section active">

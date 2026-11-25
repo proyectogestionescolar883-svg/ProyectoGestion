@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getHistorialCambios, getTiposAccion, getUsuarios, getRoles } from '../../services/api';
 import LoadingSpinner from '../Shared/LoadingSpinner';
+import { useToast } from '../../context/ToastContext';
 import { mensajeErrorAmigable } from '../../utils/errores';
 
 const TABLAS = [
@@ -17,6 +18,12 @@ const TABLAS = [
   { value: 'cursos', label: 'Cursos' },
   { value: 'materias', label: 'Materias' },
   { value: 'asignaciones_cursos', label: 'Asignaciones de Cursos' },
+  { value: 'calificaciones', label: 'Calificaciones' },
+  { value: 'suplencias_docentes', label: 'Suplencias' },
+  { value: 'horarios', label: 'Horarios' },
+  { value: 'horarios_especiales', label: 'Horarios especiales' },
+  { value: 'adelantos_horas', label: 'Adelantos de horas' },
+  { value: 'libro_temas', label: 'Libro de temas' },
   { value: 'eventos_institucionales', label: 'Eventos Institucionales' },
 ];
 
@@ -30,6 +37,7 @@ const FILTROS_VACIOS = {
 };
 
 function Historial({ ocultarRegistro = false }) {
+  const toast = useToast();
   const [registros, setRegistros] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
   const [acciones, setAcciones] = useState([]);
@@ -41,10 +49,25 @@ function Historial({ ocultarRegistro = false }) {
   const POR_PAGINA = 10;
 
   useEffect(() => {
-    getUsuarios().then(setUsuarios).catch(() => setUsuarios([]));
-    getTiposAccion().then(setAcciones).catch(() => setAcciones([]));
-    getRoles().then(setRoles).catch(() => setRoles([]));
-  }, []);
+    getUsuarios(true)
+      .then((data) => setUsuarios(Array.isArray(data) ? data : []))
+      .catch(() => {
+        setUsuarios([]);
+        toast.error('No se pudo cargar el listado de usuarios para los filtros.');
+      });
+    getTiposAccion()
+      .then((data) => setAcciones(Array.isArray(data) ? data : []))
+      .catch(() => {
+        setAcciones([]);
+        toast.error('No se pudo cargar el listado de acciones para los filtros.');
+      });
+    getRoles()
+      .then((data) => setRoles(Array.isArray(data) ? data : []))
+      .catch(() => {
+        setRoles([]);
+        toast.error('No se pudo cargar el listado de roles para los filtros.');
+      });
+  }, [toast]);
 
   const cargar = async (params = filtros) => {
     setCargando(true);

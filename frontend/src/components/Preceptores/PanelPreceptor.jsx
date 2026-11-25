@@ -29,7 +29,7 @@ function PanelPreceptor({ miPreceptor }) {
       estudiantes: safeEstudiantes.filter((a) => cursoIds.includes(a.id_curso)).length,
       comunicados: safeComunicados.filter((c) => cursoIds.includes(c.id_curso)).length,
       diagnosticos: safeDiagnosticos.filter((d) => cursoIds.includes(d.id_curso)).length,
-      estado: miPreceptor.estado === false ? 'Inactivo' : 'Activo',
+      estado: miPreceptor.estado == null ? '—' : (miPreceptor.estado ? 'Activo' : 'Inactivo'),
     };
   }, [miPreceptor, estudiantes, comunicados, diagnosticos]);
 

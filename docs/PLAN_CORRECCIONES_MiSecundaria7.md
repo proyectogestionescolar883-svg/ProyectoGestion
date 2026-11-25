@@ -1,5 +1,8 @@
 # PLAN DE CORRECCIONES — MiSecundaria7
 
+> **DOCUMENTO HISTÓRICO.** Plan original de correcciones por tramos; conservado
+> sólo como registro. No define pendientes actuales ni debe ejecutarse.
+
 ## Objetivo
 
 Reunir los errores y mejoras detectados en la revisión manual del sistema y trabajarlos por **tramos grandes**, como se hizo con Notificaciones.

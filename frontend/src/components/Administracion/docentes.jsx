@@ -13,124 +13,22 @@ import { mensajeErrorAmigable } from '../../utils/errores';
 import { aInputDateTime as toInputDateTime, errorProgramacion } from '../../utils/programacionEstado';
 
 const API_BASE = BASE_URL;
-const PREVIEWABLE_EXTENSIONS = new Set(['pdf', 'jpg', 'jpeg', 'png', 'webp']);
-
-function getFileExtension(nombre = '') {
-  const clean = String(nombre).split('?')[0].split('#')[0];
-  const idx = clean.lastIndexOf('.');
-  return idx >= 0 ? clean.slice(idx + 1).toLowerCase() : '';
-}
-
-function isPreviewable(nombre = '') {
-  return PREVIEWABLE_EXTENSIONS.has(getFileExtension(nombre));
-}
 
 function getAbsoluteFileUrl(path) {
   if (!path) return null;
-  return path.startsWith('http') ? path : `${API_BASE}${path}`;
+  const absolute = String(path).startsWith('http') ? String(path) : `${API_BASE}${path}`;
+  try {
+    const url = new URL(absolute, window.location.origin);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
 }
 
 function buildDownloadUrl(path) {
   const absolute = getAbsoluteFileUrl(path);
   if (!absolute) return null;
   return absolute.includes('?') ? `${absolute}&download=1` : `${absolute}?download=1`;
-}
-
-function DdjjPreviewModal({ docente, onClose, onDelete }) {
-  if (!docente) return null;
-
-  const archivoUrl = docente.ddjj_url || docente.ruta_ddjj || null;
-  const absoluteUrl = getAbsoluteFileUrl(archivoUrl);
-  const downloadUrl = buildDownloadUrl(archivoUrl);
-  const archivoNombre = docente.ddjj_nombre_archivo || (archivoUrl ? archivoUrl.split('/').pop() : 'Archivo');
-  const previewOk = isPreviewable(archivoNombre);
-  const extension = getFileExtension(archivoNombre);
-  const fechaCarga = docente.ddjj_fecha_carga
-    ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(docente.ddjj_fecha_carga))
-    : null;
-
-  return createPortal(
-    <div className="ddjj-modal-overlay" role="presentation" onClick={onClose}>
-      <div
-        className="ddjj-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Vista previa de ${archivoNombre}`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="ddjj-modal-header">
-          <div>
-            <h4 className="m-0">D.D.J.J. del docente</h4>
-            <p style={{ margin: '4px 0 0', color: 'var(--text-light)', fontSize: '0.9rem' }}>
-              {docente.apellido}, {docente.nombre}
-            </p>
-          </div>
-          {docente.ddjj_verificada && (
-            <span className="badge badge-success" title="DDJJ verificada">
-              <i className="fas fa-check-circle" aria-hidden="true" /> Verificada
-            </span>
-          )}
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
-            <i className="fas fa-times" aria-hidden="true" /> Cerrar
-          </button>
-        </div>
-
-        <div className="ddjj-modal-body">
-          <p style={{ margin: '0 0 10px', fontWeight: 600 }}>
-            Archivo: {archivoNombre}
-          </p>
-          {fechaCarga && (
-            <p style={{ margin: '0 0 10px' }}>
-              Fecha de carga: {fechaCarga}
-            </p>
-          )}
-
-          {previewOk && absoluteUrl ? (
-            extension === 'pdf' ? (
-              <iframe
-                title={`Vista previa ${archivoNombre}`}
-                className="ddjj-preview-frame"
-                src={absoluteUrl}
-              />
-            ) : (
-              <div className="ddjj-image-wrap">
-                <img
-                  src={absoluteUrl}
-                  alt={`Vista previa ${archivoNombre}`}
-                  className="ddjj-preview-image"
-                />
-              </div>
-            )
-          ) : (
-            <div className="ddjj-no-preview">
-              <p className="m-0">Este archivo no admite vista previa.</p>
-            </div>
-          )}
-        </div>
-
-        <div className="ddjj-modal-footer">
-          {downloadUrl && (
-            <a
-              className="btn btn-secondary"
-              href={downloadUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <i className="fas fa-download" aria-hidden="true" /> Descargar archivo
-            </a>
-          )}
-          <button
-            type="button"
-            className="btn btn-danger"
-            onClick={() => onDelete(docente)}
-          >
-            <i className="fas fa-trash-alt" aria-hidden="true" /> Eliminar DDJJ
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
 }
 
 function DdjjRecordatorioModal({ docente, onConfirm, onCancel }) {
@@ -198,9 +96,9 @@ function ActasDocenteDesplegable({ actas }) {
             <td>{acta.fecha}</td>
             <td>{acta.descripcion || acta.titulo}</td>
             <td>
-              {acta.ruta_archivo ? (
+              {getAbsoluteFileUrl(acta.ruta_archivo) ? (
                 <a
-                  href={`${API_BASE}${acta.ruta_archivo}`}
+                  href={getAbsoluteFileUrl(acta.ruta_archivo)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn btn-success table-download-btn"
@@ -287,7 +185,7 @@ function CursosMateriasDesplegable({ docenteId, cursoMateria, planificaciones })
                   {planificacion?.ruta_archivo ? (
                     <div className="docente-materia-line">
                       <a
-                        href={`${API_BASE}${planificacion.ruta_archivo}`}
+                        href={getAbsoluteFileUrl(planificacion.ruta_archivo)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="btn btn-success table-download-btn"
@@ -354,7 +252,6 @@ function Docentes({ navContext }) {
   const [actasAbierto, setActasAbierto] = useState(null);
   const [cursosAbierto, setCursosAbierto] = useState(null);
   const [verDdjj, setVerDdjj] = useState(null);
-  const [previewDocente, setPreviewDocente] = useState(null);
   const [recordatorioDocente, setRecordatorioDocente] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingDocente, setEditingDocente] = useState(null);
@@ -371,6 +268,10 @@ function Docentes({ navContext }) {
   const [cargandoPersonasSinRol, setCargandoPersonasSinRol] = useState(false);
   const [idsDocentesSinRol, setIdsDocentesSinRol] = useState([]);
   const navDocentesAplicado = useRef(null);
+  const necesitaCredenciales = !editingDocente || (
+    editingDocente
+    && (editingDocente.usuario_estado === null || editingDocente.usuario_estado === undefined || !editingDocente.usuario)
+  );
 
   const cargarPersonasSinRol = async () => {
     setCargandoPersonasSinRol(true);
@@ -536,7 +437,6 @@ function Docentes({ navContext }) {
     setShowForm(false);
     setEditingDocente(null);
     setFormData(formVacio);
-    setMensajeForm('');
     setErrorForm('');
   };
 
@@ -545,7 +445,7 @@ function Docentes({ navContext }) {
     if (guardandoDocente) return;
     setMensajeForm('');
     setErrorForm('');
-    if (!editingDocente && (!formData.usuario_nombre || !formData.contrasena)) {
+    if (necesitaCredenciales && (!formData.usuario_nombre || !formData.contrasena)) {
       toast.warning('Completá usuario y contraseña.');
       return;
     }
@@ -569,6 +469,7 @@ function Docentes({ navContext }) {
     try {
       if (editingDocente) {
         await updateDocente(editingDocente.id, {
+          ...(editingDocente.id_usuario ? { id_usuario_existente: editingDocente.id_usuario } : {}),
           usuario_nombre: formData.usuario_nombre || undefined,
           contrasena: formData.contrasena || undefined,
           estado: formData.estado,
@@ -596,11 +497,14 @@ function Docentes({ navContext }) {
         });
         toast.success('Docente creado correctamente.');
       }
+      setMensajeForm('Docente guardado correctamente.');
       cerrarFormDocente();
       await refreshData();
     } catch (err) {
-      setErrorForm(formateaMensajeError(err));
-      toast.error(formateaMensajeError(err));
+      const mensaje = formateaMensajeError(err);
+      setErrorForm(mensaje);
+      setMensajeForm(`Error al guardar docente: ${mensaje}`);
+      toast.error(mensaje);
     } finally {
       setGuardandoDocente(false);
     }
@@ -658,9 +562,6 @@ function Docentes({ navContext }) {
       onConfirm: async () => {
         try {
           await deleteMiDdjjDocente(docente.id);
-          if (previewDocente?.id === docente.id) {
-            setPreviewDocente(null);
-          }
           await refreshData();
         } catch (error) {
           toast.error(error.response?.data?.error || error.response?.data?.detail || 'No se pudo eliminar la DDJJ.');
@@ -952,14 +853,6 @@ function Docentes({ navContext }) {
         </table>
       </div>
 
-      {previewDocente && (
-        <DdjjPreviewModal
-          docente={previewDocente}
-          onClose={() => setPreviewDocente(null)}
-          onDelete={handleEliminarDdjj}
-        />
-      )}
-
       {recordatorioDocente && (
         <DdjjRecordatorioModal
           docente={recordatorioDocente}
@@ -983,7 +876,7 @@ function Docentes({ navContext }) {
                 </div>
               )}
 
-              {!editingDocente && (
+              {necesitaCredenciales && (
                 <div className="preceptor-form-row preceptor-form-row--two">
                   <div className="form-group-filter">
                     <label>Usuario</label>

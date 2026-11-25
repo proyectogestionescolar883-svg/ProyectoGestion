@@ -21,6 +21,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from escuela.models import Rol, Usuario, UsuarioRol
 from escuela.urls import router
 
 # Vistasets cuyo listado necesita un parámetro o no es un listado GET simple.
@@ -39,7 +40,7 @@ class ListadosDeLaApiTests(TestCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.rutas = [r for r in _rutas_de_listado() if r not in EXCLUIDOS]
-        cls.host = settings.ALLOWED_HOSTS[0]
+        cls.host = settings.ALLOWED_HOSTS[0] if settings.ALLOWED_HOSTS else 'localhost'
 
     def _cliente(self, usuario=None):
         cliente = APIClient(raise_request_exception=False)
@@ -49,10 +50,15 @@ class ListadosDeLaApiTests(TestCase):
         return cliente
 
     def _usuario(self, nombre):
-        usuario, _created = User.objects.get_or_create(
-            username=nombre, defaults={'is_active': True},
+        usuario_escuela, _created = Usuario.objects.get_or_create(
+            usuario=nombre,
+            defaults={'contrasena': 'sin-uso', 'estado': True},
         )
-        return usuario
+        rol_admin, _rol_creado = Rol.objects.get_or_create(nombre_rol='admin')
+        UsuarioRol.objects.get_or_create(
+            id_usuario=usuario_escuela, id_rol=rol_admin,
+        )
+        return User.objects.get(username=nombre)
 
     def test_hay_listados_que_barrear(self):
         """Guarda contra una refactorización que vacíe el router."""

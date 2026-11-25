@@ -66,7 +66,7 @@ class EsquemaCoincideConModelosTests(TestCase):
         self.assertEqual(
             [], faltantes,
             'Columnas declaradas por los modelos que no existen en la base '
-            '(aplicá `manage.py migrate`): %s' % faltantes,
+            '(aplicá `manage.py verificar_esquema --aplicar`): %s' % faltantes,
         )
 
     def test_columnas_de_soft_delete_existen(self):
@@ -114,7 +114,7 @@ class VerificacionEsquemaTests(TestCase):
 
     def test_esquema_alineado_en_la_base_de_pruebas(self):
         resultado = schema.verificar_esquema(connection)
-        for clave in ('faltantes', 'nulabilidad', 'indices'):
+        for clave in ('faltantes', 'nulabilidad', 'indices', 'unicos'):
             self.assertEqual(
                 [], resultado[clave],
                 f'Diferencias en "{clave}": {resultado[clave]}',

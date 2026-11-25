@@ -40,7 +40,7 @@ function PanelJefePreceptor({ miPreceptor }) {
       actasCreadas: safeActas.length,
       comunicadosEnviados: safeComunicados.length,
       ultimoAcceso: miPreceptor.usuario_fecha_ultimo_acceso || null,
-      estado: miPreceptor.estado === false ? 'Inactivo' : 'Activo',
+      estado: miPreceptor.estado == null ? '—' : (miPreceptor.estado ? 'Activo' : 'Inactivo'),
     };
   }, [miPreceptor, preceptores, estudiantes, tutores, cursosObj, actas, comunicados]);
 

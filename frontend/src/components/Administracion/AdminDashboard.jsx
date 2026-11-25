@@ -23,19 +23,21 @@ import TutoresFamilias from '../Preceptores/tutoresFamilias';
 import Configuracion from './configuracion/Configuracion';
 import { getDirectivos } from '../../services/api';
 import { useData } from '../../context/DataContext';
+import { useToast } from '../../context/ToastContext';
 import { viewDesdeDestino } from '../../utils/navDestinos';
 import { resolverCursosSeleccionados, firmaSeleccion } from '../../utils/seleccionCurso';
 
 function AdminDashboard({ user, onLogout }) {
-const {
-  navIntent,
-  cursosObj,
-  cursoMateria,
-  selectedCursos,
-selectedCursoIds,
-setSeleccionCursoMateria,
-setSeleccionCursos,
-} = useData();
+  const toast = useToast();
+  const {
+    navIntent,
+    cursosObj,
+    cursoMateria,
+    selectedCursos,
+    selectedCursoIds,
+    setSeleccionCursoMateria,
+    setSeleccionCursos,
+  } = useData();
   const [view, setView] = useState('perfil');
   const [directivos, setDirectivos] = useState([]);
 
@@ -176,9 +178,12 @@ setSeleccionCursos,
 
   useEffect(() => {
     getDirectivos()
-      .then(setDirectivos)
-      .catch(() => setDirectivos([]));
-  }, []);
+      .then((data) => setDirectivos(Array.isArray(data) ? data : []))
+      .catch(() => {
+        setDirectivos([]);
+        toast.error('No se pudo cargar el perfil de directivo.');
+      });
+  }, [toast]);
 
   const miDirectivo = directivos.find((d) => d.id_usuario === user?.id) || null;
   const nombreCompletoAdmin = miDirectivo ? `${miDirectivo.apellido}, ${miDirectivo.nombre}` : null;

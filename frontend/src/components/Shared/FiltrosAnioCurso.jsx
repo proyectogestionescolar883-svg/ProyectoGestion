@@ -9,6 +9,8 @@ import {
   getDivisiones,
 } from './cursoFilters';
 
+const CURSOS_VACIOS = [];
+
 function FiltrosControlado({ aniosLectivos, cursosObj, anioLectivo, curso, onAnioChange, onCursoChange }) {
   // Cursos existentes para el ciclo lectivo seleccionado.
   const cursosDelCiclo = (cursosObj || []).filter(
@@ -133,6 +135,7 @@ function FiltrosAutonomo({ cursosObj, onCursoChange, onCursoObjChange, defaultTo
   const [anioLectivo, setAnioLectivo] = useState('');
   const [anioCurso, setAnioCurso] = useState('');
   const [division, setDivision] = useState('');
+  const listaCursos = useMemo(() => (Array.isArray(cursosObj) ? cursosObj : []), [cursosObj]);
 
   // Mantiene los últimos callbacks del padre sin re-disparar los efectos
   // de sincronización cuando estos cambian de identidad (p. ej. si el padre
@@ -144,34 +147,34 @@ function FiltrosAutonomo({ cursosObj, onCursoChange, onCursoObjChange, defaultTo
     onCursoObjChangeRef.current = onCursoObjChange;
   }, [onCursoChange, onCursoObjChange]);
 
-  const aniosLectivos = useMemo(() => getAniosLectivos(cursosObj), [cursosObj]);
-  const aniosCurso = useMemo(() => getAniosCurso(cursosObj, anioLectivo), [cursosObj, anioLectivo]);
+  const aniosLectivos = useMemo(() => getAniosLectivos(listaCursos), [listaCursos]);
+  const aniosCurso = useMemo(() => getAniosCurso(listaCursos, anioLectivo), [listaCursos, anioLectivo]);
   const divisiones = useMemo(
-    () => getDivisiones(cursosObj, anioLectivo, anioCurso),
-    [cursosObj, anioLectivo, anioCurso],
+    () => getDivisiones(listaCursos, anioLectivo, anioCurso),
+    [listaCursos, anioLectivo, anioCurso],
   );
 
   useEffect(() => {
-    if (!cursosObj.length) return;
+    if (!listaCursos.length) return;
     if (!defaultToFirst && !anioLectivo && !anioCurso && !division) {
       onCursoChangeRef.current?.('');
       onCursoObjChangeRef.current?.(null);
       return;
     }
     if (defaultToFirst && !anioLectivo && !anioCurso && !division) {
-      const first = cursosObj[0];
+      const first = listaCursos[0];
       const parts = getCursoParts(first);
       setAnioLectivo(parts.anioLectivo);
       setAnioCurso(parts.anioCurso);
       setDivision(parts.division);
     }
-  }, [cursosObj, defaultToFirst, anioLectivo, anioCurso, division]);
+  }, [listaCursos, defaultToFirst, anioLectivo, anioCurso, division]);
 
   useEffect(() => {
-    const cursoObj = findCursoObj(cursosObj, anioLectivo, anioCurso, division);
+    const cursoObj = findCursoObj(listaCursos, anioLectivo, anioCurso, division);
     onCursoChangeRef.current?.(cursoObj?.nombre_curso || '');
     onCursoObjChangeRef.current?.(cursoObj || null);
-  }, [cursosObj, anioLectivo, anioCurso, division]);
+  }, [listaCursos, anioLectivo, anioCurso, division]);
 
   return (
     <div className={`filter-row ${className}`.trim()}>
@@ -243,7 +246,7 @@ export default function FiltrosAnioCurso(props) {
     return (
       <FiltrosControlado
         aniosLectivos={props.aniosLectivos ?? data?.aniosLectivos ?? []}
-        cursosObj={props.cursosObj ?? data?.cursosObj ?? []}
+        cursosObj={props.cursosObj ?? data?.cursosObj ?? CURSOS_VACIOS}
         anioLectivo={props.anioLectivo}
         curso={props.curso}
         onAnioChange={props.onAnioChange}
@@ -254,7 +257,7 @@ export default function FiltrosAnioCurso(props) {
 
   return (
     <FiltrosAutonomo
-      cursosObj={props.cursosObj ?? []}
+      cursosObj={props.cursosObj ?? CURSOS_VACIOS}
       onCursoChange={props.onCursoChange}
       onCursoObjChange={props.onCursoObjChange}
       defaultToFirst={props.defaultToFirst}

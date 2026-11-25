@@ -60,7 +60,7 @@ function PanelFamilia({ miTutor, user, hijos }) {
             Usuario
           </label>
           <p className="profile-value">
-            {miTutor ? `${miTutor.apellido}, ${miTutor.nombre}` : (user?.username || '—')}
+            {user?.username || '—'}
           </p>
         </div>
         <div>

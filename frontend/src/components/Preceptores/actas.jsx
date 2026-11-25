@@ -16,7 +16,6 @@ import {
   deleteActaCurso,
   deleteActaDocente,
   uploadFile,
-  BASE_URL,
   getTiposActa,
 } from '../../services/api';
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
@@ -27,8 +26,6 @@ import FilePicker from '../../components/Shared/FilePicker';
 import { useToast } from '../../context/ToastContext';
 import { mensajeErrorAmigable } from '../../utils/errores';
 import { buildMediaUrl } from '../../utils/medios';
-
-const API_BASE = BASE_URL;
 
 async function resolverTipoActa() {
   try {
@@ -52,10 +49,10 @@ const formVacio = { tipo: '', titulo: '', fecha: '', descripcion: '', alumnoId: 
    editar se conserva la fecha ya guardada. */
 const formVacioNuevo = () => ({ ...formVacio, fecha: hoy() });
 
-function FormActa({ formData, setFormData, editing, guardando, onSubmit, onCancel, listaEstudiantes, docentesDelCurso, curso, nombreCorto, archivo, setArchivo, editando, removeArchivo, setRemoveArchivo, mensaje, onlyCursos = false }) {
+function FormActa({ formData, setFormData, editing, guardando, onSubmit, onCancel, listaEstudiantes, docentesDelCurso, curso, nombreCorto, archivo, setArchivo, editando, removeArchivo, setRemoveArchivo, mensaje, onClearError, onlyCursos = false }) {
   const [avisoFecha, setAvisoFecha] = useState('');
   return (
-    <FormModal title={editing ? 'Editar acta' : 'Nueva acta'} onClose={onCancel} error={mensaje && mensaje.startsWith('Error') ? mensaje : null} onClearError={() => setMensaje('')}>
+    <FormModal title={editing ? 'Editar acta' : 'Nueva acta'} onClose={onCancel} error={mensaje && mensaje.startsWith('Error') ? mensaje : null} onClearError={onClearError}>
       <form onSubmit={onSubmit}>
         <div className="standard-modal-body" style={{ display: 'grid', gap: '14px' }}>
 
@@ -290,9 +287,6 @@ function Actas({ anioLectivo, curso, onAnioChange, onCursoChange, onlyCursos = f
     return () => { vigente = false; };
   }, []);
 
-  // 5.6: `curso` puede llegar como array (multiselección del header). `cursoObj`
-  // sigue resolviendo el primero porque las acciones de esta vista (crear acta de
-  // curso, etc.) son de a un curso; las listas de abajo sí usan `cursosSel`.
   const cursosSel = aListaCursos(curso);
   const cursoPrimero = cursosSel[0] || '';
 
@@ -537,7 +531,7 @@ function Actas({ anioLectivo, curso, onAnioChange, onCursoChange, onlyCursos = f
       )}
 
       {mensaje && !editando && !showNewForm && (
-        <div className={`alert ${mensaje.startsWith('Error') ? 'alert-danger' : 'alert-success'}`}>
+        <div className="alert alert-danger">
           {mensaje}
         </div>
       )}
@@ -568,6 +562,7 @@ function Actas({ anioLectivo, curso, onAnioChange, onCursoChange, onlyCursos = f
           removeArchivo={removeArchivo}
           setRemoveArchivo={setRemoveArchivo}
           mensaje={!editando ? mensaje : ''}
+          onClearError={() => setMensaje('')}
           onlyCursos={onlyCursos}
         />
       )}
@@ -787,6 +782,7 @@ function Actas({ anioLectivo, curso, onAnioChange, onCursoChange, onlyCursos = f
           removeArchivo={removeArchivo}
           setRemoveArchivo={setRemoveArchivo}
           mensaje={mensaje}
+          onClearError={() => setMensaje('')}
           onlyCursos={onlyCursos}
         />
       )}

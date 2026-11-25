@@ -1,5 +1,7 @@
 # Prompt — Resolver hallazgos CRÍTICO / ALTO / P0 de los Análisis
 
+> **DOCUMENTO HISTÓRICO (backup).** Instrucción ya ejecutada; no reproducir.
+
 > Copiá **todo este archivo** (desde «Rol» inclusive) y pegalo como primer mensaje de una sesión nueva de IA, en el repo `MiSecundaria7`.
 > Este archivo **no implementa** correcciones: es la instrucción para que otra IA las implemente.
 

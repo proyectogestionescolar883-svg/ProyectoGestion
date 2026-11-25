@@ -21,7 +21,7 @@ Convención: `P0` = exposición de datos o fallo crítico, `P1` = funcionalidad 
 
 ## DIR-01 — Editar un administrador quita los roles restantes
 
-- **Síntoma:** `director_prueba` tiene roles `admin`, `director` y `familia` (`docs/GUIA_TESTEO_MiSecundaria7.md:18`). Si entra como Director, abre Administración → Administradores, edita un administrador —incluso a sí mismo— y guarda, el payload envía siempre `roles: ['admin']`. El serializer borra todas las filas `UsuarioRol` y deja solamente `admin`. Después de recargar, el usuario ya no tiene `director` y pierde las acciones exclusivas del rol.
+- **Síntoma:** `<USUARIO_DIRECTOR_PRUEBA>` tiene roles `admin`, `director` y `familia` (`docs/GUIA_TESTEO_MiSecundaria7.md:18`). Si entra como Director, abre Administración → Administradores, edita un administrador —incluso a sí mismo— y guarda, el payload envía siempre `roles: ['admin']`. El serializer borra todas las filas `UsuarioRol` y deja solamente `admin`. Después de recargar, el usuario ya no tiene `director` y pierde las acciones exclusivas del rol.
 - **Causa:** `administradores.jsx` fija `roles: ['admin']` tanto en alta como en edición. `UsuarioSerializer.update()` toma `roles` desde `initial_data` y reemplaza la relación completa. El toggle de estado no envía `roles`, por eso no produce este efecto.
 - **Ubicación:**
   - `frontend/src/components/Administracion/administradores.jsx:291-301`
@@ -34,7 +34,7 @@ Convención: `P0` = exposición de datos o fallo crítico, `P1` = funcionalidad 
 - **Verificación:** lectura directa del payload, del `update()` del serializer, del `perform_update()` del viewset y del usuario de prueba de la guía.
 - **Corrección sugerida:** en edición no enviar `roles` salvo que exista un control explícito para cambiarlos; si se envían, combinar con los roles actuales y validar jerarquía. Prohibir además que un director se quite su propio rol `director` por esta vía.
 - **Corrección aplicada:** el formulario sólo envía `roles` en alta; `UsuarioSerializer.update()` dejó de reemplazar `UsuarioRol` y `quitar-rol` rechaza que un actor se quite su propio rol. El listado de `UsuarioViewSet` incluye `admin` y `director`, y el formulario permite elegir el rol a crear sin modificar roles al editar.
-- **Criterio de aceptación:** después de editar `director_prueba`, `GET /api/me/` sigue devolviendo `['admin','director','familia']`; las acciones exclusivas de director siguen respondiendo `200`; editar otro administrador no agrega ni quita roles no solicitados.
+- **Criterio de aceptación:** después de editar `<USUARIO_DIRECTOR_PRUEBA>`, `GET /api/me/` sigue devolviendo `['admin','director','familia']`; las acciones exclusivas de director siguen respondiendo `200`; editar otro administrador no agrega ni quita roles no solicitados.
 
 ## DIR-02 — E4/E21 llegan al director aunque la guía lo prohíbe (compartido con ADM-02)
 
@@ -82,7 +82,7 @@ Convención: `P0` = exposición de datos o fallo crítico, `P1` = funcionalidad 
 
 ## DIR-05 — Asignar rol admin sobrescribe el cargo de un director existente
 
-- **Síntoma:** al usar “Agregar rol: administrador” sobre un usuario que ya es director pero no admin (por ejemplo `vicedirector1_prueba`, cargo “Vicedirectora”), su perfil `Directivo` queda con `cargo = "Administrador"`. El perfil muestra el valor nuevo en vez del original.
+- **Síntoma:** al usar “Agregar rol: administrador” sobre un usuario que ya es director pero no admin (por ejemplo `<USUARIO_VICEDIRECTOR1_PRUEBA>`, cargo “Vicedirectora”), su perfil `Directivo` queda con `cargo = "Administrador"`. El perfil muestra el valor nuevo en vez del original.
 - **Causa:** `/usuarios/sin-rol` no devuelve `cargo`, el frontend fija `cargo: 'Administrador'` en el payload y `UsuarioSerializer.create()` reutiliza el perfil `Directivo` existente y sobrescribe ese campo.
 - **Ubicación:**
   - `frontend/src/components/Administracion/administradores.jsx:333-344`
@@ -153,7 +153,7 @@ Convención: `P0` = exposición de datos o fallo crítico, `P1` = funcionalidad 
 
 - El sidebar muestra “Administradores” y “Configuración” sólo para director/admin; “Administradores” está marcado `directorOnly` en `sidebarMenu.js:14` y `sidebar/sidebar.jsx:28-36`, coherente con la guía.
 - `PanelAdmin.jsx:48-56` muestra la etiqueta “Director” correctamente cuando el rol activo es `director`.
-- El header mantiene la multiselección actual de cursos; no se propone cambiarla.
+- El header usa el selector global de **un solo curso** (Año lectivo → Año → División) en `AdminDashboard.jsx:41-45`, `:106-110`. La multiselección descripta en versiones anteriores quedó fuera de vigencia; no reintroducirla.
 - `navAplicadoRef` en `AdminDashboard.jsx:52-58` evita reaplicar un `navIntent` por refrescos.
 - E8/E9, E15, E17, E20, cambios de estructura, cambios de horario y comunicados llegan al segmento directivo según la guía; el problema de “Ver” es `ADM-05`/`ADM-06`, compartido y no repetido.
 - `ADM-01` no aplica al director: el director sí debe poder gestionar administradores/directivos.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { buildMediaUrl } from '../../utils/medios';
 import {
@@ -7,7 +7,6 @@ import {
   deleteActividadArchivo,
   getActividades,
   updateActividad,
-  BASE_URL,
 } from '../../services/api';
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import { useToast } from '../../context/ToastContext';
@@ -15,7 +14,6 @@ import { mensajeErrorAmigable } from '../../utils/errores';
 import LoadingSpinner from '../Shared/LoadingSpinner';
 import PanelMateriasAdeudadasDocente from './PanelMateriasAdeudadasDocente';
 
-const API_BASE = BASE_URL;
 const PREVIEWABLE = ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'gif'];
 
 function getExtension(nombre = '') {
@@ -200,6 +198,22 @@ function ModalFormularioActividad({
     () => (Array.isArray(actividadEditando?.archivos) ? actividadEditando.archivos : []),
     [actividadEditando],
   );
+  const urlsNuevosRef = useRef(new Map());
+
+  useEffect(() => () => {
+    urlsNuevosRef.current.forEach((url) => URL.revokeObjectURL(url));
+    urlsNuevosRef.current.clear();
+  }, []);
+
+  const claveArchivo = (file) => `${file.name}-${file.size}-${file.lastModified}`;
+
+  const urlNuevoArchivo = (file) => {
+    const clave = claveArchivo(file);
+    if (!urlsNuevosRef.current.has(clave)) {
+      urlsNuevosRef.current.set(clave, URL.createObjectURL(file));
+    }
+    return urlsNuevosRef.current.get(clave);
+  };
 
   const agregarArchivos = (event) => {
     const incoming = Array.from(event.target.files || []);
@@ -209,6 +223,13 @@ function ModalFormularioActividad({
   };
 
   const quitarNuevoArchivo = (index) => {
+    const file = nuevosArchivos[index];
+    if (file) {
+      const clave = claveArchivo(file);
+      const url = urlsNuevosRef.current.get(clave);
+      if (url) URL.revokeObjectURL(url);
+      urlsNuevosRef.current.delete(clave);
+    }
     setNuevosArchivos((prev) => prev.filter((_, idx) => idx !== index));
   };
 
@@ -280,10 +301,10 @@ function ModalFormularioActividad({
               <p className="m-0 font-bold">Nuevos archivos a agregar</p>
               {nuevosArchivos.map((file, index) => (
                 <ArchivoRow
-                  key={`${file.name}-${file.size}-${file.lastModified}`}
+                  key={claveArchivo(file)}
                   archivo={{ nombre_archivo: file.name }}
                   editable
-                  onVer={() => window.open(URL.createObjectURL(file), '_blank', 'noopener,noreferrer')}
+                  onVer={() => window.open(urlNuevoArchivo(file), '_blank', 'noopener,noreferrer')}
                   onEliminar={() => quitarNuevoArchivo(index)}
                 />
               ))}
@@ -309,7 +330,6 @@ function PanelActividades({ cursoMateriaId, docenteId, puedeEditar = true, misAs
   const toast = useToast();
   const [actividades, setActividades] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [mensaje, setMensaje] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [actividadEditando, setActividadEditando] = useState(null);
@@ -345,19 +365,19 @@ function PanelActividades({ cursoMateriaId, docenteId, puedeEditar = true, misAs
   };
 
   const abrirNueva = () => {
+    if (!puedeEditar) return;
     resetFormulario();
-    setMensaje('');
     setMostrarFormulario(true);
   };
 
   const abrirEdicion = (actividad) => {
+    if (!puedeEditar) return;
     setActividadEditando(actividad);
     setForm({
       titulo: actividad.titulo || '',
       descripcion: actividad.descripcion || '',
     });
     setNuevosArchivos([]);
-    setMensaje('');
     setMostrarFormulario(true);
   };
 
@@ -366,8 +386,13 @@ function PanelActividades({ cursoMateriaId, docenteId, puedeEditar = true, misAs
     resetFormulario();
   };
 
+  useEffect(() => {
+    if (!puedeEditar) cerrarFormulario();
+  }, [puedeEditar]);
+
   const handleGuardar = async (e) => {
     e.preventDefault();
+    if (!puedeEditar) return;
     if (!cursoMateriaId || !docenteId) {
       toast.warning('No se pudo identificar la asignación actual.');
       return;
@@ -378,7 +403,6 @@ function PanelActividades({ cursoMateriaId, docenteId, puedeEditar = true, misAs
     }
 
     setGuardando(true);
-    setMensaje('');
     try {
       const payload = new FormData();
       payload.append('titulo', form.titulo.trim());
@@ -405,6 +429,7 @@ function PanelActividades({ cursoMateriaId, docenteId, puedeEditar = true, misAs
   };
 
   const handleEliminar = async (actividad) => {
+    if (!puedeEditar) return;
     await confirmarEliminacion('¿Estás seguro de que querés eliminar esta actividad?\n\nEl registro se dará de baja y no aparecerá más en los listados.', {
       onConfirm: async () => {
         try {
@@ -422,6 +447,7 @@ function PanelActividades({ cursoMateriaId, docenteId, puedeEditar = true, misAs
   };
 
   const handleEliminarArchivo = async (archivo) => {
+    if (!puedeEditar) return;
     const archivoId = archivo?.id_archivo;
     if (!actividadEditando || !archivoId) return;
     await confirmarEliminacion('¿Estás seguro de que querés eliminar este archivo?\n\nEsta acción no se puede deshacer.', {
@@ -475,12 +501,6 @@ function PanelActividades({ cursoMateriaId, docenteId, puedeEditar = true, misAs
         >
           <i className="fas fa-lock" style={{ marginRight: '8px' }} aria-hidden="true" />
           Esta materia está asignada temporalmente a un docente suplente. Las actividades son de solo lectura hasta que finalice la suplencia.
-        </p>
-      )}
-
-      {mensaje && (
-        <p style={{ color: mensaje.startsWith('Error') ? '#b91c1c' : '#15803d', margin: '8px 0' }}>
-          {mensaje}
         </p>
       )}
 
@@ -552,7 +572,7 @@ function PanelActividades({ cursoMateriaId, docenteId, puedeEditar = true, misAs
         </table>
       </div>
 
-      {mostrarFormulario && (
+      {mostrarFormulario && puedeEditar && (
         <ModalFormularioActividad
           actividadEditando={actividadEditando}
           form={form}

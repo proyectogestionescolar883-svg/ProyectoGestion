@@ -76,7 +76,7 @@ export function mensajeErrorAmigable(err, fallback = 'Ocurrió un error. Intént
     return limpiarTexto(mensajeFallido) || fallback;
   }
 
-  if (err?.status === 0 || err?.request || !data) {
+  if (err && (err.status === 0 || err.request || !data)) {
     return 'No se pudo conectar con el servidor. Comprobá tu conexión e intentá de nuevo.';
   }
 

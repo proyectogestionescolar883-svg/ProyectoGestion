@@ -6,61 +6,61 @@ Guía completa para probar todas las funcionalidades de la página, organizada p
 
 ## 0. Preparación
 
-### Usuarios de prueba (extraídos de la base de datos real)
+### Usuarios de prueba (credenciales redactadas)
 
-> **Todas las contraseñas son `123`** (verificado contra la DB). Usuarios con el sufijo `_prueba`.
+> Las credenciales reales se obtienen del entorno seguro; aquí se usan marcadores `<USUARIO_*>` y `<DB_PASSWORD>`. En la DB original los usuarios de prueba tenían el sufijo `_prueba`.
 
 **Directivos / gestión:**
 
 | Usuario | Contraseña | Rol | Persona asociada |
 |---|---|---|---|
-| `admin_prueba` | `123` | Administrador | Directivo Prueba Admin (cargo Administrador) |
-| `director_prueba` | `123` | Director (+ admin + familia) | Directivo/Tutor User Test (cargo Administrador) |
-| `vicedirector1_prueba` | `123` | Director | Méndez Laura (Vicedirectora) |
-| `vicedirector2_prueba` | `123` | Director | Ríos Pablo (Vicedirector) |
-| `secretario_prueba` | `123` | Director | Torres Silvia (Secretaria) |
-| `jefe_preceptores_prueba` | `123` | Jefe de Preceptores | Benítez Carolina (Jefa de Preceptores) |
+| `<USUARIO_ADMIN_PRUEBA>` | `<DB_PASSWORD>` | Administrador | `<PERSONA_PRUEBA>` (cargo Administrador) |
+| `<USUARIO_DIRECTOR_PRUEBA>` | `<DB_PASSWORD>` | Director (+ admin + familia) | `<PERSONA_PRUEBA>` (cargo Administrador) |
+| `<USUARIO_VICEDIRECTOR1_PRUEBA>` | `<DB_PASSWORD>` | Director | `<PERSONA_PRUEBA>` (Vicedirectora) |
+| `<USUARIO_VICEDIRECTOR2_PRUEBA>` | `<DB_PASSWORD>` | Director | `<PERSONA_PRUEBA>` (Vicedirector) |
+| `<USUARIO_SECRETARIO_PRUEBA>` | `<DB_PASSWORD>` | Director | `<PERSONA_PRUEBA>` (Secretaria) |
+| `<USUARIO_JEFE_PRECEPTORES_PRUEBA>` | `<DB_PASSWORD>` | Jefe de Preceptores | `<PERSONA_PRUEBA>` (Jefa de Preceptores) |
 
 **Preceptores:** cada uno tiene cursos asignados según el patrón de la tabla.
 
 | Usuario | Contraseña | Rol | Persona asociada | Cursos a su cargo |
 |---|---|---|---|---|
-| `preceptor_1_prueba` | `123` | Preceptor (+ docente + tutor) | Gómez Federico | 1°1, 1°2, 1°3 |
-| `preceptor_2_prueba` | `123` | Preceptor | Pérez Lucía | 2°1, 2°2, 2°3 |
-| `preceptor_3_prueba` | `123` | Preceptor | Fernández Martín | 3°1, 3°2, 3°3 |
-| `preceptor_4_prueba` | `123` | Preceptor | Acosta Andrea | 4°1, 4°2, 4°3 |
-| `preceptor_5_prueba` | `123` | Preceptor | Navarro Nicolás | 5°1, 5°2, 5°3 |
-| `preceptor_6_prueba` | `123` | Preceptor | Suárez Paula | 6°1, 6°2, 6°3 |
+| `<USUARIO_PRECEPTOR_1_PRUEBA>` | `<DB_PASSWORD>` | Preceptor (+ docente + tutor) | `<PERSONA_PRUEBA>` | 1°1, 1°2, 1°3 |
+| `<USUARIO_PRECEPTOR_2_PRUEBA>` | `<DB_PASSWORD>` | Preceptor | `<PERSONA_PRUEBA>` | 2°1, 2°2, 2°3 |
+| `<USUARIO_PRECEPTOR_3_PRUEBA>` | `<DB_PASSWORD>` | Preceptor | `<PERSONA_PRUEBA>` | 3°1, 3°2, 3°3 |
+| `<USUARIO_PRECEPTOR_4_PRUEBA>` | `<DB_PASSWORD>` | Preceptor | `<PERSONA_PRUEBA>` | 4°1, 4°2, 4°3 |
+| `<USUARIO_PRECEPTOR_5_PRUEBA>` | `<DB_PASSWORD>` | Preceptor | `<PERSONA_PRUEBA>` | 5°1, 5°2, 5°3 |
+| `<USUARIO_PRECEPTOR_6_PRUEBA>` | `<DB_PASSWORD>` | Preceptor | `<PERSONA_PRUEBA>` | 6°1, 6°2, 6°3 |
 
-**Docentes:** `docente_01_prueba` … `docente_46_prueba` (`123`). Seleccionar uno con asignaciones reales:
+**Docentes:** `<USUARIO_DOCENTE_01_PRUEBA>` … `<USUARIO_DOCENTE_46_PRUEBA>` (`<DB_PASSWORD>`). Seleccionar uno con asignaciones reales:
 
 | Usuario | Materias asignadas (ejemplos) |
 |---|---|
-| `docente_01_prueba` | 1°1 Prácticas del lenguaje · 2°3 Educación Física · 4°1 Física · 5°2 Química (roles: admin + docente + jefe) |
-| `docente_02_prueba` | 1°1 Matemática · 2°3 Educación Artística · 4°1 NTICx · 5°2 Economía (roles: docente + jefe) |
-| `docente_03_prueba` | 1°1 Ciencias Naturales · 2°3 Ciudadanía · 4°1 Psicología · 5°2 Derecho (solo doc.) |
-| `docente_04_prueba` | 1°1 Ciencias Sociales · 2°3 Inglés · 4°2 Matemática (solo doc.) |
-| `docente_05_prueba` | 1°1 Educación Física · 2°3 Biología · 4°2 E.F. · 5°3 Matemática (solo doc.) |
-| `docente_09_prueba` | 1°2 Prácticas del lenguaje · 3°1 Prácticas del lenguaje (solo doc.) |
-| `docente_10_prueba` | 1°2 Matemática · 3°1 Matemática (solo doc.) |
+| `<USUARIO_DOCENTE_01_PRUEBA>` | 1°1 Prácticas del lenguaje · 2°3 Educación Física · 4°1 Física · 5°2 Química (roles: admin + docente + jefe) |
+| `<USUARIO_DOCENTE_02_PRUEBA>` | 1°1 Matemática · 2°3 Educación Artística · 4°1 NTICx · 5°2 Economía (roles: docente + jefe) |
+| `<USUARIO_DOCENTE_03_PRUEBA>` | 1°1 Ciencias Naturales · 2°3 Ciudadanía · 4°1 Psicología · 5°2 Derecho (solo doc.) |
+| `<USUARIO_DOCENTE_04_PRUEBA>` | 1°1 Ciencias Sociales · 2°3 Inglés · 4°2 Matemática (solo doc.) |
+| `<USUARIO_DOCENTE_05_PRUEBA>` | 1°1 Educación Física · 2°3 Biología · 4°2 E.F. · 5°3 Matemática (solo doc.) |
+| `<USUARIO_DOCENTE_09_PRUEBA>` | 1°2 Prácticas del lenguaje · 3°1 Prácticas del lenguaje (solo doc.) |
+| `<USUARIO_DOCENTE_10_PRUEBA>` | 1°2 Matemática · 3°1 Matemática (solo doc.) |
 
-**Estudiantes / familias:** `alumno_001_prueba`…`alumno_270_prueba` y `familia_001_prueba`…`familia_120_prueba` (`123`). Preferidos para este testeo:
+**Estudiantes / familias:** `<USUARIO_ALUMNO_001_PRUEBA>`…`<USUARIO_ALUMNO_270_PRUEBA>` y `<USUARIO_FAMILIA_001_PRUEBA>`…`<USUARIO_FAMILIA_120_PRUEBA>` (`<DB_PASSWORD>`). Preferidos para este testeo:
 
 | Usuario | Contraseña | Rol | Persona asociada | Datos precargados |
 |---|---|---|---|---|
-| `alumno_001_prueba` | `123` | Estudiante | Prueba001 Alumno001 (1°1) | 4 calificaciones, 3 asistencias |
-| `alumno_002_prueba` | `123` | Estudiante | Prueba002 Alumno002 (1°1) | 2 calificaciones, 3 asistencias |
-| `familia_002_prueba` | `123` | Familia | Familia002 José (tutor de Alumno001 y Alumno002) | — |
-| `familia_001_prueba` | `123` | Familia | Familia001 María (tutor de Alumno121 de 3°3 y Alumno241 de 6°2) | — |
+| `<USUARIO_ALUMNO_001_PRUEBA>` | `<DB_PASSWORD>` | Estudiante | `<PERSONA_PRUEBA>` (1°1) | 4 calificaciones, 3 asistencias |
+| `<USUARIO_ALUMNO_002_PRUEBA>` | `<DB_PASSWORD>` | Estudiante | `<PERSONA_PRUEBA>` (1°1) | 2 calificaciones, 3 asistencias |
+| `<USUARIO_FAMILIA_002_PRUEBA>` | `<DB_PASSWORD>` | Familia | `<PERSONA_PRUEBA>` (tutor de los alumnos de 1°1) | — |
+| `<USUARIO_FAMILIA_001_PRUEBA>` | `<DB_PASSWORD>` | Familia | `<PERSONA_PRUEBA>` (tutor de alumnos de 3°3 y 6°2) | — |
 
-**Extras (creados desde la UI, útiles para verificar los flujos de alta):** `alumno_nuevo_prueba` (Manuel Pepe, 1°1), `Jefe_preceptores` (GIrnalda Ana), `nuevo_admin` (Admin Nuevo).
+**Extras (creados desde la UI, útiles para verificar los flujos de alta):** `<USUARIO_ALUMNO_NUEVO_PRUEBA>` (`<PERSONA_PRUEBA>`, 1°1), `<USUARIO_JEFE_NUEVO>` (`<PERSONA_PRUEBA>`), `<USUARIO_ADMIN_NUEVO>` (`<PERSONA_PRUEBA>`).
 
 ### Datos de prueba (confirmados en la DB)
 
 - **Cursos activos**: los 18 cursos de 1° a 6° división 1-3 (1°1 … 6°3), ~15 estudiantes por curso (270 estudiantes en total).
-- **Preceptores por curso**: 1° → Gómez Federico · 2° → Pérez Lucía · 3° → Fernández Martín · 4° → Acosta Andrea · 5° → Navarro Nicolás · 6° → Suárez Paula.
-- **Docentes**: `docente_01_prueba` … `docente_46_prueba`, cada uno con 4 asignaciones (curso/materia). Ej.: Matemática de 1°1 → `docente_02_prueba`; Prácticas del lenguaje de 1°1 → `docente_01_prueba`.
-- **Tutores/familias/familias**: `familia_00N_prueba` suelen tener 3 hijos vinculados (uno de 1°, uno de 3°, uno de 6°) para probar el selector.
+- **Preceptores por curso**: 1° → <PERSONA_PRECEPTOR_1> · 2° → <PERSONA_PRECEPTOR_2> · 3° → <PERSONA_PRECEPTOR_3> · 4° → <PERSONA_PRECEPTOR_4> · 5° → <PERSONA_PRECEPTOR_5> · 6° → <PERSONA_PRECEPTOR_6>.
+- **Docentes**: `<USUARIO_DOCENTE_01_PRUEBA>` … `<USUARIO_DOCENTE_46_PRUEBA>`, cada uno con 4 asignaciones (curso/materia). Ej.: Matemática de 1°1 → `<USUARIO_DOCENTE_02_PRUEBA>`; Prácticas del lenguaje de 1°1 → `<USUARIO_DOCENTE_01_PRUEBA>`.
+- **Tutores/familias/familias**: `<USUARIO_FAMILIA_00N_PRUEBA>` suelen tener 3 hijos vinculados (uno de 1°, uno de 3°, uno de 6°) para probar el selector.
 
 ### Reglas generales para el testeo de notificaciones
 
@@ -72,13 +72,13 @@ Guía completa para probar todas las funcionalidades de la página, organizada p
 
 ---
 
-## 1. Estudiante — `alumno_001_prueba` / `123`
+## 1. Estudiante — `<USUARIO_ALUMNO_001_PRUEBA>` / `<DB_PASSWORD>`
 
 **Iniciar sesión → Seleccionar rol "Estudiante"** (si el sistema lo pide).
 
 | # | Acción a realizar | Qué revisar |
 |---|---|---|
-| 1 | Entrar a **Perfil** | Que muestre sus datos (Prueba001 Alumno001), curso 1°1. |
+| 1 | Entrar a **Perfil** | Que muestre sus datos (<PERSONA_ALUMNO_001>), curso 1°1. |
 | 2 | Entrar a **Calificaciones** | Que vea las notas cargadas (tiene 4 calificaciones precargadas). Probar filtros por período. |
 | 3 | Entrar a **Asistencias** | Que vea el listado de asistencias (Presente/Ausente/Tarde) por fecha y materia. |
 | 4 | Entrar a **Actividades** | Que vea las actividades publicadas por el docente en sus materias; probar abrir el detalle y descargar/ver adjuntos si hay. |
@@ -91,9 +91,9 @@ Guía completa para probar todas las funcionalidades de la página, organizada p
 
 ### Checklist de notificaciones a recibir (marcar en la campana)
 
-En **Alumno001 (1°1)** deberían llegar todas estas. Marcar con ✔ solo si llegó + "Ver" navega al módulo correcto:
+En **<PERSONA_ALUMNO_001> (1°1)** deberían llegar todas estas. Marcar con ✔ solo si llegó + "Ver" navega al módulo correcto:
 
-- [ ] **E1/E6 — Calificación cargada o modificada**: cuando el docente (ej. `docente_02_prueba`) carga/modifica una nota en Matemática 1°1. Título "Calificación cargada" → navega a Calificaciones.
+- [ ] **E1/E6 — Calificación cargada o modificada**: cuando el docente (ej. `<USUARIO_DOCENTE_02_PRUEBA>`) carga/modifica una nota en Matemática 1°1. Título "Calificación cargada" → navega a Calificaciones.
 - [ ] **Prenota registrada**: cuando el docente guarda una prenota (TEP/TEA/TED) del estudiante.
 - [ ] **E3 — Inasistencia "Ausente"**: al ser marcado Ausente (un solo aviso acumulado por día, aunque haya varias ausencias el mismo día).
 - [ ] **E4 — Acta de conducta/apercibimiento**: si una preceptora (o preceptor del curso) crea un acta de conducta para él.
@@ -119,15 +119,15 @@ En **Alumno001 (1°1)** deberían llegar todas estas. Marcar con ✔ solo si lle
 
 ---
 
-## 2. Familia — `familia_002_prueba` / `123`
+## 2. Familia — `<USUARIO_FAMILIA_002_PRUEBA>` / `<DB_PASSWORD>`
 
-**Iniciar sesión → Seleccionar rol "Familia".** Este usuario es tutor de **Prueba001 Alumno001 (1°1)** y **Prueba002 Alumno002 (1°1)** → sirve para probar el selector de hijos.
+**Iniciar sesión → Seleccionar rol "Familia".** Este usuario es tutor de **<PERSONA_ALUMNO_001> (1°1)** y **<PERSONA_ALUMNO_002> (1°1)** → sirve para probar el selector de hijos.
 
 | # | Acción a realizar | Qué revisar |
 |---|---|---|
-| 1 | Entrar a **Perfil** | Datos del tutor (Familia002 José). |
-| 2 | Entrar a **Resumen** | Que muestre un resumen de los hijos (Alumno001 y Alumno002) con estado general (promedios, inasistencias, últimos comunicados). Probar cambiar de hijo. |
-| 3 | Entrar a **Calificaciones** | Probar con el selector de hijo: para Alumno001 deben verse sus notas; para Alumno002, las de él. Validar que **no** se mezclen datos entre hijos. Revisar filtros por período/materia. |
+| 1 | Entrar a **Perfil** | Datos del tutor (<PERSONA_FAMILIA_002>). |
+| 2 | Entrar a **Resumen** | Que muestre un resumen de los hijos (<PERSONA_ALUMNO_001> y <PERSONA_ALUMNO_002>) con estado general (promedios, inasistencias, últimos comunicados). Probar cambiar de hijo. |
+| 3 | Entrar a **Calificaciones** | Probar con el selector de hijo: para <PERSONA_ALUMNO_001> deben verse sus notas; para <PERSONA_ALUMNO_002>, las de él. Validar que **no** se mezclen datos entre hijos. Revisar filtros por período/materia. |
 | 4 | Entrar a **Asistencias** | Igual que calificaciones: verificar que al cambiar de hijo cambien los datos. |
 | 5 | Entrar a **Actas** | Que vea las actas de sus hijos (informes, actas de evaluación, conducta). |
 | 6 | Entrar a **Actividades** | Que vea las actividades de las materias de sus hijos. |
@@ -139,9 +139,9 @@ En **Alumno001 (1°1)** deberían llegar todas estas. Marcar con ✔ solo si lle
 
 ### Checklist de notificaciones a recibir (marcar en la campana)
 
-El usuario **Familia002 José** es tutor de **Alumno001 y Alumno002** (ambos de 1°1). Debería recibir:
+El usuario **<PERSONA_FAMILIA_002>** es tutor de **<PERSONA_ALUMNO_001> y <PERSONA_ALUMNO_002>** (ambos de 1°1). Debería recibir:
 
-- [ ] **E1/E6 — Calificación** de Alumno001 y de Alumno002 (cargada o modificada) → verificar con el **selector de hijo** y el filtro de la campana `id_alumno`.
+- [ ] **E1/E6 — Calificación** de <PERSONA_ALUMNO_001> y de <PERSONA_ALUMNO_002> (cargada o modificada) → verificar con el **selector de hijo** y el filtro de la campana `id_alumno`.
 - [ ] **Prenota registrada** de cada hijo.
 - [ ] **E3 — Inasistencia "Ausente"** de cada hijo (acumulada por día).
 - [ ] **E4 — Acta de conducta/apercibimiento** de cada hijo.
@@ -163,21 +163,21 @@ El usuario **Familia002 José** es tutor de **Alumno001 y Alumno002** (ambos de 
 - [ ] **Cambio de horario** de los cursos de sus hijos.
 - [ ] **Falta de docente** en los cursos de sus hijos.
 
-**Validar diferenciación entre hijos:** las notificaciones de Alumno001 y Alumno002 **no deben mezclarse** (con el selector de hijo activo solo deben aparecer las del niño elegido).
+**Validar diferenciación entre hijos:** las notificaciones de <PERSONA_ALUMNO_001> y <PERSONA_ALUMNO_002> **no deben mezclarse** (con el selector de hijo activo solo deben aparecer las del niño elegido).
 
 **NO debe recibir:** actas de curso (E21), cargas masivas, alta de usuarios (E20), ni datos de estudiantes que **no** sean sus hijos.
 
 ---
 
-## 3. Docente — `docente_02_prueba` / `123`
+## 3. Docente — `<USUARIO_DOCENTE_02_PRUEBA>` / `<DB_PASSWORD>`
 
-**Iniciar sesión → Seleccionar rol "Docente".** Docente02 Ana dicta Matemática (1°1) y Educación Artística (2°3), entre otras.
+**Iniciar sesión → Seleccionar rol "Docente".** <PERSONA_DOCENTE_02> dicta Matemática (1°1) y Educación Artística (2°3), entre otras.
 
 ### 3.1. Acciones administrativas (sin notificación o de bajo impacto)
 
 | # | Acción a realizar | Qué revisar |
 |---|---|---|
-| 1 | **Perfil** | Que muestre sus datos (Docente02 Ana) y las materias/cursos asignados. |
+| 1 | **Perfil** | Que muestre sus datos (<PERSONA_DOCENTE_02>) y las materias/cursos asignados. |
 | 2 | **Libro de Temas** | Crear, editar y eliminar una entrada de tema para una fecha. Verificar que quede guardado y se vea en el listado. |
 | 3 | **Diagnósticos grupales** | Crear un diagnóstico para un curso, verlo en detalle y eliminarlo. |
 | 4 | **Actas** | Ver las actas del curso. |
@@ -189,7 +189,7 @@ El usuario **Familia002 José** es tutor de **Alumno001 y Alumno002** (ambos de 
 
 | # | Acción a realizar | Qué revisar | Notificación y destinatarios |
 |---|---|---|---|
-| 8 | Cargar una **calificación** a Prueba001 Alumno001 (Matemática 1°1) y guardar | Que la nota se guarde y aparezca en sus calificaciones | **→ Estudiante Prueba001** (alumno_001_prueba) **y su familia** (familia_002_prueba): "Calificación cargada". Navega a Calificaciones. Probar también **modificar una nota existente** (debe volver a notificar). |
+| 8 | Cargar una **calificación** a <PERSONA_ALUMNO_001> (Matemática 1°1) y guardar | Que la nota se guarde y aparezca en sus calificaciones | **→ Estudiante Prueba001** (<USUARIO_ALUMNO_001_PRUEBA>) **y su familia** (<USUARIO_FAMILIA_002_PRUEBA>): "Calificación cargada". Navega a Calificaciones. Probar también **modificar una nota existente** (debe volver a notificar). |
 | 9 | Cargar una **prenota (previa guardada como TED/TEP/TEA)** | Que quede registrada | **→ Estudiante y familia** del estudiante: "Prenota registrada". |
 | 10 | Registrar **inasistencia "Ausente"** a un estudiante del curso | Que quede en Asistencia y aparezca en el historial del estudiante | **→ Estudiante y familia**: "Inasistencia registrada" (se acumulan en un solo aviso por día si hay varias ausencias ese día). |
 | 11 | **Publicar una actividad** (tarea/trabajo) con consigna y adjunto | Que se publique y se vea en Actividades del curso | **→ Estudiantes del curso + sus familias**: "Actividad publicada". Navega a Actividades. Probar **editar la actividad** (debe volver a notificar). |
@@ -202,12 +202,12 @@ El usuario **Familia002 José** es tutor de **Alumno001 y Alumno002** (ambos de 
 
 ### 3.3. Notas específicas
 
-- La acción de **"Suplencia asignada"**: si el admin asigna a Ana como docente suplente → **Ana (docente_02_prueba) recibe** "Suplencia asignada" que navega a su **perfil docente** (donde se listan sus suplencias); y los **estudiantes del curso + familias** también reciben aviso.
+- La acción de **"Suplencia asignada"**: si el admin asigna a <PERSONA_DOCENTE_02> como docente suplente → **<PERSONA_DOCENTE_02> (<USUARIO_DOCENTE_02_PRUEBA>) recibe** "Suplencia asignada" que navega a su **perfil docente** (donde se listan sus suplencias); y los **estudiantes del curso + familias** también reciben aviso.
 - **Adelanto de horas aprobado** vinculado a sus materias → le llega a él como docente titular, a preceptores, directivos, jefe y a los **estudiantes del curso + familias**.
 
 ### 3.4. Checklist de notificaciones a recibir (marcar en la campana)
 
-Como **Docente02 Ana** deberías recibir:
+Como **<PERSONA_DOCENTE_02>** deberías recibir:
 
 - [ ] **E17 — Suplencia asignada**: cuando el admin te designa docente suplente → "Suplencia asignada" que navega a tu **perfil docente** (donde se listan tus suplencias).
 - [ ] **E15 — Adelanto de horas aprobado** en alguna de tus materias/cursos asignados (título "Adelanto de horas").
@@ -217,7 +217,7 @@ Como **Docente02 Ana** deberías recibir:
 - [ ] **Comunicado alcance materia** de una materia que dictás (ej. Matemática).
 - [ ] **E16 — Evento institucional**.
 - [ ] **E14 — Cuenta habilitada/deshabilitada**: solo si se deshabilita/habilita tu propia cuenta.
-- [ ] **Falta de docente**: **NO** te llega a vos como docente, sino a los estudiantes del curso + familias + Jefe de Preceptores (verificarlo con `docente_05_prueba` → `preceptor_1_prueba` NO recibe; los estudiantes 1°1 SÍ).
+- [ ] **Falta de docente**: **NO** te llega a vos como docente, sino a los estudiantes del curso + familias + Jefe de Preceptores (verificarlo con `<USUARIO_DOCENTE_05_PRUEBA>` → `<USUARIO_PRECEPTOR_1_PRUEBA>` NO recibe; los estudiantes 1°1 SÍ).
 
 **NOTA:** las notificaciones que **generás vos** (calificaciones, prenotas, asistencias, actividades, planificación en borrador, DDJJ) **no te llegan a vos** como destinatario; llegan a otros. No debe aparecer en tu campana un aviso por tu propia acción (a menos que el sistema admita una copia "de confirmación", que NO debe contar como notificación de destino).
 
@@ -225,13 +225,13 @@ Como **Docente02 Ana** deberías recibir:
 
 ---
 
-## 4. Preceptor — `preceptor_1_prueba` / `123`
+## 4. Preceptor — `<USUARIO_PRECEPTOR_1_PRUEBA>` / `<DB_PASSWORD>`
 
-**Iniciar sesión → Seleccionar rol "Preceptor".** Gómez Federico (cursos 1°1, 1°2, 1°3).
+**Iniciar sesión → Seleccionar rol "Preceptor".** <PERSONA_PRECEPTOR_1> (cursos 1°1, 1°2, 1°3).
 
 | # | Acción a realizar | Qué revisar | Notificación (si aplica) |
 |---|---|---|---|
-| 1 | **Perfil** | Datos de Gómez Federico, curso(s) asignados. |
+| 1 | **Perfil** | Datos de <PERSONA_PRECEPTOR_1>, curso(s) asignados. |
 | 2 | **Estudiantes** | Ver listado de estudiantes; buscar por curso, nombre, DNI. Probar **crear** y **modificar** un estudiante. | Si el alta crea un usuario nuevo → **Preceptores + Jefe + Directivos** (E20, sin el actor). |
 | 3 | **Tutores/familias/familias** | Ver tutores; agregar/editar un tutor y vincularlo a un estudiante (estudiantes sin tutor). |
 | 4 | **Docentes** | Ver listado de docentes del establecimiento. |
@@ -251,7 +251,7 @@ Como **Docente02 Ana** deberías recibir:
 
 ### Checklist de notificaciones a recibir (marcar en la campana)
 
-Como **Gómez Federico (preceptor de 1°1, 1°2, 1°3)** deberías recibir:
+Como **<PERSONA_PRECEPTOR_1> (preceptor de 1°1, 1°2, 1°3)** deberías recibir:
 
 - [ ] **Actas de curso** (E21) de los cursos que tenés asignados → "Acta de curso" (al crear un acta de curso en 1°1/1°2/1°3).
 - [ ] **Actas de conducta** (E4) de estudiantes de tus cursos → también llegan a estudiante+familia+jefe.
@@ -271,9 +271,9 @@ Como **Gómez Federico (preceptor de 1°1, 1°2, 1°3)** deberías recibir:
 
 ---
 
-## 5. Jefe de Preceptores — `jefe_preceptores_prueba` / `123`
+## 5. Jefe de Preceptores — `<USUARIO_JEFE_PRECEPTORES_PRUEBA>` / `<DB_PASSWORD>`
 
-**Iniciar sesión → Seleccionar rol "Jefe de Preceptores".** Benítez Carolina.
+**Iniciar sesión → Seleccionar rol "Jefe de Preceptores".** <PERSONA_JEFE_PRUEBA>.
 
 | # | Acción a realizar | Qué revisar |
 |---|---|---|
@@ -304,7 +304,7 @@ Como **Gómez Federico (preceptor de 1°1, 1°2, 1°3)** deberías recibir:
 
 ### Checklist de notificaciones a recibir (marcar en la campana)
 
-Como **Benítez Carolina (Jefa de Preceptores)** deberías recibir:
+Como **<PERSONA_JEFE_PRUEBA> (Jefa de Preceptores)** deberías recibir:
 
 - [ ] **E21 — Acta de curso** creada en cualquier curso → te llega como Jefe (además de los preceptores del curso).
 - [ ] **E4 — Acta de conducta / apercibimiento** de cualquier estudiante → te llega (además de estudiante, familia y preceptor del curso).
@@ -318,13 +318,13 @@ Como **Benítez Carolina (Jefa de Preceptores)** deberías recibir:
 - [ ] **E14 — Cuenta habilitada/deshabilitada**: solo si se deshabilita/habilita tu propia cuenta.
 - [ ] **E3 / E1 — Inasistencias y calificaciones de estudiantes**: **NO** te llegan (van a estudiante + familia). Verificar que no aparezcan.
 
-**NOTA:** la "suplencia asignada" **no** te llega de forma directa como Jefe (solo al docente suplente, preceptores del curso y directivos). Si vos además tenés el rol preceptor de ese curso, sí la recibís como preceptor — para este testeo conviene usar un curso NO asignado a vos (ej. uno de `preceptor_1_prueba`).
+**NOTA:** la "suplencia asignada" **no** te llega de forma directa como Jefe (solo al docente suplente, preceptores del curso y directivos). Si vos además tenés el rol preceptor de ese curso, sí la recibís como preceptor — para este testeo conviene usar un curso NO asignado a vos (ej. uno de `<USUARIO_PRECEPTOR_1_PRUEBA>`).
 
 ---
 
-## 6. Administrador — `admin_prueba` / `123`
+## 6. Administrador — `<USUARIO_ADMIN_PRUEBA>` / `<DB_PASSWORD>`
 
-**Iniciar sesión → Seleccionar rol "Administrador".** Directivo Prueba Admin.
+**Iniciar sesión → Seleccionar rol "Administrador".** <PERSONA_DIRECTIVO_ADMIN>.
 
 ### 6.1. Gestión de personas y estructura
 
@@ -372,9 +372,9 @@ Como **Benítez Carolina (Jefa de Preceptores)** deberías recibir:
 
 ### Checklist de notificaciones a recibir (marcar en la campana)
 
-Como **Directivo Prueba Admin (admin_prueba)** deberías recibir:
+Como **<PERSONA_DIRECTIVO_ADMIN> (<USUARIO_ADMIN_PRUEBA>)** deberías recibir:
 
-- [ ] **E8 — Planificación para revisión**: cuando un docente (ej. `docente_02_prueba`) envía una planificación borrador → "Planificación pendiente de revisión".
+- [ ] **E8 — Planificación para revisión**: cuando un docente (ej. `<USUARIO_DOCENTE_02_PRUEBA>`) envía una planificación borrador → "Planificación pendiente de revisión".
 - [ ] **E9 — DDJJ presentada**: cuando un docente completa la Declaración Jurada → "DDJJ presentada".
 - [ ] **Falta de docente**: **NO** te llega como directivo (va a estudiantes + familias + jefe). Verificar que no aparezca.
 - [ ] **E15 — Adelanto de horas** aprobado → directivos.
@@ -395,7 +395,7 @@ Como **Directivo Prueba Admin (admin_prueba)** deberías recibir:
 
 ---
 
-## 7. Director — `director_prueba` / `123` (o `vicedirector1_prueba` / `123`)
+## 7. Director — `<USUARIO_DIRECTOR_PRUEBA>` / `<DB_PASSWORD>` (o `<USUARIO_VICEDIRECTOR1_PRUEBA>` / `<DB_PASSWORD>`)
 
 **Iniciar sesión → Seleccionar rol "Director".** Comparte el panel de administración.
 
@@ -408,7 +408,7 @@ Como **Directivo Prueba Admin (admin_prueba)** deberías recibir:
 
 ### Checklist de notificaciones a recibir (marcar en la campana)
 
-Como **director_prueba (o vicedirector)** deberías recibir:
+Como **<USUARIO_DIRECTOR_PRUEBA> (o vicedirector)** deberías recibir:
 
 - [ ] **E8 — Planificación para revisión** (igual que admin) → "Planificación pendiente de revisión".
 - [ ] **E9 — DDJJ presentada** → "DDJJ presentada".
@@ -510,7 +510,7 @@ Resultados de los bugs reportados en el ciclo de testeo masivo (ciclo 2026-09):
 | 4 | Botones "Nuevo Tutor" / "Nuevo Docente" cuelgan la página | ✔ Corregido | `renderFormTutor()` se invocaba sin estar definido → ReferenceError durante el render. Ídem `<AsignacionesEditor />` en docentes. Se crearon `renderFormTutor`, `TutoresEstudiantesEditor.jsx` y `AsignacionesEditor.jsx`. `npm run build` OK. |
 | 5 | Crear preceptor/jefe: "id_usuario_existente: Introduzca un número entero válido" | ✔ Corregido | El payload envía `''` y DRF `IntegerField` lo rechaza incluso con `allow_null=True`. Se creó `EnteroOpcionalField` (convierte `''`/`None` → `None`) y se usó en los 5 serializers. Verificado: `ERRORES: {}`, `VALIDO: True`; `manage.py check` OK. |
 | 6 | RITE "no permite cambiar materia" | ⚠ No reproducible | El RITE (Estudiante/Familia/Preceptor/PDF) es **consolidado por diseño**: muestra todas las materias del curso en una tabla, sin selector de materia. El selector de materia relacionado está en `Administracion/notas.jsx` y funciona; Admin/Director pueden editar el RITE desde esa vista. Si el reporte era esa vista, revisar con qué curso/materia se probó. |
-| 7 | Director al quitar rol admin: la persona sigue en la lista | ✔ Verificado OK | Repro extraído contra el servidor real (login `director_prueba` → `POST /api/usuarios/quitar-rol/` → `GET /api/usuarios/`): al quitar el rol, la persona **desaparece** del listado. La regla de negocio conserva al menos un rol (rechaza quitar el único rol). Roles de prueba usados en la verificación fueron restaurados en la DB. |
+| 7 | Director al quitar rol admin: la persona sigue en la lista | ✔ Verificado OK | Repro extraído contra el servidor real (login `<USUARIO_DIRECTOR_PRUEBA>` → `POST /api/usuarios/quitar-rol/` → `GET /api/usuarios/`): al quitar el rol, la persona **desaparece** del listado. La regla de negocio conserva al menos un rol (rechaza quitar el único rol). Roles de prueba usados en la verificación fueron restaurados en la DB. |
 
 **Notas para próximos ciclos:**
 

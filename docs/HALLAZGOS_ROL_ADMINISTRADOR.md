@@ -197,7 +197,7 @@ Convención: `P0` = exposición de datos o fallo crítico, `P1` = funcionalidad 
 ## Revisado sin hallazgos
 
 - El sidebar oculta “Administradores” para el rol admin en `sidebarMenu.js:14` y `sidebar/sidebar.js:28-35`; coincide con la guía, aunque no bloquea API directa (`ADM-01`).
-- El header de administración mantiene la multiselección actual de cursos (`AdminDashboard.jsx:41-45`, `:106-110`); no se propone cambiarlo.
+- El header de administración usa el selector global de **un solo curso** (Año lectivo → Año → División) definido en `AdminDashboard.jsx:41-45`, `:106-110`. La multiselección descripta en versiones anteriores quedó fuera de vigencia; no reintroducirla.
 - `NavAplicadoRef` evita reaplicar un `navIntent` por refrescos de datos (`AdminDashboard.jsx:52-58`).
 - Los destinos `ciclos_lectivos`, `modulos_horarios`, `periodos_evaluacion`, `estados_asistencia` y `tipos_acta` sí están mapeados para admin en `navDestinos.js:80-87`.
 - La verificación de planificaciones y la consulta de DDJJ existen dentro de `docentes.jsx`; el problema es de destino de notificación, no de módulo faltante (`ADM-05`).

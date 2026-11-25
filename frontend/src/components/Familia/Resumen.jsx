@@ -29,11 +29,15 @@ function EstadoTile({ label, estado, color }) {
 
 function Resumen({ hijo }) {
   const { calificacionesFamilia, cursosObj, getEstudianteById, materiasPorCurso } = useData();
-  const estudiante = getEstudianteById(hijo.alumnoId);
-  const cursoObj = cursosObj.find((c) => c.id_curso === estudiante?.id_curso);
+  const estudiante = getEstudianteById(hijo?.alumnoId);
+  const cursoObj = (Array.isArray(cursosObj) ? cursosObj : []).find(
+    (c) => c.id_curso != null && estudiante?.id_curso != null && String(c.id_curso) === String(estudiante.id_curso),
+  ) || null;
   const turno = cursoObj?.turno_calculado || '—';
   const preceptor = cursoObj?.preceptor_nombre_completo || '—';
-  const calificaciones = calificacionesFamilia.filter((c) => c.hijoId === hijo.id);
+  const calificaciones = (Array.isArray(calificacionesFamilia) ? calificacionesFamilia : []).filter(
+    (c) => c.alumnoId != null && hijo?.alumnoId != null && String(c.alumnoId) === String(hijo.alumnoId),
+  );
 
   // Las asistencias no salen del contexto global: ahí `asistenciasRaw` está
   // pineado a `[]` (tabla completa sin paginar) y por eso el Resumen mostraba
@@ -48,16 +52,18 @@ function Resumen({ hijo }) {
   const porcentajeAsistencia =
     registradas > 0 ? clamp((presentes / registradas) * 100) : 0;
 
-  const promediosPorMateria = calificaciones.map((c) => (Number(c.nota1) + Number(c.nota2)) / 2);
-  const promedio =
-    promediosPorMateria.length > 0
-      ? (promediosPorMateria.reduce((acc, n) => acc + n, 0) / promediosPorMateria.length).toFixed(1)
-      : '—';
+  const notas = calificaciones
+    .flatMap((c) => [c.nota1, c.nota2])
+    .filter((n) => n !== '' && n !== null && n !== undefined && !Number.isNaN(Number(n)))
+    .map(Number);
+  const promedio = notas.length > 0
+    ? (notas.reduce((acc, n) => acc + n, 0) / notas.length).toFixed(1)
+    : '—';
 
   const promedioNum = Number(promedio);
   let estado = 'Sin calificaciones';
   let estadoColor = '#9aa5b1';
-  if (!Number.isNaN(promedioNum) && promediosPorMateria.length > 0) {
+  if (!Number.isNaN(promedioNum) && notas.length > 0) {
     if (promedioNum >= 7) {
       estado = 'Promocionado';
       estadoColor = '#15803d';
@@ -70,12 +76,14 @@ function Resumen({ hijo }) {
     }
   }
 
-  const materiasCount = materiasPorCurso[hijo.curso]?.length ?? '—';
+  const nombreCurso = cursoObj?.nombre_curso || hijo?.curso || '';
+  const materiasCount = materiasPorCurso[nombreCurso]?.length ?? '—';
+  const cursoParaMostrar = cursoObj || hijo?.curso;
 
   return (
     <div>
       <div className="familia-resumen-grid">
-        <StatTile icon="fa-graduation-cap" label="Curso" value={cursoConOrientacion(hijo.curso)} />
+        <StatTile icon="fa-graduation-cap" label="Curso" value={cursoConOrientacion(cursoParaMostrar)} />
         <StatTile icon="fa-clock" label="Turno" value={turno} />
         <StatTile icon="fa-users" label="Vínculo" value={hijo.vinculo || '—'} />
         <EstadoTile label="Estado académico" estado={estado} color={estadoColor} />
@@ -121,7 +129,7 @@ function Resumen({ hijo }) {
           <div>
             <strong className="familia-stat-value">{hijo.nombre}</strong>
             <div className="familia-hijo-pill" style={{ marginTop: '6px' }}>
-              {cursoConOrientacion(hijo.curso)}
+              {cursoConOrientacion(cursoParaMostrar)}
             </div>
           </div>
         </div>
@@ -136,7 +144,7 @@ function Resumen({ hijo }) {
           </div>
           <div className="familia-chip">
             <span className="familia-chip-label">Curso</span>
-            <span className="familia-chip-value">{cursoConOrientacion(hijo.curso)}</span>
+            <span className="familia-chip-value">{cursoConOrientacion(cursoParaMostrar)}</span>
           </div>
           <div className="familia-chip">
             <span className="familia-chip-label">Ciclo lectivo</span>

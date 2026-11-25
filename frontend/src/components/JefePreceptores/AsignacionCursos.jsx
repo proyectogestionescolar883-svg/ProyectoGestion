@@ -23,7 +23,6 @@ function AsignacionCursos() {
   const [searchAsignados, setSearchAsignados] = useState('');
   const [searchDisponibles, setSearchDisponibles] = useState('');
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [guardando, setGuardando] = useState(false);
 
   const fetchPreceptores = async () => {
@@ -155,7 +154,6 @@ function AsignacionCursos() {
       </div>
 
       {error && <div className="alert alert-danger">{error}</div>}
-      {success && <div className="alert alert-success">{success}</div>}
 
       {/* Punto 5.14: avisador de cursos sin preceptor */}
       {sinPreceptor.length > 0 && (

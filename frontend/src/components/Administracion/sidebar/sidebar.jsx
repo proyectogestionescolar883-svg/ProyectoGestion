@@ -26,11 +26,12 @@ function Sidebar({ setView, onLogout, view }) {
   }, [view]);
 
   const visibilidadOK = (item) => {
+    const rol = String(user?.role || '').toLowerCase();
     if (item.directorOnly) {
-      return user?.role === 'director';
+      return rol === 'director';
     }
     if (item.roles) {
-      return item.roles.includes(user?.role);
+      return item.roles.some((permitido) => String(permitido).toLowerCase() === rol);
     }
     return true;
   };
