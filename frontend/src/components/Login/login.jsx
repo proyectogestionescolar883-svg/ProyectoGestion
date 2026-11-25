@@ -28,10 +28,9 @@ function Login() {
         localStorage.removeItem(REMEMBER_KEY);
       }
     } catch (err) {
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.detail ||
-        'Credenciales incorrectas.';
+      const msg = err.response?.status >= 500
+        ? 'El servidor no está disponible. Intente nuevamente en unos instantes.'
+        : (err.response?.data?.error || err.response?.data?.detail || 'Credenciales incorrectas.');
       setError(msg);
       toast.error(msg);
     } finally {

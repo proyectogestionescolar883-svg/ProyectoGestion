@@ -1,8 +1,12 @@
+import logging
+
 from asgiref.sync import iscoroutinefunction, markcoroutinefunction, sync_to_async
 from rest_framework.throttling import SimpleRateThrottle
 
 from escuela.auth_backend import establecer_rol_activo, limpiar_rol_activo
 from escuela.usuario_estado import sincronizar_estados_usuarios
+
+logger = logging.getLogger(__name__)
 
 
 class _RutaThrottle(SimpleRateThrottle):
@@ -79,14 +83,20 @@ class UsuarioEstadoProgramadoMiddleware:
         if self._async_mode:
             markcoroutinefunction(self)
 
+    def _sincronizar(self):
+        try:
+            sincronizar_estados_usuarios()
+        except Exception:
+            logger.exception('No se pudieron aplicar las programaciones de estado de usuarios')
+
     def __call__(self, request):
         if self._async_mode:
             return self.__acall__(request)
         if request.method in METODOS_ESCRITURA:
-            sincronizar_estados_usuarios()
+            self._sincronizar()
         return self.get_response(request)
 
     async def __acall__(self, request):
         if request.method in METODOS_ESCRITURA:
-            await sync_to_async(sincronizar_estados_usuarios, thread_sensitive=True)()
+            await sync_to_async(self._sincronizar, thread_sensitive=True)()
         return await self.get_response(request)
