@@ -7209,3 +7209,13 @@ tr.date-group-header td {
     border-color: rgba(255, 255, 255, 0.16);
     color: #e2e8f0;
 }
+
+.standard-modal-body .preceptor-curso-option:not(.preceptor-curso-option--selected),
+.standard-modal-body .preceptor-curso-option:not(.preceptor-curso-option--selected) span {
+    color: #1e293b;
+}
+
+.standard-modal-body .form-group-filter .preceptor-curso-option--selected,
+.standard-modal-body .form-group-filter .preceptor-curso-option--selected span {
+    color: #7a3b00;
+}

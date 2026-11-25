@@ -950,13 +950,14 @@ function Docentes({ navContext }) {
               </div>
 
                 <div className="form-group-filter">
-                  <label>
+                  <label htmlFor="docente-estado" className="preceptor-status-toggle">
                     <input
+                      id="docente-estado"
                       type="checkbox"
                       checked={formData.estado}
                       onChange={(e) => setFormData((p) => ({ ...p, estado: e.target.checked }))}
                     />
-                    {' '}Habilitado
+                    <span>Habilitado</span>
                   </label>
                 </div>
             </div>

@@ -718,11 +718,13 @@ function Preceptores({ rol = 'preceptor' }) {
                         <label
                           key={curso.id_curso}
                           className={`preceptor-curso-option${checked ? ' preceptor-curso-option--selected' : ''}`}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8 }}
                         >
                           <input
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggleCurso(cursoId)}
+                            style={{ width: 'auto', padding: 0, flexShrink: 0 }}
                           />
                           <span>
                             {curso.nombre_curso}
