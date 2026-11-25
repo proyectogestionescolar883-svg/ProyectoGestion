@@ -871,17 +871,15 @@ function Preceptores({ rol = 'preceptor' }) {
                         ? p.cursos_asignados.map((c) => c.nombre_curso).join(', ')
                         : '---'}
                     </td>
-                    <td>
-                      <AccionesCelda
-                        acciones={[
-                          { accion: 'editar', onClick: () => abrirEditar(p) },
-                          { accion: p.usuario_estado === false ? 'habilitar' : 'deshabilitar', onClick: () => toggleEstado(p), disabled: p.usuario_estado === null || p.usuario_estado === undefined },
-                          { accion: 'programar', onClick: () => abrirProgramar(p) },
-                          { accion: 'eliminar', onClick: () => handleDelete(p) },
-                        ]}
-                        entidad={entidad}
-                      />
-                    </td>
+                    <AccionesCelda
+                      acciones={[
+                        { accion: 'editar', onClick: () => abrirEditar(p) },
+                        { accion: p.usuario_estado === false ? 'habilitar' : 'deshabilitar', onClick: () => toggleEstado(p), disabled: p.usuario_estado === null || p.usuario_estado === undefined },
+                        { accion: 'programar', onClick: () => abrirProgramar(p) },
+                        { accion: 'eliminar', onClick: () => handleDelete(p) },
+                      ]}
+                      entidad={entidad}
+                    />
                   </tr>
                 </Fragment>
               ))

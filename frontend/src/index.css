@@ -7087,3 +7087,104 @@ tr.date-group-header td {
     background: #fff3e6;
     color: #7a3b00;
 }
+
+@media (max-width: 900px) {
+    .acciones-cell,
+    .acciones-cell--grid1,
+    .acciones-cell--grid2,
+    .acciones-cell--stack,
+    .acciones-cell-grilla,
+    .acciones-cell--docentes .acciones-fila-principal,
+    .acciones-cell--docentes .acciones-fila-ver,
+    .acciones-cell--docentes .acciones-fila-otras,
+    .acciones-cell--docentes .acciones-ver-content,
+    .acciones-cell--docentes .acciones-ddjj-content {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-width: 0;
+        max-width: 100%;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .table-responsive td.acciones-cell {
+        white-space: normal;
+    }
+
+    .acciones-cell > div,
+    .acciones-cell > div > div {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        grid-template-columns: none !important;
+        justify-content: center;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .acciones-cell .flex-row,
+    .acciones-cell .flex-row--center {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .acciones-cell .btn,
+    .acciones-cell .btn-sm,
+    .acciones-cell .table-download-btn,
+    .acciones-cell .btn-accion-icono {
+        width: auto;
+        min-width: 0;
+        max-width: 100%;
+        height: auto;
+        min-height: 32px;
+        flex: 0 1 auto;
+        margin: 0;
+        padding: 6px 8px;
+        font-size: 0.78rem;
+        line-height: 1.2;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .acciones-cell .btn + .btn {
+        margin-left: 0;
+    }
+
+    .acciones-cell .btn-accion-icono {
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        min-height: 32px;
+        padding: 4px;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .acciones-cell .btn-accion-con-texto,
+    .acciones-cell .table-download-btn {
+        flex: 1 1 auto;
+    }
+
+    .acciones-cell details,
+    .acciones-cell summary {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .acciones-cell .acciones-ver-summary,
+    .acciones-cell .acciones-ddjj-summary {
+        width: auto;
+        min-height: 32px;
+        padding: 6px 8px;
+        white-space: normal;
+    }
+}

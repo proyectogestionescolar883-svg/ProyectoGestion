@@ -591,15 +591,13 @@ function Administradores() {
                       </span>
                     </td>
                     <td>{getNextAction(u)}</td>
-                    <td className="acciones-cell acciones-cell--grid2">
-                      <AccionesCelda
-                        acciones={[
-                          { accion: 'editar', onClick: () => handleEdit(u) },
-                          { accion: u.estado ? 'deshabilitar' : 'habilitar', onClick: () => handleToggleEstado(u) },
-                        ]}
-                        entidad="administrador"
-                      />
-                    </td>
+                    <AccionesCelda
+                      acciones={[
+                        { accion: 'editar', onClick: () => handleEdit(u) },
+                        { accion: u.estado ? 'deshabilitar' : 'habilitar', onClick: () => handleToggleEstado(u) },
+                      ]}
+                      entidad="administrador"
+                    />
                   </tr>
                 </Fragment>
               ))
