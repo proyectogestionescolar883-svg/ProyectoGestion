@@ -1,5 +1,5 @@
 import unicodedata
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 from rest_framework import serializers
 
@@ -111,6 +111,22 @@ def _vincular_tutor_alumnos(padre, alumnos_ids):
 _sentinel = object()
 
 
+def _fecha_programada_aware(fecha):
+    if isinstance(fecha, datetime) and timezone.is_naive(fecha):
+        return timezone.make_aware(fecha, dt_timezone.utc)
+    return fecha
+
+
+def _formatear_fecha_programada(fecha):
+    fecha = _fecha_programada_aware(fecha)
+    return timezone.localtime(fecha).isoformat() if fecha else None
+
+
+class FechaProgramadaField(serializers.DateTimeField):
+    def to_representation(self, value):
+        return super().to_representation(_fecha_programada_aware(value))
+
+
 def _validar_programacion_estado(usuario):
     """Valida las fechas programadas de una cuenta (punto 5.9, R1).
 
@@ -124,8 +140,8 @@ def _validar_programacion_estado(usuario):
     contra el estado actual de la cuenta, no contra la fecha de hoy: agendar una
     re-habilitación posterior a una deshabilitación ya programada es válido.
     """
-    fecha_deshabilitacion = usuario.fecha_deshabilitacion_programada
-    fecha_habilitacion = usuario.fecha_habilitacion_programada
+    fecha_deshabilitacion = _fecha_programada_aware(usuario.fecha_deshabilitacion_programada)
+    fecha_habilitacion = _fecha_programada_aware(usuario.fecha_habilitacion_programada)
     if not fecha_deshabilitacion and not fecha_habilitacion:
         return
 
@@ -187,8 +203,8 @@ def _proxima_accion_programada(usuario):
         candidatas.append(('habilitar', usuario.fecha_habilitacion_programada))
     if not candidatas:
         return None
-    tipo, fecha = min(candidatas, key=lambda c: c[1])
-    return {'tipo': tipo, 'fecha': fecha.isoformat()}
+    tipo, fecha = min(candidatas, key=lambda c: _fecha_programada_aware(c[1]))
+    return {'tipo': tipo, 'fecha': _formatear_fecha_programada(fecha)}
 
 
 def _ciclo_lectivo_actual_id():
@@ -594,6 +610,8 @@ class MateriaSerializer(serializers.ModelSerializer):
 # ---------- Personas ----------
 
 class UsuarioSerializer(serializers.ModelSerializer):
+    fecha_deshabilitacion_programada = FechaProgramadaField(required=False, allow_null=True)
+    fecha_habilitacion_programada = FechaProgramadaField(required=False, allow_null=True)
     roles = serializers.SerializerMethodField()
     contrasena = serializers.CharField(write_only=True, required=False)
     usuario_nombre = serializers.CharField(write_only=True, required=False)
@@ -1013,13 +1031,13 @@ class PadreTutorSerializer(serializers.ModelSerializer):
         if not obj.id_usuario:
             return None
         value = obj.id_usuario.fecha_deshabilitacion_programada
-        return value.isoformat() if value else None
+        return _formatear_fecha_programada(value)
 
     def get_usuario_fecha_habilitacion_programada(self, obj):
         if not obj.id_usuario:
             return None
         value = obj.id_usuario.fecha_habilitacion_programada
-        return value.isoformat() if value else None
+        return _formatear_fecha_programada(value)
 
     def create(self, validated_data):
         alumnos_ids = validated_data.pop('alumnos_ids', [])
@@ -1218,13 +1236,13 @@ class PreceptorSerializer(serializers.ModelSerializer):
         if not obj.id_usuario:
             return None
         value = obj.id_usuario.fecha_deshabilitacion_programada
-        return value.isoformat() if value else None
+        return _formatear_fecha_programada(value)
 
     def get_usuario_fecha_habilitacion_programada(self, obj):
         if not obj.id_usuario:
             return None
         value = obj.id_usuario.fecha_habilitacion_programada
-        return value.isoformat() if value else None
+        return _formatear_fecha_programada(value)
 
     def _role_name_from_context(self):
         return 'jefe_preceptores' if self.context.get('rol') == 'jefe_preceptores' else 'preceptor'
@@ -1766,13 +1784,13 @@ class DocenteSerializer(serializers.ModelSerializer):
         if not obj.id_usuario:
             return None
         value = obj.id_usuario.fecha_deshabilitacion_programada
-        return value.isoformat() if value else None
+        return _formatear_fecha_programada(value)
 
     def get_usuario_fecha_habilitacion_programada(self, obj):
         if not obj.id_usuario:
             return None
         value = obj.id_usuario.fecha_habilitacion_programada
-        return value.isoformat() if value else None
+        return _formatear_fecha_programada(value)
 
     def get_estado_label(self, obj):
         if not obj.id_usuario:
@@ -1891,13 +1909,13 @@ class DirectivoSerializer(serializers.ModelSerializer):
         if not obj.id_usuario:
             return None
         value = obj.id_usuario.fecha_deshabilitacion_programada
-        return value.isoformat() if value else None
+        return _formatear_fecha_programada(value)
 
     def get_usuario_fecha_habilitacion_programada(self, obj):
         if not obj.id_usuario:
             return None
         value = obj.id_usuario.fecha_habilitacion_programada
-        return value.isoformat() if value else None
+        return _formatear_fecha_programada(value)
 
 
 class AlumnoSerializer(serializers.ModelSerializer):
@@ -1987,13 +2005,13 @@ class AlumnoSerializer(serializers.ModelSerializer):
         if not obj.id_usuario:
             return None
         value = obj.id_usuario.fecha_deshabilitacion_programada
-        return value.isoformat() if value else None
+        return _formatear_fecha_programada(value)
 
     def get_usuario_fecha_habilitacion_programada(self, obj):
         if not obj.id_usuario:
             return None
         value = obj.id_usuario.fecha_habilitacion_programada
-        return value.isoformat() if value else None
+        return _formatear_fecha_programada(value)
 
     def get_estado_label(self, obj):
         if not obj.id_usuario:

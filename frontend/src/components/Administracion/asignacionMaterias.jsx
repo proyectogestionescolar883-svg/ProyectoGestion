@@ -48,15 +48,12 @@ function AsignacionMaterias() {
     asignacionesCurso.filter((cm) => cm.activo).map((cm) => Number(cm.id_materia)),
   );
 
-  // Todas las materias activas del catálogo. La materia NO pertenece a un curso
-  // (eso lo define la asignación curso_materia), por eso no se puede filtrar por
-  // curso: el selector ofrece el catálogo completo y marca las que el curso ya tiene.
   const materiasDisponibles = useMemo(
     () => adminMaterias
-      .filter((m) => m.activo)
+      .filter((m) => m.activo && !materiasAsignadasIds.has(Number(m.id_materia)))
       .slice()
       .sort((a, b) => String(a.nombre_materia || '').localeCompare(String(b.nombre_materia || ''), 'es')),
-    [adminMaterias],
+    [adminMaterias, materiasAsignadasIds],
   );
 
   const abrirAgregar = () => {
@@ -141,7 +138,7 @@ function AsignacionMaterias() {
       <div className="card-body">
         {error && <div className="alert alert-danger">{error}</div>}
 
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '16px' }}>
           <div className="form-group-filter" style={{ flex: 1 }}>
             <label htmlFor="asig-curso">Curso</label>
             <select id="asig-curso" value={cursoSeleccionado} onChange={(e) => { setCursoSeleccionado(e.target.value); setShowModal(false); }}>
@@ -151,8 +148,8 @@ function AsignacionMaterias() {
               ))}
             </select>
           </div>
-          <label style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
-            <input type="checkbox" checked={mostrarInactivos} onChange={(e) => setMostrarInactivos(e.target.checked)} style={{ marginRight: '8px' }} />
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            <input type="checkbox" checked={mostrarInactivos} onChange={(e) => setMostrarInactivos(e.target.checked)} style={{ margin: 0 }} />
             Mostrar registros inactivos
           </label>
         </div>
@@ -182,12 +179,12 @@ function AsignacionMaterias() {
                             <option value="">Seleccionar...</option>
                             {materiasDisponibles.map((m) => (
                               <option key={m.id_materia} value={m.id_materia}>
-                                {m.nombre_materia} {materiasAsignadasIds.has(Number(m.id_materia)) ? '(ya asignada)' : ''}
+                                {m.nombre_materia}
                               </option>
                             ))}
                           </select>
                           {materiasDisponibles.length === 0 && (
-                            <small className="text-muted">No hay materias cargadas. Crealas en la pestaña &quot;Gestión de Materias&quot;.</small>
+                            <small className="text-muted">No hay materias disponibles para agregar.</small>
                           )}
                         </div>
                       )}

@@ -316,6 +316,7 @@ function Asistencias({ navContext }) {
   const bloqueaEscritura = suspensionInfo?.bloqueaEscritura;
   const puedeEditar = ['admin', 'director'].includes(user?.role);
   const soloLectura = !puedeEditar || bloqueaEscritura;
+  const puedeCargaMasiva = ['docente', 'preceptor'].includes(String(user?.role || '').toLowerCase());
 
   return (
     <div className="card">
@@ -405,7 +406,7 @@ function Asistencias({ navContext }) {
             </div>
           )}
 
-          {!soloLectura && (
+          {!soloLectura && puedeCargaMasiva && (
             <div className="card mt-16">
               <div className="card-header-flex">
                 <h3>Carga masiva</h3>

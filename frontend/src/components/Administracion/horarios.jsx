@@ -45,6 +45,14 @@ function sanitizarTexto(value) {
     .trim();
 }
 
+function esErrorConflicto(err) {
+  const texto = mensajeErrorAmigable(err, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  return /ya tiene otra clase|ya tiene otra materia|ya esta ocupada/.test(texto);
+}
+
 const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegisterSave, soloLectura = false }) {
   const { modulos, refreshData } = useData() || {};
   const toast = useToast();
@@ -55,6 +63,7 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
   const [mensaje, setMensaje] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [cargandoGrilla, setCargandoGrilla] = useState(false);
+  const [celdasInvalidas, setCeldasInvalidas] = useState(() => new Set());
 
   const handleGuardar = useCallback(async () => {
     if (!cursoSeleccionado) return;
@@ -62,6 +71,7 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
     setMensaje('');
     const celdasSiguientes = { ...celdas };
     const operaciones = [];
+    let claveIntentada = null;
     try {
       // La clave de cada celda es `${dia_semana}_${id_modulo}` (ver cargarGrilla).
       const clavesNuevas = Object.keys(celdas).filter((k) => !(k in originalCeldas));
@@ -76,6 +86,7 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
       });
 
       for (const key of clavesNuevas) {
+        claveIntentada = key;
         const [dia, moduloId] = key.split('_');
         const creado = await createHorario({
           id_curso_materia: celdas[key].id_curso_materia,
@@ -99,6 +110,7 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
       }
 
       for (const key of clavesActualizadas) {
+        claveIntentada = key;
         const anterior = originalCeldas[key];
         await updateHorario(celdas[key].id_horario, {
           id_curso_materia: celdas[key].id_curso_materia,
@@ -114,6 +126,7 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
       }
 
       for (const key of clavesEliminadas) {
+        claveIntentada = key;
         const anterior = originalCeldas[key];
         await deleteHorario(anterior.id_horario);
         operaciones.push({
@@ -134,6 +147,11 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
         });
       }
 
+      if (operaciones.length === 0) {
+        setMensaje('No hay cambios para guardar.');
+        return;
+      }
+
       setCeldas(celdasSiguientes);
       setOriginalCeldas(JSON.parse(JSON.stringify(celdasSiguientes)));
       setMensaje('Horarios guardados correctamente.');
@@ -145,6 +163,9 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
         }
       }
     } catch (err) {
+      if (claveIntentada && esErrorConflicto(err)) {
+        setCeldasInvalidas((prev) => new Set(prev).add(claveIntentada));
+      }
       const erroresReversion = [];
       for (const operacion of operaciones.reverse()) {
         try {
@@ -178,10 +199,12 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
       setMateriasCurso([]);
       setCeldas({});
       setOriginalCeldas({});
+      setCeldasInvalidas(new Set());
       return;
     }
     setCargandoGrilla(true);
     setMensaje('');
+    setCeldasInvalidas(new Set());
     Promise.all([
       getCursoMateria({ curso: cursoSeleccionado }),
       getHorarios({ curso: cursoSeleccionado }),
@@ -223,6 +246,7 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
 
   const getCellValue = (dia, idModulo) => {
     const key = `${dia}_${idModulo}`;
+    if (celdasInvalidas.has(key)) return '';
     const cell = celdas[key];
     if (!cell) return '';
     const cm = materiasCurso.find((m) => m.id === cell.id_curso_materia);
@@ -230,9 +254,15 @@ const HorarioSemanal = function HorarioSemanal({ cursoIdExterno = '', onRegister
   };
 
   const handleCellChange = (dia, idModulo, materiaNombre) => {
+    const key = `${dia}_${idModulo}`;
+    setCeldasInvalidas((prev) => {
+      if (!prev.has(key)) return prev;
+      const siguiente = new Set(prev);
+      siguiente.delete(key);
+      return siguiente;
+    });
     setCeldas((prev) => {
       const next = { ...prev };
-      const key = `${dia}_${idModulo}`;
       if (!materiaNombre) {
         delete next[key];
       } else {

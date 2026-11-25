@@ -7219,3 +7219,34 @@ tr.date-group-header td {
 .standard-modal-body .form-group-filter .preceptor-curso-option--selected span {
     color: #7a3b00;
 }
+
+label:has(input[type="checkbox"]),
+input[type="checkbox"] + label {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 8px;
+    max-width: 100%;
+    min-width: 0;
+    text-align: left;
+}
+
+label:has(input[type="checkbox"]):not(.preceptor-curso-option):not(.modulo-card):not(.division-checkbox),
+input[type="checkbox"] + label {
+    white-space: nowrap;
+}
+
+input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 0;
+    padding: 0;
+}
+
+label:has(input[type="checkbox"]) > input[type="checkbox"] {
+    margin: 0 !important;
+}
+
+div:has(> label:has(input[type="checkbox"])) {
+    flex-wrap: wrap;
+}

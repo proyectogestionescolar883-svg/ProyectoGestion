@@ -30,6 +30,8 @@ const ROLES_DIRECTIVOS = [
   { value: 'director', label: 'Director', cargo: 'Director' },
 ];
 
+const ROLES_ASIGNABLES = ROLES_DIRECTIVOS.filter((opcion) => opcion.value !== 'director');
+
 function cargoPorRol(rol) {
   return ROLES_DIRECTIVOS.find((opcion) => opcion.value === rol)?.cargo || 'Administrador';
 }
@@ -217,6 +219,13 @@ function Administradores() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    const rolAsignable = editingUsuario ? null : ROLES_ASIGNABLES.find((opcion) => opcion.value === formData.rol);
+    if (!editingUsuario && !rolAsignable) {
+      toast.warning('No se puede asignar el rol Director.');
+      return;
+    }
+
     setGuardandoUsuario(true);
 
     // 5.9 — si se cargan las dos fechas, la primera de la línea de tiempo tiene
@@ -252,7 +261,7 @@ function Administradores() {
       delete payload.usuario;
       delete payload.rol;
       if (!editingUsuario) {
-        payload.roles = [formData.rol];
+        payload.roles = [rolAsignable.value];
       }
 
       if (editingUsuario) {
@@ -281,11 +290,17 @@ function Administradores() {
   };
 
   const handleAgregarRol = async ({ persona }) => {
+    const rolAsignable = ROLES_ASIGNABLES.find((opcion) => opcion.value === rolParaAgregar);
+    if (!rolAsignable) {
+      toast.warning('No se puede asignar el rol Director.');
+      return;
+    }
+
     setGuardandoAgregarRol(true);
     try {
       await createUsuario({
         id_usuario_existente: Number(persona.id_usuario ?? persona.id),
-        roles: [rolParaAgregar],
+        roles: [rolAsignable.value],
         nombre: persona.nombre || '',
         apellido: persona.apellido || '',
         dni: persona.dni || '',
@@ -464,7 +479,7 @@ function Administradores() {
                 <label htmlFor="rol">Rol</label>
                 <select
                   id="rol"
-                  value={formData.rol}
+                  value={ROLES_ASIGNABLES.some((opcion) => opcion.value === formData.rol) ? formData.rol : 'admin'}
                   onChange={(e) => setFormData({
                     ...formData,
                     rol: e.target.value,
@@ -472,7 +487,7 @@ function Administradores() {
                   })}
                   disabled={!!editingUsuario || guardandoUsuario}
                 >
-                  {ROLES_DIRECTIVOS.map((opcion) => (
+                  {ROLES_ASIGNABLES.map((opcion) => (
                     <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
                   ))}
                 </select>
@@ -512,7 +527,7 @@ function Administradores() {
             disabled={guardandoAgregarRol}
             style={{ minWidth: 150 }}
           >
-            {ROLES_DIRECTIVOS.map((opcion) => (
+            {ROLES_ASIGNABLES.map((opcion) => (
               <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
             ))}
           </select>
@@ -546,7 +561,7 @@ function Administradores() {
           </button>
           <span className="header-actions-sep" aria-hidden="true" />
           <button type="button" className="btn btn-primary" onClick={handleCreate}>
-            <i className="fas fa-plus" aria-hidden="true" /> Nuevo {ROLES_DIRECTIVOS.find((opcion) => opcion.value === formData.rol)?.label || 'Administrador'}
+            <i className="fas fa-plus" aria-hidden="true" /> Nuevo {ROLES_ASIGNABLES.find((opcion) => opcion.value === formData.rol)?.label || 'Administrador'}
           </button>
         </div>
       </div>

@@ -840,14 +840,14 @@ function Preceptores({ rol = 'preceptor' }) {
               <th>Usuario</th>
               <th>Estado</th>
               <th>Proxima accion</th>
-              <th>Cursos asignados</th>
+              {!esJefe && <th>Cursos asignados</th>}
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {filteredPreceptores.length === 0 ? (
               <tr>
-                <td colSpan={9} className="empty-state-message">
+                <td colSpan={esJefe ? 8 : 9} className="empty-state-message">
                   {searchTerm
                     ? `No se encontraron ${etiquetaPlural.toLowerCase()} con ese criterio.`
                     : `No hay ${etiquetaPlural.toLowerCase()} registrados.`}
@@ -868,11 +868,13 @@ function Preceptores({ rol = 'preceptor' }) {
                       </span>
                     </td>
                     <td>{proximaAccion(p)}</td>
-                    <td>
-                      {(p.cursos_asignados || []).length > 0
-                        ? p.cursos_asignados.map((c) => c.nombre_curso).join(', ')
-                        : '---'}
-                    </td>
+                    {!esJefe && (
+                      <td>
+                        {(p.cursos_asignados || []).length > 0
+                          ? p.cursos_asignados.map((c) => c.nombre_curso).join(', ')
+                          : '---'}
+                      </td>
+                    )}
                     <AccionesCelda
                       acciones={[
                         { accion: 'editar', onClick: () => abrirEditar(p) },
