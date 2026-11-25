@@ -111,7 +111,6 @@ else:
     DB_DEFAULT_PORT = '3306'
 
 DB_PORT = os.environ.get('DB_PORT', DB_DEFAULT_PORT)
-USA_POOLER = ES_POSTGRES and str(DB_PORT) == '6543'
 
 DATABASES = {
     'default': {
@@ -124,7 +123,7 @@ DATABASES = {
         'OPTIONS': DB_OPTIONS,
         # Supabase expone el pooler en modo transacción (puerto 6543), que no
         # soporta cursores server-side entre sentencias: hay que desactivarlos.
-        **({'DISABLE_SERVER_SIDE_CURSORS': True} if USA_POOLER else {}),
+        **({'DISABLE_SERVER_SIDE_CURSORS': True} if ES_POSTGRES else {}),
         # Los modelos de `escuela` son managed=False y no tienen migraciones
         # que creen tablas: el test DB se llena de estructura con el runner
         # `escuela.test_runner.EscuelaDiscoverRunner`.

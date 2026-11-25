@@ -66,6 +66,9 @@ class RolActivoMiddleware:
             await sync_to_async(limpiar_rol_activo, thread_sensitive=True)()
 
 
+METODOS_ESCRITURA = {'POST', 'PUT', 'PATCH', 'DELETE'}
+
+
 class UsuarioEstadoProgramadoMiddleware:
     sync_capable = True
     async_capable = True
@@ -79,9 +82,11 @@ class UsuarioEstadoProgramadoMiddleware:
     def __call__(self, request):
         if self._async_mode:
             return self.__acall__(request)
-        sincronizar_estados_usuarios()
+        if request.method in METODOS_ESCRITURA:
+            sincronizar_estados_usuarios()
         return self.get_response(request)
 
     async def __acall__(self, request):
-        await sync_to_async(sincronizar_estados_usuarios, thread_sensitive=True)()
+        if request.method in METODOS_ESCRITURA:
+            await sync_to_async(sincronizar_estados_usuarios, thread_sensitive=True)()
         return await self.get_response(request)
