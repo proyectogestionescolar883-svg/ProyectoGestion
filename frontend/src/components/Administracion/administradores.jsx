@@ -95,7 +95,7 @@ function Administradores() {
   const rolParaAgregar = 'admin';
   const [guardandoAgregarRol, setGuardandoAgregarRol] = useState(false);
   const [mostrarQuitarRol, setMostrarQuitarRol] = useState(false);
-  const [rolParaQuitar, setRolParaQuitar] = useState('admin');
+  const rolParaQuitar = 'admin';
   const [quitandoRol, setQuitandoRol] = useState(false);
   const [guardandoUsuario, setGuardandoUsuario] = useState(false);
   const [personasConRol, setPersonasConRol] = useState([]);
@@ -529,17 +529,6 @@ function Administradores() {
           >
             <i className="fas fa-user-tag" aria-hidden="true" /> Agregar rol: Administrador
           </button>
-          <select
-            aria-label="Rol a quitar"
-            value={rolParaQuitar}
-            onChange={(e) => setRolParaQuitar(e.target.value)}
-            disabled={quitandoRol}
-            style={{ minWidth: 150 }}
-          >
-            {ROLES_DIRECTIVOS.map((opcion) => (
-              <option key={opcion.value} value={opcion.value}>{opcion.label}</option>
-            ))}
-          </select>
           <button
             type="button"
             className="btn btn-outline-danger"
@@ -548,7 +537,7 @@ function Administradores() {
               setMostrarQuitarRol(true);
             }}
           >
-            <i className="fas fa-user-minus" aria-hidden="true" /> Quitar rol
+            <i className="fas fa-user-minus" aria-hidden="true" /> Quitar rol: Administrador
           </button>
           <span className="header-actions-sep" aria-hidden="true" />
           <button type="button" className="btn btn-primary" onClick={handleCreate}>

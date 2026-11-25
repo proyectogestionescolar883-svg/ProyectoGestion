@@ -810,7 +810,7 @@ const renderFormModificar = () => (
         {!readOnly && (
           <div className="header-actions">
             <button type="button" className="btn btn-outline-primary" onClick={() => setMostrarAgregarRol(true)}>
-              <i className="fas fa-user-tag" aria-hidden="true" /> Agregar rol
+              <i className="fas fa-user-tag" aria-hidden="true" /> Agregar rol: Docente
             </button>
             <button
               type="button"
@@ -820,7 +820,7 @@ const renderFormModificar = () => (
                 setMostrarQuitarRol(true);
               }}
             >
-              <i className="fas fa-user-minus" aria-hidden="true" /> Quitar rol
+              <i className="fas fa-user-minus" aria-hidden="true" /> Quitar rol: Docente
             </button>
             <span className="header-actions-sep" aria-hidden="true" />
             <button type="button" className="btn btn-primary" onClick={abrirCrear}>

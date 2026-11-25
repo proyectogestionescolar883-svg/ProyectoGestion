@@ -603,7 +603,7 @@ function AdminPreceptores() {
               setMostrarAgregarRol(true);
             }}
           >
-            <i className="fas fa-user-tag" aria-hidden="true" /> Agregar rol
+            <i className="fas fa-user-tag" aria-hidden="true" /> Agregar rol: Preceptor
           </button>
           <button
             type="button"
@@ -613,7 +613,7 @@ function AdminPreceptores() {
               setMostrarQuitarRol(true);
             }}
           >
-            <i className="fas fa-user-minus" aria-hidden="true" /> Quitar rol
+            <i className="fas fa-user-minus" aria-hidden="true" /> Quitar rol: Preceptor
           </button>
           <span className="header-actions-sep" aria-hidden="true" />
           <button type="button" className="btn btn-primary" onClick={abrirCrear}>

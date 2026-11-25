@@ -758,7 +758,7 @@ function Preceptores({ rol = 'preceptor' }) {
         <h3><i className="fas fa-user-tie" aria-hidden="true" /> {etiquetaPlural}</h3>
         <div className="header-actions">
           <button type="button" className="btn btn-outline-primary" onClick={() => setMostrarAgregarRol(true)}>
-            <i className="fas fa-user-tag" aria-hidden="true" /> Agregar rol
+            <i className="fas fa-user-tag" aria-hidden="true" /> Agregar rol: {entidad.charAt(0).toUpperCase() + entidad.slice(1)}
           </button>
           <button
             type="button"
@@ -768,7 +768,7 @@ function Preceptores({ rol = 'preceptor' }) {
               setMostrarQuitarRol(true);
             }}
           >
-            <i className="fas fa-user-minus" aria-hidden="true" /> Quitar rol
+            <i className="fas fa-user-minus" aria-hidden="true" /> Quitar rol: {entidad.charAt(0).toUpperCase() + entidad.slice(1)}
           </button>
           <span className="header-actions-sep" aria-hidden="true" />
           <button type="button" className="btn btn-primary" onClick={abrirCrear}>

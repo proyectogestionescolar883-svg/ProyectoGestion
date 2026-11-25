@@ -675,7 +675,7 @@ function TutoresFamilias({
                 setMostrarAgregarRol(true);
               }}
             >
-              <i className="fas fa-user-tag" aria-hidden="true" /> Agregar rol
+              <i className="fas fa-user-tag" aria-hidden="true" /> Agregar rol: Tutor
             </button>
             <button
               type="button"
@@ -685,7 +685,7 @@ function TutoresFamilias({
                 setMostrarQuitarRol(true);
               }}
             >
-              <i className="fas fa-user-minus" aria-hidden="true" /> Quitar rol
+              <i className="fas fa-user-minus" aria-hidden="true" /> Quitar rol: Tutor
             </button>
             <span className="header-actions-sep" aria-hidden="true" />
             <button type="button" className="btn btn-primary" onClick={abrirCrear}>
