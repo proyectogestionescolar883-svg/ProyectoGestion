@@ -7580,22 +7580,18 @@ td.historial-valor-cell {
 
 @media (max-width: 768px) {
     .cal-nav > .btn {
-        width: 34px;
-        min-width: 34px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        min-width: 40px;
         min-height: 36px;
-        padding: 6px 4px;
+        padding: 6px 8px;
         gap: 0;
         line-height: 1;
-        font-weight: 300 !important;
-        -webkit-font-smoothing: antialiased;
-        font-synthesis: none;
     }
 
-    .cal-nav .btn i,
-    .cal-nav .btn fas,
-    .cal-nav .btn::before {
-        font-weight: 300 !important;
-        -webkit-text-stroke: 0;
-        text-shadow: none;
+    .cal-nav .btn i {
+        line-height: 1;
     }
 }

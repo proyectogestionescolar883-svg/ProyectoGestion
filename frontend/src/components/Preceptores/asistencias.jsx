@@ -34,6 +34,8 @@ function estadoInicial() {
   return { estado: 'Presente', justificada: false };
 }
 
+const claveFilaDocente = (doc) => `${doc.docente_id}|${doc.cm_id}|${doc.fecha}|${doc.horario}`;
+
 function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly = false, navContext }) {
   const {
     inscripciones, estudiantes, nombreCorto: nc,
@@ -188,7 +190,7 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
       toast.error('No se pueden registrar asistencias en un día suspendido.');
       return;
     }
-    const estadoSeleccionado = docentesEstados[doc.docente_id] || '';
+    const estadoSeleccionado = docentesEstados[claveFilaDocente(doc)] || '';
     if (!estadoSeleccionado) {
       toast.warning('Seleccioná un estado antes de registrar.');
       return;
@@ -198,7 +200,7 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
       && /^\d{4}-\d{2}-\d{2}$/.test(fechaReferencia)
       && Boolean(fechaDocentes)
       && fechaDocentes > fechaReferencia;
-    setRegistrandoDocente(doc.docente_id);
+    setRegistrandoDocente(claveFilaDocente(doc));
     setMensajeDocentes('');
     try {
       await registrarAsistenciaDocente({
@@ -687,11 +689,12 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
                 </thead>
                 <tbody>
                   {docentesDisponibles.map((doc) => {
+                    const clave = claveFilaDocente(doc);
                     const fechaServidor = serverInfo?.fecha ? String(serverInfo.fecha).slice(0, 10) : fechaHoy();
                     const esAnticipado = /^\d{4}-\d{2}-\d{2}$/.test(fechaServidor) && fechaDocentes > fechaServidor;
                     const estadosPosibles = esAnticipado ? ['Ausente'] : ['Presente', 'Ausente', 'Tarde'];
                     return (
-                    <tr key={`${doc.docente_id}-${doc.cm_id}-${doc.fecha}-${doc.horario}`}>
+                    <tr key={clave}>
                       <td className="table-cell-strong">{doc.docente_nombre}</td>
                       <td>
                         {doc.materia_nombre}
@@ -707,11 +710,11 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
                         ) : !readOnly ? (
                           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                             {estadosPosibles.map((est) => {
-                              const seleccionado = docentesEstados[doc.docente_id] === est;
+                              const seleccionado = docentesEstados[clave] === est;
                               // Punto 2.2: durante una suspensión los controles quedan
                               // visibles pero deshabilitados, con el motivo explicado en el aviso.
                               const bloqueado = soloLectura;
-                              const deshabilitado = bloqueado || (docentesEstados[doc.docente_id] && !seleccionado);
+                              const deshabilitado = bloqueado || (docentesEstados[clave] && !seleccionado);
                               return (
                                 <button
                                   key={est}
@@ -722,7 +725,7 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
                                     if (deshabilitado) return;
                                     setDocentesEstados((prev) => ({
                                       ...prev,
-                                      [doc.docente_id]: seleccionado ? '' : est,
+                                      [clave]: seleccionado ? '' : est,
                                     }));
                                   }}
                                   style={{
@@ -765,10 +768,10 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
                             type="button"
                             className="btn btn-primary btn-sm"
                             onClick={() => handleRegistrarDocente(doc)}
-                            disabled={soloLectura || registrandoDocente === doc.docente_id || !docentesEstados[doc.docente_id]}
+                            disabled={soloLectura || registrandoDocente === clave || !docentesEstados[clave]}
                             title={soloLectura ? 'Día suspendido: la información es de solo lectura' : undefined}
                           >
-                            {registrandoDocente === doc.docente_id ? 'Registrando...' : esAnticipado ? 'Registrar falta' : 'Registrar'}
+                            {registrandoDocente === clave ? 'Registrando...' : esAnticipado ? 'Registrar falta' : 'Registrar'}
                           </button>
                         ) : (
                           <span style={{ color: '#888' }}>Pendiente</span>
