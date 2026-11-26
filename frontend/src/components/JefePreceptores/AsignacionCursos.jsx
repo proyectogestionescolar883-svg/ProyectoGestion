@@ -23,6 +23,7 @@ function AsignacionCursos() {
   const [searchAsignados, setSearchAsignados] = useState('');
   const [searchDisponibles, setSearchDisponibles] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [guardando, setGuardando] = useState(false);
 
   const fetchPreceptores = async () => {
@@ -148,7 +149,7 @@ function AsignacionCursos() {
   };
 
   return (
-    <div className="card">
+    <div className="card asignacion-cursos-card">
       <div className="card-header-flex">
         <h3><i className="fas fa-calendar-alt" aria-hidden="true" /> Asignación de Cursos a Preceptores</h3>
       </div>
@@ -164,9 +165,9 @@ function AsignacionCursos() {
       )}
 
       {selectedPreceptorId && preceptorObj ? (
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 280px', minWidth: '260px' }}>
-            <div className="card" style={{ height: '100%' }}>
+        <div className="asignacion-cursos-column">
+          <div className="asignacion-cursos-column">
+            <div className="card asignacion-cursos-inner-card">
               <div className="card-header-flex card-header-flex--compact">
                 <h4>
                   <i className="fas fa-user-tie icon-muted" aria-hidden="true" />
@@ -241,8 +242,8 @@ function AsignacionCursos() {
             </div>
           </div>
 
-          <div style={{ flex: '1 1 280px', minWidth: '260px' }}>
-            <div className="card" style={{ height: '100%' }}>
+          <div className="asignacion-cursos-column">
+            <div className="card asignacion-cursos-inner-card">
               <div className="card-header-flex card-header-flex--compact">
                 <h4>Cursos disponibles</h4>
                 <span className="badge badge-neutral">{cursosDisponibles.length}</span>

@@ -5,7 +5,7 @@ import { getCursoMateria, getHorarios, getHorariosEspeciales, getSuplencias, get
 import { suplenciasActivasLista } from '../../utils/suplencias';
 import LoadingSpinner from '../Shared/LoadingSpinner';
 
-const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 
 function escapeHtml(value) {
   if (value === null || value === undefined) return '';

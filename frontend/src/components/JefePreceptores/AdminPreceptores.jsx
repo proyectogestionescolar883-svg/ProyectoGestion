@@ -104,6 +104,7 @@ function AdminPreceptores() {
   const [editingPreceptor, setEditingPreceptor] = useState(null);
   const [formData, setFormData] = useState(formVacio);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [personasDisponibles, setPersonasDisponibles] = useState([]);
   const [mostrarAgregarRol, setMostrarAgregarRol] = useState(false);

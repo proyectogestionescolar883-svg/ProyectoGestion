@@ -7496,3 +7496,84 @@ td.historial-valor-cell {
         flex: 0 0 auto;
     }
 }
+
+@media (max-width: 900px) {
+    .asignacion-cursos-card,
+    .asignacion-cursos-inner-card {
+        padding: 0 !important;
+        border: 0 !important;
+        box-shadow: none !important;
+        background: transparent !important;
+    }
+
+    .asignacion-cursos-card::before,
+    .asignacion-cursos-inner-card::before {
+        background: transparent !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        box-shadow: none !important;
+    }
+
+    .asignacion-cursos-column {
+        flex: 1 1 100% !important;
+        min-width: 0 !important;
+        width: 100%;
+    }
+
+    .asignacion-cursos-inner-card {
+        height: auto !important;
+    }
+
+    .asignacion-cursos-card .table-responsive,
+    .asignacion-cursos-inner-card .table-responsive {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        overflow-x: auto !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .cal-nav {
+        flex-wrap: wrap;
+        gap: 8px;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .cal-nav-titulo {
+        min-width: 0;
+        width: auto;
+    }
+
+    .cal-nav-ir {
+        box-sizing: border-box;
+        max-width: 100%;
+        min-width: 0;
+        flex: 0 1 auto;
+    }
+
+    .cal-nav-ir input {
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        font-size: 0.8rem;
+    }
+
+    .cal-nav .btn {
+        flex: 0 0 auto;
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .cal-nav > * {
+        max-width: 100%;
+    }
+
+    .cal-nav-ir input {
+        padding-left: 6px;
+        padding-right: 6px;
+    }
+}

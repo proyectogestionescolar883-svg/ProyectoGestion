@@ -33,7 +33,7 @@ import { suplenciasActivasEnFecha } from '../utils/suplencias';
 const DataContext = createContext(null);
 
 // Intervalo (ms) del sondeo de notificaciones nuevas mientras dure la sesión.
-const INTERVALO_POLL_NUEVAS = 30000;
+const INTERVALO_POLL_NUEVAS = 10000;
 
 function normalizarNotificacion(n) {
   return {
@@ -305,6 +305,8 @@ export function DataProvider({ children }) {
   const [nuevasNotificaciones, setNuevasNotificaciones] = useState([]);
   const [campanaPulse, setCampanaPulse] = useState(0);
   const pollEnCursoRef = useRef(false);
+  const idsConocidosPollRef = useRef(null);
+  const nuevasIdsRef = useRef(new Set());
 
   const fetchData = useCallback(async () => {
     const isInitial = !hasLoadedRef.current;
@@ -833,6 +835,9 @@ export function DataProvider({ children }) {
         ...(idsInicialesRef.current ?? []),
         ...notificaciones.map((n) => n.id),
       ]);
+      if (idsConocidosPollRef.current) {
+        idsInicialesRef.current.forEach((id) => idsConocidosPollRef.current.add(id));
+      }
       const datos = {
         estudiantes,
         docentes,
@@ -1132,37 +1137,62 @@ export function DataProvider({ children }) {
   // Notificaciones que el usuario ya descartó del toast (para no volver a
   // mostrarlas aunque el sondeo las vuelva a listar).
   const descartarNueva = useCallback((id) => {
+    nuevasIdsRef.current.delete(id);
     setNuevasNotificaciones((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
-  // Sondeo (Parte 6): detecta notificaciones que llegan NUEVAS mientras el
-  // usuario usa la app. Un único intervalo global por sesión, con guarda para
-  // evitar peticiones solapadas. El sondeo se limpia al desmontar el provider.
-  useEffect(() => {
-    const intervalo = setInterval(async () => {
-      if (idsInicialesRef.current === null) return;
-      if (pollEnCursoRef.current) return;
-      pollEnCursoRef.current = true;
-      try {
-        const raw = await getNotificaciones().catch(() => null);
-        if (!Array.isArray(raw)) return;
-        const conocidos = idsInicialesRef.current;
-        const nuevas = detectarNuevas(raw, conocidos);
-        if (nuevas.length === 0) return;
-        actualizarData((prev) => {
-          const yaPresentes = new Set(prev.notificaciones.map((n) => n.id));
-          const aInsertar = nuevas.filter((n) => !yaPresentes.has(n.id));
-          if (aInsertar.length === 0) return prev;
-          return { ...prev, notificaciones: [...aInsertar, ...prev.notificaciones] };
-        });
-        setNuevasNotificaciones((prev) => [...prev, ...nuevas]);
-        setCampanaPulse((p) => p + 1);
-      } finally {
-        pollEnCursoRef.current = false;
+  const pollNotificaciones = useCallback(async () => {
+    if (idsInicialesRef.current === null) return;
+    if (pollEnCursoRef.current) return;
+    pollEnCursoRef.current = true;
+    try {
+      const raw = await getNotificaciones().catch(() => null);
+      if (!Array.isArray(raw)) return;
+      if (idsConocidosPollRef.current === null) {
+        idsConocidosPollRef.current = new Set(idsInicialesRef.current);
       }
-    }, INTERVALO_POLL_NUEVAS);
-    return () => clearInterval(intervalo);
+      const nuevas = detectarNuevas(raw, idsConocidosPollRef.current);
+      const porId = new Map();
+      raw.forEach((item) => {
+        const n = normalizarNotificacion(item);
+        if (!porId.has(n.id)) porId.set(n.id, n);
+      });
+      actualizarData((prev) => {
+        const idsRaw = new Set(porId.keys());
+        const notificaciones = [
+          ...porId.values(),
+          ...prev.notificaciones.filter((n) => !idsRaw.has(n.id)),
+        ].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
+        return { ...prev, notificaciones };
+      });
+      const aAgregar = nuevas.filter((n) => !nuevasIdsRef.current.has(n.id));
+      if (aAgregar.length === 0) return;
+      const idsAgregados = new Set(aAgregar.map((n) => n.id));
+      aAgregar.forEach((n) => nuevasIdsRef.current.add(n.id));
+      setNuevasNotificaciones((prev) => [
+        ...aAgregar,
+        ...prev.filter((n) => !idsAgregados.has(n.id)),
+      ]);
+      setCampanaPulse((p) => p + 1);
+    } finally {
+      pollEnCursoRef.current = false;
+    }
   }, [actualizarData]);
+
+  useEffect(() => {
+    const intervalo = setInterval(pollNotificaciones, INTERVALO_POLL_NUEVAS);
+    const alFocus = () => { pollNotificaciones(); };
+    const alCambiarVisibilidad = () => {
+      if (document.visibilityState === 'visible') pollNotificaciones();
+    };
+    window.addEventListener('focus', alFocus);
+    document.addEventListener('visibilitychange', alCambiarVisibilidad);
+    return () => {
+      clearInterval(intervalo);
+      window.removeEventListener('focus', alFocus);
+      document.removeEventListener('visibilitychange', alCambiarVisibilidad);
+    };
+  }, [pollNotificaciones]);
 
   return (
     <DataContext.Provider value={{

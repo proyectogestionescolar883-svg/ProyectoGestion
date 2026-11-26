@@ -19,7 +19,7 @@ import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import { mensajeErrorAmigable } from '../../utils/errores';
 import LoadingSpinner from '../Shared/LoadingSpinner';
 
-const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 
 function esMateriaEF(nombre) {
   const normalizado = (nombre || '')
