@@ -34,6 +34,7 @@ const DataContext = createContext(null);
 
 // Intervalo (ms) del sondeo de notificaciones nuevas mientras dure la sesión.
 const INTERVALO_POLL_NUEVAS = 10000;
+const INTERVALO_SYNC_DATOS = 25000;
 
 function normalizarNotificacion(n) {
   return {
@@ -173,6 +174,7 @@ export function DataProvider({ children }) {
   const cargadasRef = useRef(new Set());
   const enCursoRef = useRef(new Map());
   const generacionRef = useRef(0);
+  const fetchEnCursoRef = useRef(false);
 
   const actualizarData = useCallback((actualizador) => {
     const anterior = dataRef.current;
@@ -309,6 +311,8 @@ export function DataProvider({ children }) {
   const nuevasIdsRef = useRef(new Set());
 
   const fetchData = useCallback(async () => {
+    if (fetchEnCursoRef.current || pollEnCursoRef.current) return;
+    fetchEnCursoRef.current = true;
     const isInitial = !hasLoadedRef.current;
     if (isInitial) {
       setLoading(true);
@@ -829,14 +833,14 @@ export function DataProvider({ children }) {
 
 
       hasLoadedRef.current = true;
-      // Línea base de ids de notificaciones ya conocidas en la carga inicial:
-      // son las que el usuario YA veía, por lo que nunca deben disparar toast.
-      idsInicialesRef.current = new Set([
-        ...(idsInicialesRef.current ?? []),
-        ...notificaciones.map((n) => n.id),
-      ]);
-      if (idsConocidosPollRef.current) {
-        idsInicialesRef.current.forEach((id) => idsConocidosPollRef.current.add(id));
+      if (isInitial) {
+        idsInicialesRef.current = new Set([
+          ...(idsInicialesRef.current ?? []),
+          ...notificaciones.map((n) => n.id),
+        ]);
+        if (idsConocidosPollRef.current) {
+          idsInicialesRef.current.forEach((id) => idsConocidosPollRef.current.add(id));
+        }
       }
       const datos = {
         estudiantes,
@@ -899,6 +903,7 @@ export function DataProvider({ children }) {
       console.error('Error fetching data:', err);
       setError('Error al cargar datos del servidor');
     } finally {
+      fetchEnCursoRef.current = false;
       if (!esGeneracionActual()) return;
       setLoading(false);
       setRefreshing(false);
@@ -1143,7 +1148,7 @@ export function DataProvider({ children }) {
 
   const pollNotificaciones = useCallback(async () => {
     if (idsInicialesRef.current === null) return;
-    if (pollEnCursoRef.current) return;
+    if (fetchEnCursoRef.current || pollEnCursoRef.current) return;
     pollEnCursoRef.current = true;
     try {
       const raw = await getNotificaciones().catch(() => null);
@@ -1193,6 +1198,24 @@ export function DataProvider({ children }) {
       document.removeEventListener('visibilitychange', alCambiarVisibilidad);
     };
   }, [pollNotificaciones]);
+
+  useEffect(() => {
+    const sincronizarDatos = () => {
+      if (!hasLoadedRef.current) return;
+      if (document.visibilityState !== 'visible') return;
+      fetchData();
+    };
+    const intervalo = setInterval(sincronizarDatos, INTERVALO_SYNC_DATOS);
+    const alFocusSync = () => { sincronizarDatos(); };
+    const alCambiarVisibilidadSync = () => { sincronizarDatos(); };
+    window.addEventListener('focus', alFocusSync);
+    document.addEventListener('visibilitychange', alCambiarVisibilidadSync);
+    return () => {
+      clearInterval(intervalo);
+      window.removeEventListener('focus', alFocusSync);
+      document.removeEventListener('visibilitychange', alCambiarVisibilidadSync);
+    };
+  }, [fetchData]);
 
   return (
     <DataContext.Provider value={{

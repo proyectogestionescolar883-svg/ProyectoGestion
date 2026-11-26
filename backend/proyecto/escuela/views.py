@@ -5693,7 +5693,7 @@ class PlanificacionViewSet(viewsets.ModelViewSet):
             ruta,
             ContentFile(buffer.getvalue(), name=filename),
         )
-        return media_url(ruta, 3600)
+        return media_url(ruta)
 
     def create(self, request, *args, **kwargs):
         mutable = request.data.copy()
@@ -6792,7 +6792,7 @@ def upload_file(request):
 
     archivo.content_type = tipos_permitidos[extension]
     ruta = default_storage.save(ruta, archivo)
-    return Response({'url': media_url(ruta, 3600), 'nombre': PurePath(ruta).name})
+    return Response({'url': media_url(ruta), 'nombre': PurePath(ruta).name})
 
 
 class HistorialAcademicoViewSet(viewsets.ModelViewSet):

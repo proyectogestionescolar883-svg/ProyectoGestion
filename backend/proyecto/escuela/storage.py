@@ -113,12 +113,13 @@ def media_url(valor, expires_in=None, usuario=None, proposito=None):
         expires_in = getattr(settings, 'MEDIA_URL_EXPIRES_IN', 3600)
     if usuario is None:
         usuario = get_usuario_activo_local() or ''
-    proposito = proposito or PROPOSITO_MEDIA
+    usuario = str(usuario or '')
+    proposito = str(proposito or PROPOSITO_MEDIA)
     exp = int(time.time()) + int(expires_in)
     firma = _firma(ruta, exp, usuario, proposito)
     return (
         f'{RUTA_API_MEDIA}{quote(ruta, safe="/")}'
-        f'?exp={exp}&sig={firma}&usr={quote(str(usuario), safe="")}'
+        f'?exp={exp}&sig={firma}&usr={quote(usuario, safe="")}'
         f'&fin={quote(proposito, safe="")}'
     )
 
@@ -132,7 +133,8 @@ def verificar_firma(ruta, exp, sig, usuario='', proposito=None):
         return False
     if exp_int < int(time.time()):
         return False
-    proposito = proposito or PROPOSITO_MEDIA
+    usuario = str(usuario or '')
+    proposito = str(proposito or PROPOSITO_MEDIA)
     return hmac.compare_digest(
         _firma(normalizar_ruta(ruta), exp_int, usuario, proposito),
         str(sig),

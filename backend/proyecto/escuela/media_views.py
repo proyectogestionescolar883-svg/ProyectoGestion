@@ -14,13 +14,12 @@ from escuela.storage import (
 
 
 def media_proxy(request, ruta):
-    usuario = request.GET.get('usr', '')
     proposito = request.GET.get('fin') or PROPOSITO_MEDIA
-    if not usuario or not verificar_firma(
+    if not verificar_firma(
         ruta,
         request.GET.get('exp'),
         request.GET.get('sig'),
-        usuario,
+        request.GET.get('usr', ''),
         proposito,
     ):
         return HttpResponse('Enlace inválido o expirado', status=403)
