@@ -1,10 +1,11 @@
 import { useRef, useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
-import { uploadMiDdjjDocente, BASE_URL } from '../../services/api';
+import { uploadMiDdjjDocente } from '../../services/api';
 import { formatDNI } from '../../utils/dni';
 import { useToast } from '../../context/ToastContext';
 import ProfileBanner from '../Shared/ProfileBanner';
 import { mensajeErrorAmigable } from '../../utils/errores';
+import { buildMediaUrl } from '../../utils/medios';
 
 function StatCard({ icon, value, label, color }) {
   return (
@@ -29,7 +30,6 @@ function PanelDocente({ miDocente, mapSuplencias, puedeEditar = true }) {
   const toast = useToast();
   const fileInputRef = useRef(null);
   const [subiendo, setSubiendo] = useState(false);
-  const MEDIA_BASE = BASE_URL;
 
   const stats = useMemo(() => {
     if (!miDocente) return null;
@@ -87,9 +87,7 @@ function PanelDocente({ miDocente, mapSuplencias, puedeEditar = true }) {
   const ddjjPresentada = Boolean(miDocente.ddjj_presentada || miDocente.ddjj_id || miDocente.ruta_ddjj);
   const ddjjVerificada = ddjjPresentada && Boolean(miDocente.ddjj_verificada);
   const archivoUrl = miDocente.ddjj_url || miDocente.ruta_ddjj || null;
-  const archivoHref = archivoUrl
-    ? (archivoUrl.startsWith('http') ? archivoUrl : `${MEDIA_BASE}${archivoUrl}`)
-    : null;
+  const archivoHref = buildMediaUrl(archivoUrl) || null;
   const nombreArchivo = miDocente.ddjj_nombre_archivo || (archivoUrl ? archivoUrl.split('/').pop() : null);
   const fechaCarga = miDocente.ddjj_fecha_carga
     ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(miDocente.ddjj_fecha_carga))

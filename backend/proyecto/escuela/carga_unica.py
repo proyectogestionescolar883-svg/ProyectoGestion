@@ -1,9 +1,9 @@
-"""Carga única de 20 minutos (Panel Diario → "Notificar").
+"""Carga única de 3 horas (Panel Diario → "Notificar").
 
 Centraliza el estado de la ventana de carga única que el preceptor otorga a
 un docente para completar las Asistencias y/o el Libro de Temas del día:
 
-  * `crear_o_renovar_carga`  → activa/renueva la ventana de 20 minutos.
+  * `crear_o_renovar_carga`  → activa/renueva la ventana de 3 horas.
   * `carga_de_item`          → resuelve si un ítem puede cargarse ahora.
   * `marcar_item_cargado`    → fija un ítem como cargado (bloquea re-edición).
   * `ventana_del_dia`        → ventana (latest) de un curso-materia y fecha.
@@ -33,7 +33,7 @@ CLAVE_ITEMS = {
 
 DIAS_SEMANA_ES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 
-DURACION_VENTANA = timedelta(minutes=20)
+DURACION_VENTANA = timedelta(hours=3)
 
 
 def ventana_del_dia(cm_id, fecha):
@@ -47,10 +47,10 @@ def ventana_del_dia(cm_id, fecha):
 
 
 def crear_o_renovar_carga(cm, fecha, pendientes, docente=None):
-    """Activa una nueva ventana de 20 minutos (o renueva la del día).
+    """Activa una nueva ventana de 3 horas (o renueva la del día).
 
     Si ya existe una ventana para la fecha (aunque esté vencida) se renueva:
-    se extiende el vencimiento a +20 minutos y se amplía la lista de ítems
+    se extiende el vencimiento a +3 horas y se amplía la lista de ítems
     pendientes. Los ítems ya cargados conservan su flag (no se vuelven a pedir
     ni se pueden re-editar).
     """
@@ -129,7 +129,7 @@ def carga_de_item(cm_id, fecha, item):
             'carga': cu,
             'mensaje': (
                 f'La carga única de {CLAVE_ITEMS.get(item, item)} venció: el plazo '
-                f'de 20 minutos finalizó y ya no podés cargarla.'
+                f'de 3 horas finalizó y ya no podés cargarla.'
             ),
         }
 

@@ -193,6 +193,11 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
       toast.warning('Seleccioná un estado antes de registrar.');
       return;
     }
+    const fechaReferencia = serverInfo?.fecha ? String(serverInfo.fecha).slice(0, 10) : fechaHoy();
+    const esAnticipado = estadoSeleccionado === 'Ausente'
+      && /^\d{4}-\d{2}-\d{2}$/.test(fechaReferencia)
+      && Boolean(fechaDocentes)
+      && fechaDocentes > fechaReferencia;
     setRegistrandoDocente(doc.docente_id);
     setMensajeDocentes('');
     try {
@@ -200,9 +205,11 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
         docente_id: doc.docente_id,
         cm_id: doc.cm_id,
         estado: estadoSeleccionado,
-        fecha: fechaDocentes || undefined,
+        fecha: fechaDocentes,
       });
-      toast.success('Asistencia docente registrada correctamente.');
+      toast.success(esAnticipado
+        ? `Falta anticipada registrada para el ${formatearFecha(fechaDocentes)}.`
+        : 'Asistencia docente registrada correctamente.');
       // Punto 13.2: refrescar datos inmediatamente
       await refreshData();
       await cargarDocentes();
@@ -630,7 +637,7 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
             ) : readOnly ? (
               <>En esta vista solo podés <strong>visualizar</strong> la asistencia de docentes. Se muestra el día de hoy por defecto.</>
             ) : (
-              <>Elegí una fecha para ver los docentes con clase ese día. Hoy figura primero. Las fechas futuras permiten registrar <strong>faltas anticipadas</strong>.</>
+              <>Elegí una fecha para ver los docentes con clase ese día; hoy figura primero. Podés cargar la asistencia en cualquier momento del día, y en fechas futuras podés registrar <strong>faltas anticipadas</strong>.</>
             )}
           </p>
 
@@ -680,7 +687,7 @@ function Asistencias({ anioLectivo, curso, onAnioChange, onCursoChange, readOnly
                 </thead>
                 <tbody>
                   {docentesDisponibles.map((doc) => {
-                    const fechaServidor = serverInfo?.fecha ? String(serverInfo.fecha).slice(0, 10) : '';
+                    const fechaServidor = serverInfo?.fecha ? String(serverInfo.fecha).slice(0, 10) : fechaHoy();
                     const esAnticipado = /^\d{4}-\d{2}-\d{2}$/.test(fechaServidor) && fechaDocentes > fechaServidor;
                     const estadosPosibles = esAnticipado ? ['Ausente'] : ['Presente', 'Ausente', 'Tarde'];
                     return (

@@ -183,6 +183,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL_EXPIRES_IN = int(os.environ.get('MEDIA_URL_EXPIRES_IN', '86400'))
 
 STORAGES = {
     'default': {

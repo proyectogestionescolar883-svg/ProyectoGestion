@@ -169,10 +169,6 @@ function GestionDiaria({ anioLectivo, curso, onNavigate }) {
   const calificacionesDe = (cmId) => (calificacionesCompletas || []).filter((c) => c.id_curso_materia === cmId);
 
   const toggleCargaUnica = async (cmId) => {
-    // El botón SIEMPRE notifica SOLO al docente de esa materia y abre/renueva
-    // la ventana de 20 minutos. Nunca notifica a otros preceptores. Si ya se le
-    // envió una carga única y el docente no cargó, volviendo a apretar el botón
-    // se le re-notifica y se le da OTRA ventana de 20 minutos.
     const asigs = asistenciasDe(cmId);
     const hayAsistencias = asigs.length > 0;
     const libros = (libroTemas || []).filter((lt) => lt.id_curso_materia === cmId);
@@ -193,17 +189,8 @@ function GestionDiaria({ anioLectivo, curso, onNavigate }) {
         toast.info(resultado.detail || 'No se pudo enviar la notificación.');
         return;
       }
-      if (resultado && resultado.recordatorio) {
-        // El docente sigue en horario de clase y es el primer aviso del día:
-        // solo recordatorio, sin ventana de 20 minutos ni temporizador.
-        setModoCargaUnica(null);
-        toast.success(resultado.detail || 'Recordatorio enviado: el docente sigue en horario. No se abrió un plazo de 20 minutos.');
-      } else {
-        // Notificación al docente + ventana de 20 minutos (una nueva si ya se
-        // había enviado antes y el docente no cargó).
-        setModoCargaUnica({ id_curso_materia: cmId, inicio: new Date() });
-        toast.success('Notificación enviada: el docente tiene 20 minutos para cargar.');
-      }
+      setModoCargaUnica({ id_curso_materia: cmId, inicio: new Date() });
+      toast.success('Notificación enviada: el docente tiene 3 horas para cargar.');
     } catch (err) {
       toast.error(mensajeError(err));
     } finally {
@@ -214,7 +201,7 @@ function GestionDiaria({ anioLectivo, curso, onNavigate }) {
   const obtenerTiempoRestante = (cmId) => {
     if (!modoCargaUnica || modoCargaUnica.id_curso_materia !== cmId) return null;
     const diffMin = Math.round((new Date().getTime() - modoCargaUnica.inicio.getTime()) / 60000);
-    const restante = 20 - diffMin;
+    const restante = 180 - diffMin;
     return restante <= 0 ? 0 : restante;
   };
 
@@ -228,8 +215,8 @@ function GestionDiaria({ anioLectivo, curso, onNavigate }) {
 
       <p className="upload-hint m-0 mb-12">
         Verificación por materia: el preceptor verifica si el docente cargó las asistencias y subió el libro de temas.
-        Con <strong>"Recordar carga"</strong> se envía una notificación SOLO al docente de esa materia para que complete lo pendiente en un plazo de 20 minutos.
-        Si el docente no cargó, volvé a apretar el botón para re-notificarlo y darle otra ventana de 20 minutos.
+        Con <strong>"Recordar carga"</strong> se envía una notificación SOLO al docente de esa materia para que complete lo pendiente en un plazo de 3 horas.
+        Si el docente no cargó, volvé a apretar el botón para re-notificarlo y darle otra ventana de 3 horas.
         La sección de calificaciones es solo informativa (no son cargas diarias).
         {hayClasesHoy && (
           <> Mostrando únicamente las materias con clases el <strong>{diaHoy}</strong>.</>
@@ -313,10 +300,6 @@ function GestionDiaria({ anioLectivo, curso, onNavigate }) {
                 const filaPendiente = !haAsist || !haLibro;
                 const sinPendientes = haAsist && haLibro;
 
-                // B12: la clase de HOY todavía puede NO haber comenzado (ej.
-                // son las 10:24 pero la clase es de 12 a 13). En ese caso el
-                // botón queda deshabilitado: no tiene sentido abrir una
-                // ventana de 20 min antes de que el docente esté en horario.
                 const bloquesCm = bloquesHoraDe(cm.id);
                 const primerInicioHoy = bloquesCm.length ? bloquesCm[0].inicio : null;
                 const claseNoComenzo = !!primerInicioHoy && hhmmAhora() < primerInicioHoy;
@@ -356,10 +339,10 @@ function GestionDiaria({ anioLectivo, curso, onNavigate }) {
                         onClick={() => toggleCargaUnica(cm.id)}
                         title={
                           claseNoComenzo
-                            ? `La clase de HOY todavía no comenzó (empieza a las ${primerInicioHoy}). Esperá a que el docente esté en horario para abrir el plazo de 20 minutos.`
+                            ? `La clase de HOY todavía no comenzó (empieza a las ${primerInicioHoy}). Esperá a que el docente esté en horario para abrir el plazo de 3 horas.`
                             : sinPendientes
                             ? 'No hay cargas pendientes para recordar'
-                            : 'Notificar al docente para que cargue asistencias y libro de temas (plazo de 20 minutos). Si ya se envió y no cargó, apretá de nuevo para re-notificar y dar otra ventana de 20 minutos.'
+                            : 'Notificar al docente para que cargue asistencias y libro de temas (plazo de 3 horas). Si ya se envió y no cargó, apretá de nuevo para re-notificar y dar otra ventana de 3 horas.'
                         }
                         disabled={guardandoCargaUnica || sinPendientes || claseNoComenzo}
                       >
@@ -385,13 +368,13 @@ function GestionDiaria({ anioLectivo, curso, onNavigate }) {
                             <>
                               <span>Notificación enviada — el docente cargará en {obtenerTiempoRestante(cm.id)} min</span>
                               <br />
-                              <small>Plazo máximo: 20 minutos para cargar asistencias y libro de temas. Si no cargó, apretá de nuevo "Recordar carga" para re-notificar y dar otra ventana de 20 minutos.</small>
+                              <small>Plazo máximo: 3 horas para cargar asistencias y libro de temas. Si no cargó, apretá de nuevo "Recordar carga" para re-notificar y dar otra ventana de 3 horas.</small>
                             </>
                           ) : (
                             <>
-                              <span>El plazo de 20 minutos venció y el docente no cargó.</span>
+                              <span>El plazo de 3 horas venció y el docente no cargó.</span>
                               <br />
-                              <small>Apretá de nuevo "Recordar carga" para re-notificarlo y darle otra ventana de 20 minutos.</small>
+                              <small>Apretá de nuevo "Recordar carga" para re-notificarlo y darle otra ventana de 3 horas.</small>
                             </>
                           )}
                         </div>

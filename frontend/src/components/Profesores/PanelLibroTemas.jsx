@@ -101,9 +101,6 @@ function PanelLibroTemas({ cursoMateriaId, materiaNombre, cursoNombre, miDocente
   const enHorario = serverInfo?.estado?.codigo === 'en_horario';
   const eventoActivo = Boolean(serverInfo?.evento_activo);
 
-  // Carga única de 20 minutos otorgada por el preceptor: durante la ventana
-  // se puede crear el registro de hoy aunque no se esté en horario; al
-  // cargarlo (o vencer el plazo) el panel pasa a solo lectura.
   const cargaDelDia = cargaUnica && cargaUnica.fecha === serverInfo?.fecha ? cargaUnica : null;
   const libroPedido = Boolean(cargaDelDia?.pendientes?.includes('libro_temas'));
   const libroCargada = Boolean(cargaDelDia?.libro_cargada);
@@ -290,7 +287,7 @@ function PanelLibroTemas({ cursoMateriaId, materiaNombre, cursoNombre, miDocente
             </>
           ) : (
             <>
-              <strong>La carga única de hoy venció.</strong> El plazo de 20 minutos finalizó y ya no
+              <strong>La carga única de hoy venció.</strong> El plazo de 3 horas finalizó y ya no
               podés cargar el Libro de Temas por este medio.
             </>
           )}
@@ -310,7 +307,7 @@ function PanelLibroTemas({ cursoMateriaId, materiaNombre, cursoNombre, miDocente
           }}
         >
           <i className="fas fa-hourglass-half" style={{ marginRight: '8px' }} aria-hidden="true" />
-          <strong>Carga única activa (20 minutos):</strong> te quedan{' '}
+          <strong>Carga única activa (3 horas):</strong> te quedan{' '}
           <strong>{formatearTiempoRestante(cargaDelDia?.fecha_vencimiento, serverTimestamp(serverInfo))}</strong> para cargar el
           Libro de Temas. Se guarda una sola vez: al cargarlo ya no podrás modificarlo.
         </p>

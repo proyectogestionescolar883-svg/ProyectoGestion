@@ -144,9 +144,6 @@ function PanelAsistencia({ cursoMateriaId, cursoId, cursoNombre, puedeEditar = t
     if (!puedeEditar) cargarAsistencias();
   }, [puedeEditar, cargarAsistencias]);
 
-  // Carga única de 20 minutos otorgada por el preceptor: la ventana activa
-  // autoriza cargar aunque no se esté en horario; al cargar (o vencer) el
-  // panel queda de solo lectura.
   const cargaDelDia = cargaUnica && cargaUnica.fecha === serverInfo?.fecha ? cargaUnica : null;
   const asistenciasPedida = Boolean(cargaDelDia?.pendientes?.includes('asistencias'));
   const asistCargada = Boolean(cargaDelDia?.asistencias_cargada);
@@ -324,7 +321,7 @@ function PanelAsistencia({ cursoMateriaId, cursoId, cursoNombre, puedeEditar = t
           }}
         >
           <i className="fas fa-hourglass-half" style={{ marginRight: '8px' }} aria-hidden="true" />
-          <strong>Carga única activa (20 minutos):</strong>{' '}
+          <strong>Carga única activa (3 horas):</strong>{' '}
           te quedan <strong>{formatearTiempoRestante(cargaDelDia.fecha_vencimiento, serverTimestamp(serverInfo))}</strong> para
           cargar las asistencias. Se guarda una sola vez: al cargarlas ya no podrás editarlas.
         </p>
@@ -353,7 +350,7 @@ function PanelAsistencia({ cursoMateriaId, cursoId, cursoNombre, puedeEditar = t
           }}
         >
           <i className="fas fa-lock" style={{ marginRight: '8px' }} aria-hidden="true" />
-          <strong>La carga única de asistencias venció.</strong> El plazo de 20 minutos finalizó y ya
+          <strong>La carga única de asistencias venció.</strong> El plazo de 3 horas finalizó y ya
           no podés cargarlas por este medio.
         </p>
       )}

@@ -409,27 +409,10 @@ def docente_puede_registrar_asistencia_alumnos(docente_id, curso_materia_id, fec
     fecha = fecha or ahora.date()
     if isinstance(fecha, str):
         fecha = datetime.strptime(fecha[:10], '%Y-%m-%d').date()
-    hora = hora or ahora.time()
-    dia = _dia_semana_es(fecha)
-
-    bloques = _obtener_bloques_horario(curso_materia_id, dia)
-
-    bloque_encontrado = None
-    for inicio, fin in bloques:
-        if inicio <= hora < fin:
-            bloque_encontrado = (inicio, fin)
-            break
-
-    if not bloque_encontrado:
-        return True, None, None
-
-    inicio, fin = bloque_encontrado
     registro = AsistenciaDocente.objects.select_related('id_usuario').filter(
         id_docente_id=docente_id,
         id_curso_materia_id=curso_materia_id,
         fecha=fecha,
-        hora__gte=inicio,
-        hora__lt=fin,
         id_estado_asistencia__nombre_estado='Ausente',
     ).first()
 
@@ -4458,9 +4441,6 @@ class AsistenciaViewSet(viewsets.ModelViewSet):
         # no se puedan cargar asistencias en fechas pasadas/futuras.
         fecha_registro = ahora.date()
 
-        # Carga única de 20 minutos otorgada por el preceptor: dentro de la
-        # ventana activa el docente puede cargar aunque no esté en horario;
-        # una vez cargada (o vencida la ventana) no puede volver a cargarse.
         estado_carga = carga_de_item(cm_id, ahora.date(), 'asistencias')
         ventana_carga_autoriza = estado_carga['estado'] == 'permitido'
 
@@ -4937,7 +4917,6 @@ class AsistenciaDocenteViewSet(viewsets.ViewSet):
             )
 
         ahora = timezone.localtime()
-        hora_actual = ahora.time()
         fecha_hoy = ahora.date()
 
         if fecha_str:
@@ -4953,13 +4932,6 @@ class AsistenciaDocenteViewSet(viewsets.ViewSet):
                 {'error': 'No se puede registrar asistencia docente en una fecha pasada.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if fecha_objetivo > fecha_hoy:
-            return Response(
-                {'error': 'No se puede registrar asistencia docente en una fecha futura.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        es_hoy = fecha_objetivo == fecha_hoy
         dia_objetivo = _dia_semana_es(datetime.combine(fecha_objetivo, time(12, 0)))
 
         try:
@@ -4981,23 +4953,7 @@ class AsistenciaDocenteViewSet(viewsets.ViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        bloque_encontrado = None
-        if es_hoy:
-            for inicio, fin in bloques:
-                if inicio <= hora_actual < fin:
-                    bloque_encontrado = (inicio, fin)
-                    break
-        else:
-            # B2 — Registro anticipado: tomar el primer bloque del día.
-            bloque_encontrado = bloques[0]
-
-        if not bloque_encontrado:
-            return Response(
-                {'error': 'El docente no tiene clases programadas en este momento.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        inicio, fin = bloque_encontrado
+        inicio, fin = bloques[0]
         activo_ev = _evento_activo_en_franja(fecha_objetivo, inicio, fin)
         if activo_ev:
             ev, _, _, horario_ev = activo_ev
@@ -5037,7 +4993,7 @@ class AsistenciaDocenteViewSet(viewsets.ViewSet):
             id_usuario=usuario,
             id_estado_asistencia=estado_obj,
             fecha=fecha_objetivo,
-            hora=inicio if not es_hoy else ahora.time(),
+            hora=inicio,
         )
         _notificar_falta_docente(asistencia)
 
@@ -5996,7 +5952,7 @@ class LibroTemaViewSet(HistorialMixin, viewsets.ModelViewSet):
         """Bloquea modificar/eliminar un Libro de Temas bajo carga única.
 
         Si la carga fue otorgada pero el ítem ya se cargó, o la ventana de
-        20 minutos venció sin cargarse, no se permite editar ni borrar.
+        3 horas venció sin cargarse, no se permite editar ni borrar.
         """
         estado_carga = carga_de_item(
             instance.id_curso_materia_id, instance.fecha, 'libro_temas',
@@ -6018,10 +5974,6 @@ class LibroTemaViewSet(HistorialMixin, viewsets.ModelViewSet):
             return Response({'error': estado_carga['mensaje']}, status=status.HTTP_403_FORBIDDEN)
 
         if estado_carga['estado'] == 'permitido':
-            # La ventana de 20 minutos autoriza la carga aunque no se esté en
-            # horario de clase. Se persiste la franja del bloque del día que
-            # todavía no tiene registro (o la primera del día si todas ya
-            # fueron cubiertas).
             _verificar_docente_activo_materia(request, cm_id, fecha_hoy)
             activo = obtener_docente_activo(cm_id, fecha_hoy)
             bloques = bloques_del_dia(cm_id, fecha_hoy)
@@ -6294,7 +6246,7 @@ class NotificacionViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['post'], url_path='enviar-carga-unica')
     def enviar_carga_unica(self, request):
         """Envía una notificación al docente activo de una materia avisándole
-        que dispone de 20 minutos para completar las cargas pendientes del día
+        que dispone de 3 horas para completar las cargas pendientes del día
         (asistencias y/o libro de temas).
 
         Las calificaciones NO son una carga diaria y nunca disparan esta
@@ -6346,11 +6298,6 @@ class NotificacionViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Se abre (o renueva) la ventana de carga única de 20 minutos.
-        # ── B12 ── El botón SIEMPRE notifica SOLO al docente seleccionado y
-        # abre/renueva la ventana de 20 minutos. NUNCA se notifica a otros
-        # preceptores (antes, cuando el docente terminaba su horario sin
-        # cargar, se avisaba a los preceptores del curso; eso se eliminó).
         ahora = timezone.localtime()
         dia_hoy = _dia_semana_es(ahora)
         bloques_hoy = _obtener_bloques_horario(cm.id_curso_materia, dia_hoy)
@@ -6360,18 +6307,6 @@ class NotificacionViewSet(viewsets.ReadOnlyModelViewSet):
 
         hora_actual = ahora.strftime('%H:%M')
 
-        def _en_horario():
-            return any(
-                _hhmm(ini) <= hora_actual < _hhmm(fin)
-                for ini, fin in bloques_hoy
-            )
-
-        textos_visibles = [CLAVE_TEXTO[p] for p in faltantes]
-        pendientes_visibles = (
-            ' y '.join(textos_visibles)
-            if len(textos_visibles) == 1
-            else ', '.join(textos_visibles[:-1]) + ' y ' + textos_visibles[-1]
-        )
         materia_nombre = cm.id_materia.nombre_materia if cm.id_materia_id else '—'
         curso_nombre_b = cm.id_curso.nombre_curso if cm.id_curso_id else '—'
         ciclo_b = cm.id_curso.id_ciclo.anio if (cm.id_curso_id and cm.id_curso.id_ciclo_id) else ''
@@ -6379,11 +6314,6 @@ class NotificacionViewSet(viewsets.ReadOnlyModelViewSet):
         if ciclo_b:
             contexto_b = f'{contexto_b} ({ciclo_b})'
 
-        # B12 — Guard previo: si la clase de HOY todavía NO comenzó (la hora
-        # actual es anterior al inicio del primer bloque de hoy), se rechaza
-        # con un mensaje claro en lugar de abrir la ventana de 20 minutos.
-        # No tiene sentido notificar al docente ni abrir un plazo antes de
-        # que empiece su clase (ej. son las 10:24 pero la clase es de 12 a 13).
         if bloques_hoy and hora_actual < _hhmm(bloques_hoy[0][0]):
             return Response(
                 {
@@ -6403,37 +6333,6 @@ class NotificacionViewSet(viewsets.ReadOnlyModelViewSet):
             id_curso_materia_id=cm.id_curso_materia, fecha=fecha_hoy
         ).exists()
 
-        if _en_horario() and not ventana_existente:
-            # Rama 1 — el docente sigue en horario de su clase y todavía no se
-            # le abrió una ventana HOY: SOLO recordatorio, sin abrir la ventana
-            # de 20 minutos ni activar temporizador (la carga normal sigue
-            # disponible durante la clase). Si ya se le envió una ventana hoy,
-            # no cae acá: abajo se le re-notifica y se le renueva la ventana.
-            fin_clase = _hhmm(bloques_hoy[-1][1]) if bloques_hoy else 'fin del horario'
-            notificar(
-                id_usuario=resultado.docente.id_usuario,
-                titulo='Recordatorio de carga — cargá antes de que termine tu horario',
-                mensaje=(
-                    f'Tenés pendientes {pendientes_visibles} de {contexto_b}. '
-                    f'Tu horario de clase termina a las {fin_clase} — recordá cargar '
-                    'antes de que termine.'
-                ),
-                rol=SEGMENTO_DOCENTE,
-            )
-            return Response({
-                'enviado': True,
-                'recordatorio': True,
-                'ventana': False,
-                'detail': 'Recordatorio enviado (el docente sigue en horario). No se abrió temporizador.',
-            })
-
-        # Rama 2 — se notifica al docente seleccionado y se abre (o renueva)
-        # la ventana de 20 minutos. Cubre tres casos:
-        #  (a) el docente terminó su horario sin cargar;
-        #  (b) ya se envió una carga única HOY y el preceptor aprieta de nuevo:
-        #      se le re-notifica al docente y se le da OTRA ventana de 20';
-        #  (c) sin bloque horario hoy (clase especial, adelanto, etc.).
-        # Antes esto notificaba a los preceptores del curso; ya no se les avisa.
         carga = crear_o_renovar_carga(cm, fecha_hoy, faltantes, resultado.docente)
 
         textos = [CLAVE_TEXTO[p] for p in faltantes]
@@ -6443,13 +6342,13 @@ class NotificacionViewSet(viewsets.ReadOnlyModelViewSet):
             titulo = 'Carga pendiente — renovaste la ventana'
             mensaje = (
                 f'No se detectó la carga de {pendiente_texto} de {contexto_b}. '
-                f'El preceptor renovó tu ventana: disponés de OTROS 20 minutos '
+                f'El preceptor renovó tu ventana: disponés de OTRAS 3 horas '
                 f'para cargarlos.'
             )
         else:
-            titulo = 'Carga pendiente — 20 minutos'
+            titulo = 'Carga pendiente — 3 horas'
             mensaje = (
-                f'El preceptor te notifica que disponés de 20 minutos para cargar '
+                f'El preceptor te notifica que disponés de 3 horas para cargar '
                 f'{pendiente_texto} de {contexto_b}.'
             )
 
@@ -6531,11 +6430,11 @@ class NotificacionViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class CargaUnicaViewSet(viewsets.ReadOnlyModelViewSet):
-    """Consulta y cierre de las ventanas de carga única de 20 minutos.
+    """Consulta y cierre de las ventanas de carga única de 3 horas.
 
     GET  /api/cargas-unica/?curso_materia=&fecha=  → estado de la ventana.
     POST /api/cargas-unica/marcar/                 → fija un ítem como
-        cargado (asistencias | libro_temas), bloquenando su re-edición.
+        cargado (asistencias | libro_temas), bloqueando su re-edición.
     """
 
     queryset = CargaUnica.objects.select_related(
@@ -6661,7 +6560,7 @@ class CargaUnicaViewSet(viewsets.ReadOnlyModelViewSet):
                 continue
             notificar(
                 id_usuario=preceptor.id_usuario,
-                titulo='Carga completada — 20 minutos',
+                titulo='Carga completada — 3 horas',
                 mensaje=(
                     f'{autor} cargó {nombre_item} de {contexto}. '
                     f'La verificación del Panel Diario puede marcarse como realizada.'
@@ -8640,8 +8539,12 @@ def _notificar_falta_docente(asistencia_docente):
     nombre_doc = f'{docente.apellido}, {docente.nombre}' if docente else 'El docente'
     fecha_txt = asistencia_docente.fecha.isoformat() if asistencia_docente.fecha else ''
     hora_txt = str(asistencia_docente.hora)[:5] if asistencia_docente.hora else ''
-    titulo = 'Falta de docente'
-    mensaje = f'{nombre_doc} no dictó {materia} ({curso}) el {fecha_txt}.' + (f' Estaba previsto a las {hora_txt}.' if hora_txt else '')
+    es_futura = asistencia_docente.fecha and asistencia_docente.fecha > timezone.localdate()
+    titulo = 'Ausencia anticipada de docente' if es_futura else 'Falta de docente'
+    if es_futura:
+        mensaje = f'{nombre_doc} no dictará {materia} ({curso}) el {fecha_txt}.' + (f' Está prevista a las {hora_txt}.' if hora_txt else '')
+    else:
+        mensaje = f'{nombre_doc} no dictó {materia} ({curso}) el {fecha_txt}.' + (f' Estaba previsto a las {hora_txt}.' if hora_txt else '')
     nav = {
         'destino': 'asistencias',
         'params': {

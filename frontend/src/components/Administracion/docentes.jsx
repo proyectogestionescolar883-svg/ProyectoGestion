@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { cursoConOrientacion } from '../../utils/orientacion';
-import { deleteMiDdjjDocente, verificarPlanificacion, verificarDdjj, enviarRecordatorioDdjj, createDocente, updateDocente, deleteDocente, getUsuariosConRol, getUsuariosSinRol, quitarRolUsuario, getCursoMateria, getCursos, getMaterias, BASE_URL } from '../../services/api';
+import { deleteMiDdjjDocente, verificarPlanificacion, verificarDdjj, enviarRecordatorioDdjj, createDocente, updateDocente, deleteDocente, getUsuariosConRol, getUsuariosSinRol, quitarRolUsuario, getCursoMateria, getCursos, getMaterias } from '../../services/api';
 import { formatDNI, cleanDNI } from '../../utils/dni';
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import FormModal from '../../components/Shared/FormModal';
@@ -11,29 +11,17 @@ import AgregarRolModal from '../../components/Shared/AgregarRolModal';
 import QuitarRolModal from '../../components/Shared/QuitarRolModal';
 import { mensajeErrorAmigable } from '../../utils/errores';
 import { aInputDateTime as toInputDateTime, aApiDateTime, errorProgramacion } from '../../utils/programacionEstado';
-
-const API_BASE = BASE_URL;
+import { buildMediaUrl } from '../../utils/medios';
 
 function cleanTelefono(value) {
   if (!value) return '';
   return String(value).replace(/[^\d+\-()\s]/g, '');
 }
 
-function getAbsoluteFileUrl(path) {
-  if (!path) return null;
-  const absolute = String(path).startsWith('http') ? String(path) : `${API_BASE}${path}`;
-  try {
-    const url = new URL(absolute, window.location.origin);
-    return ['http:', 'https:'].includes(url.protocol) ? url.href : null;
-  } catch {
-    return null;
-  }
-}
-
 function buildDownloadUrl(path) {
-  const absolute = getAbsoluteFileUrl(path);
-  if (!absolute) return null;
-  return absolute.includes('?') ? `${absolute}&download=1` : `${absolute}?download=1`;
+  const url = buildMediaUrl(path);
+  if (!url) return null;
+  return url.includes('?') ? `${url}&download=1` : `${url}?download=1`;
 }
 
 function DdjjRecordatorioModal({ docente, onConfirm, onCancel }) {
@@ -101,9 +89,9 @@ function ActasDocenteDesplegable({ actas }) {
             <td>{acta.fecha}</td>
             <td>{acta.descripcion || acta.titulo}</td>
             <td>
-              {getAbsoluteFileUrl(acta.ruta_archivo) ? (
+              {buildMediaUrl(acta.ruta_archivo) ? (
                 <a
-                  href={getAbsoluteFileUrl(acta.ruta_archivo)}
+                  href={buildMediaUrl(acta.ruta_archivo)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn btn-success table-download-btn"
@@ -190,7 +178,7 @@ function CursosMateriasDesplegable({ docenteId, cursoMateria, planificaciones })
                   {planificacion?.ruta_archivo ? (
                     <div className="docente-materia-line">
                       <a
-                        href={getAbsoluteFileUrl(planificacion.ruta_archivo)}
+                        href={buildMediaUrl(planificacion.ruta_archivo)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="btn btn-success table-download-btn"

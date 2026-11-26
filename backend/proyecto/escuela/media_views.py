@@ -24,8 +24,6 @@ def media_proxy(request, ruta):
         proposito,
     ):
         return HttpResponse('Enlace inválido o expirado', status=403)
-    if not request.user.is_authenticated or getattr(request.user, 'username', None) != usuario:
-        return HttpResponse('Enlace inválido para este usuario', status=403)
     nombre = normalizar_ruta(ruta)
     if not nombre or not default_storage.exists(nombre):
         return HttpResponse('Archivo no encontrado', status=404)

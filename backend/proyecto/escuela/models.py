@@ -794,14 +794,14 @@ class Notificacion(models.Model):
 
 
 class CargaUnica(models.Model):
-    """Carga única de 20 minutos otorgada por el preceptor a un docente.
+    """Carga única de 3 horas otorgada por el preceptor a un docente.
 
     Tabla creada manualmente en MySQL (managed=False), como el resto del
     esquema. El preceptor la activa desde el Panel Diario presionando
-    "Notificar": dentro de la ventana de 20 minutos el docente puede cargar
+    "Notificar": dentro de la ventana de 3 horas el docente puede cargar
     las Asistencias y/o el Libro de Temas pendientes de la fecha; cada ítem
     solo puede cargarse una vez (los flags `*_cargada` bloquean re-ediciones)
-    y vence a los 20 minutos.
+    y vence a las 3 horas.
     """
 
     id_carga_unica = models.AutoField(primary_key=True)

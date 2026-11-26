@@ -3264,7 +3264,7 @@ class EventoInstitucionalSerializer(serializers.ModelSerializer):
 # ---------- Libro de Temas ----------
 
 class CargaUnicaSerializer(serializers.ModelSerializer):
-    """Serializa una ventana de carga única de 20 minutos para el frontend."""
+    """Serializa una ventana de carga única de 3 horas para el frontend."""
     pendientes = serializers.SerializerMethodField()
     estado = serializers.SerializerMethodField()
     tiempo_restante_seg = serializers.SerializerMethodField()

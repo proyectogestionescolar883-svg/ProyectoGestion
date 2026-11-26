@@ -11,6 +11,7 @@ import FilePicker from '../Shared/FilePicker';
 import confirmarEliminacion from '../../utils/confirmarEliminacion';
 import { useToast } from '../../context/ToastContext';
 import { mensajeErrorAmigable } from '../../utils/errores';
+import { buildMediaUrl } from '../../utils/medios';
 
 function mensajeError(err) {
   return mensajeErrorAmigable(err);
@@ -261,7 +262,7 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones = [], p
               {editingId && archivoActual && (
                 <div className="form-group-filter">
                   <label>PDF actual</label>
-                  <a href={archivoActual} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary">
+                  <a href={buildMediaUrl(archivoActual)} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary">
                     <i className="fas fa-file-pdf" /> Ver PDF actual
                   </a>
                   <small className="text-muted"> Seleccioná un archivo nuevo solo si querés reemplazarlo.</small>
@@ -321,7 +322,7 @@ function PanelMateriasAdeudadasDocente({ cursoMateriaId, misAsignaciones = [], p
                   <td>{act.fecha_publicacion ? new Date(act.fecha_publicacion).toLocaleDateString('es-AR') : '—'}</td>
                   <td>
                     {act.archivo_pdf ? (
-                      <a href={act.archivo_pdf} target="_blank" rel="noopener noreferrer" className="btn btn-success table-download-btn">
+                      <a href={buildMediaUrl(act.archivo_pdf)} target="_blank" rel="noopener noreferrer" className="btn btn-success table-download-btn">
                         <i className="fas fa-file-pdf" /> Ver PDF
                       </a>
                     ) : 'Sin archivo'}
